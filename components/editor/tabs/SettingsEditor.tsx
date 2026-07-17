@@ -2,6 +2,7 @@ import type { InvitationData } from "@/lib/types/invitation";
 import { useState, useEffect } from "react";
 import BackupWarningDialog from "@/components/shared/BackupWarningDialog";
 import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
+import LoginDialog from "@/components/editor/LoginDialog";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -48,6 +49,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [showBackupWarning, setShowBackupWarning] = useState(false);
   const [showImportWarning, setShowImportWarning] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
 
   // Check for existing backup on mount
   useEffect(() => {
@@ -580,7 +582,44 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           )}
         </div>
         )}
+
+        {/* Account Actions */}
+        {!isDemoMode ? (
+          <button
+            onClick={() => {
+              localStorage.removeItem('invitation');
+              localStorage.removeItem('appSettings');
+              localStorage.removeItem('weddingChecklist');
+              localStorage.removeItem('weddingBudget');
+              window.location.href = '/tools';
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${isDarkMode ? "hover:bg-red-900/30 text-red-400" : "hover:bg-red-50 text-red-600"}`}
+            style={{ border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}` }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span className="text-sm font-medium">Sign Out</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowLoginDialog(true)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-50 text-gray-900"}`}
+            style={{ border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}` }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10,17 15,12 10,7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            <span className="text-sm font-medium">Sign In</span>
+          </button>
+        )}
       </div>
+
+      <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} isDarkMode={isDarkMode} accentColor={accentColor} />
 
       {/* Backup warning dialog */}
       <BackupWarningDialog

@@ -6,6 +6,7 @@ import { EditModeContext, EditField } from "@/components/invitation/EditModeCont
 import ImagePickerSheet from "./ImagePickerSheet";
 import InvitationTemplate from "@/components/invitation/InvitationTemplate";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
+import LoginDialog from "@/components/editor/LoginDialog";
 import { clearDemoInvitation } from "@/lib/demo/demo-data";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
@@ -53,6 +54,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
   const [accentColorPanelClosing, setAccentColorPanelClosing] = useState(false);
   const [showUniversalDividerPanel, setShowUniversalDividerPanel] = useState(false);
   const [isUniversalDividerPanelClosing, setIsUniversalDividerPanelClosing] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const { options: predefinedSectionColors } = usePredefinedOptions('section_colors');
   const { options: predefinedDivider1Images } = usePredefinedOptions('dividers_centeredsingle');
   const { options: predefinedDivider2Images } = usePredefinedOptions('dividers_splithorizontal');
@@ -625,6 +627,53 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                   </button>
                 </>
               )}
+
+              {!isDemoMode ? (
+                <>
+                  <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('invitation');
+                      localStorage.removeItem('appSettings');
+                      localStorage.removeItem('weddingChecklist');
+                      localStorage.removeItem('weddingBudget');
+                      window.location.href = '/tools';
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${isDarkMode ? "hover:bg-red-900/30 text-red-400" : "hover:bg-red-50 text-red-600"}`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Sign Out</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
+                  <button
+                    onClick={() => {
+                      setShowSettingsPanel(false);
+                      setShowLoginDialog(true);
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${isDarkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-50 text-gray-900"}`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                      <polyline points="10,17 15,12 10,7" />
+                      <line x1="15" y1="12" x2="3" y2="12" />
+                    </svg>
+                    <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Sign In</span>
+                  </button>
+                  <p
+                    className="text-center text-xs"
+                    style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#9ca3af" : "#8a6252" }}
+                  >
+                    Sign-in your account or create
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -751,6 +800,8 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
           predefinedDivider3Images={predefinedDivider3Images}
         />
       )}
+
+      <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} isDarkMode={isDarkMode} accentColor={accentColor} />
 
       {/* Image picker sheet (portal-like, outside scroll) */}
       {activeField && (

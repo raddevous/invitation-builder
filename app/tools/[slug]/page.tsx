@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { useRouter } from "next/navigation";
 import type { Invitation } from "@/lib/types/invitation";
 import EditorLogin from "@/components/editor/EditorLogin";
 import ToolsTab from "@/components/editor/tabs/ToolsTab";
@@ -17,6 +18,7 @@ interface AppSettings {
 
 export default function ToolsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
+  const router = useRouter();
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [slugValid, setSlugValid] = useState<boolean | null>(null);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
@@ -43,6 +45,23 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     }
     checkSlug();
   }, [slug]);
+
+  // Auto-load invitation from localStorage to skip second login
+  useEffect(() => {
+    if (slugValid) {
+      const stored = localStorage.getItem('invitation');
+      if (stored) {
+        try {
+          const parsed: Invitation = JSON.parse(stored);
+          if (parsed.slug === slug) {
+            setInvitation(parsed);
+          }
+        } catch {
+          // ignore invalid stored data
+        }
+      }
+    }
+  }, [slugValid, slug]);
 
   // Fetch invitation by access code (called from EditorLogin)
   const fetchInvitationByAccessCode = async (accessCode: string): Promise<Invitation | null> => {
@@ -196,7 +215,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   }
 
   if (!invitation) {
-    return <EditorLogin onLogin={setInvitation} />;
+    return <EditorLogin onLogin={setInvitation} onTryDemo={() => router.push('/demo')} />;
   }
 
   if (showEditorPanel) {
