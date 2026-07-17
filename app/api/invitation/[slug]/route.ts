@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { unstable_cache, revalidateTag } from "next/cache";
+import { requireAuth } from "@/lib/auth/middleware";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,12 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  // Verify JWT token
+  const auth = requireAuth(request);
+  if (auth instanceof NextResponse) {
+    return auth;
+  }
+
   try {
     const { slug } = await params;
     const body = await request.json();
@@ -72,6 +79,14 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
+      );
+    }
+
+    // Verify the token matches the invitation being updated
+    if (auth.invitationId !== invitationId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
       );
     }
 

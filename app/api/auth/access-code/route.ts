@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { generateToken } from "@/lib/auth/jwt";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +26,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    // Generate JWT token
+    const token = generateToken({
+      invitationId: data.id,
+      slug: data.slug,
+    });
+
+    // Set HTTP-only cookie
+    const response = NextResponse.json({
       invitation: {
         id: data.id,
         slug: data.slug,
@@ -36,6 +44,16 @@ export async function POST(request: NextRequest) {
         updatedAt: data.updated_at,
       },
     });
+
+    response.cookies.set("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    });
+
+    return response;
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/middleware";
 
 export async function POST(request: NextRequest) {
+  // Verify JWT token
+  const auth = requireAuth(request);
+  if (auth instanceof NextResponse) {
+    return auth;
+  }
+
   try {
     const { path } = await request.json();
 
@@ -9,6 +16,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Missing path" },
         { status: 400 }
+      );
+    }
+
+    // Verify the path belongs to the authenticated invitation
+    if (!path.startsWith(`${auth.invitationId}/`)) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
       );
     }
 

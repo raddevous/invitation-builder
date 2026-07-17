@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/middleware";
 
 export async function POST(request: NextRequest) {
+  // Verify JWT token
+  const auth = requireAuth(request);
+  if (auth instanceof NextResponse) {
+    return auth;
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -12,6 +19,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Missing file, field, or invitationId" },
         { status: 400 }
+      );
+    }
+
+    // Verify the token matches the invitation being updated
+    if (auth.invitationId !== invitationId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
       );
     }
 
