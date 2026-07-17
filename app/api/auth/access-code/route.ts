@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/auth/jwt";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  // Check rate limit
+  const { success, remaining } = await checkRateLimit(request);
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many login attempts. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   try {
     const { accessCode } = await request.json();
 
