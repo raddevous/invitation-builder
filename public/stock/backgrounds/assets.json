@@ -1,0 +1,14 @@
+[
+  {
+    "id": "background-none",
+    "label": "None (solid color)",
+    "url": "",
+    "thumbnail": ""
+  },
+  {
+    "id": "background-linen",
+    "label": "Warm Linen",
+    "url": "/stock/backgrounds/background-linen.svg",
+    "thumbnail": "/stock/backgrounds/background-linen.svg"
+  }
+]

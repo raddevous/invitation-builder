@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Countdown Dialog</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-info {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h1>Countdown Section Unsaved Dialog Test</h1>
+        <p>This test verifies that the unsaved changes dialog works correctly in the Countdown Settings panel.</p>
+        
+        <h2>Test Steps:</h2>
+        <ol>
+            <li>Open the Countdown Settings panel</li>
+            <li>Make a change (e.g., modify heading text, change colors, etc.)</li>
+            <li>Try to close the panel without applying changes</li>
+            <li>Verify that the unsaved changes dialog appears</li>
+            <li>Test both "Apply" and "Discard" options</li>
+        </ol>
+
+        <h2>Expected Behavior:</h2>
+        <ul>
+            <li>Dialog should appear when there are unsaved changes</li>
+            <li>Dialog should NOT appear when there are no unsaved changes</li>
+            <li>"Apply" should save changes and close panel</li>
+            <li>"Discard" should abandon changes and close panel</li>
+        </ul>
+
+        <div class="status info">
+            <strong>Current Status:</strong> The code has been updated to use separate state variables for countdown changes:
+            <ul>
+                <li><code>pendingCountdownChanges</code> instead of <code>pendingChanges</code></li>
+                <li><code>hasUnsavedCountdownChanges</code> instead of <code>hasUnsavedChanges</code></li>
+                <li><code>handleCountdownChange</code> instead of <code>handleChange</code></li>
+            </ul>
+        </div>
+
+        <h2>Debug Information:</h2>
+        <p>The following functions have been implemented:</p>
+        <ul>
+            <li><code>handleCloseCountdownSettingsPanel()</code> - Checks for unsaved changes and shows dialog</li>
+            <li><code>handleCountdownChange()</code> - Updates pending changes and sets unsaved flag</li>
+            <li><code>handleApplyChanges()</code> - Applies changes and closes panel</li>
+            <li><code>handleConfirmApply()</code> - Dialog handler for applying changes</li>
+            <li><code>handleConfirmDiscard()</code> - Dialog handler for discarding changes</li>
+        </ul>
+
+        <div class="status success">
+            <strong>✅ Code Changes Complete</strong><br>
+            All state variables and functions have been properly renamed and the dialog logic should now work correctly.
+        </div>
+    </div>
+
+    <script>
+        // This is just a test file - the actual functionality is in the React component
+        console.log('Countdown Dialog Test - Check the React component for actual functionality');
+    </script>
+</body>
+</html>

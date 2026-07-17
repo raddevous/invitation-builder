@@ -1,0 +1,7 @@
+[0627/002810.402:WARNING:ipc_message_attachment_set.cc(49)] MessageAttachmentSet destroyed with unconsumed attachments: 0/1
+[0627/002810.454:ERROR:browser_gpu_channel_host_factory.cc(139)] Failed to launch GPU process.
+[0713/002506.338:ERROR:browser_gpu_channel_host_factory.cc(139)] Failed to launch GPU process.
+[0714/053713.902:ERROR:browser_gpu_channel_host_factory.cc(139)] Failed to launch GPU process.
+[0714/231425.506:ERROR:browser_gpu_channel_host_factory.cc(139)] Failed to launch GPU process.
+[0715/131322.363:ERROR:browser_gpu_channel_host_factory.cc(139)] Failed to launch GPU process.
+[0717/035859.789:ERROR:browser_gpu_channel_host_factory.cc(139)] Failed to launch GPU process.

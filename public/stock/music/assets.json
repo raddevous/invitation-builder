@@ -1,0 +1,26 @@
+[
+  {
+    "id": "music-silence",
+    "label": "No Music",
+    "url": "",
+    "thumbnail": ""
+  },
+  {
+    "id": "romantic-piano-01",
+    "label": "Romantic Piano",
+    "url": "/stock/music/romantic-piano-01.mp3",
+    "thumbnail": ""
+  },
+  {
+    "id": "acoustic-guitar-01",
+    "label": "Acoustic Guitar Serenade",
+    "url": "/stock/music/acoustic-guitar-01.mp3",
+    "thumbnail": ""
+  },
+  {
+    "id": "strings-waltz-01",
+    "label": "String Quartet Waltz",
+    "url": "/stock/music/strings-waltz-01.mp3",
+    "thumbnail": ""
+  }
+]
