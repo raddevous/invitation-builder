@@ -663,6 +663,14 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     return guestName.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
+  // Helper function to convert hex to rgba
+  const hexToRgba = (hex: string, opacity: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  };
+
   // Helper function to get crystal colors
   const getCrystalColors = () => {
     const crystalColors = {
@@ -735,14 +743,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   };
 
   const crystalColors = getCrystalColors();
-
-  // Helper function to convert hex to rgba
-  const hexToRgba = (hex: string, opacity: number) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-  };
 
   const rsvpUseDefaultDivider = data.rsvpDividerUseDefault ?? true;
   const effectivePullDown = rsvpUseDefaultDivider ? (data.universalDividerPullDown ?? 0) : (data.rsvpDividerPullDown ?? 0);
