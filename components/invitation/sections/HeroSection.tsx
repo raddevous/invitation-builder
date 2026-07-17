@@ -1572,14 +1572,6 @@ export default function HeroSection({
                 )}
               </div>
 
-              {/* Instruction text - only in desktop mode, inside scrollable area */}
-              {desktopMode && (
-                <div className="px-5 pt-2 pb-4">
-                  <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                    Change the Host line and Final sentiment message in Details tab → MESSAGE section
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Close button - outside scrollable area */}
@@ -1597,14 +1589,6 @@ export default function HeroSection({
               </button>
             </div>
 
-            {/* Instruction text - only in mobile mode, outside scrollable area */}
-            {!desktopMode && (
-              <div className="px-5 pt-2 pb-4 shrink-0">
-                <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  Change the Host line and Final sentiment message in Details tab → MESSAGE section
-                </p>
-              </div>
-            )}
           </div>
         </>
       )}

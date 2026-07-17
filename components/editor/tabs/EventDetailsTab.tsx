@@ -269,7 +269,7 @@ export default function EventDetailsTab({ data, onChange, isDarkMode = false, ac
         </div>
       </div>
       <div className="space-y-1">
-        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Closing Sentiment</label>
+        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Final sentiment</label>
         <div className="relative">
           <textarea
             value={pendingData.heroClosingSentiment ?? ""}

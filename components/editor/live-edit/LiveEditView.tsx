@@ -488,6 +488,17 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                 </svg>
                 <span className="text-sm" style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#e5e5e5" : "#5c4a3a" }}>Dashboard</span>
               </button>
+              <button
+                onClick={() => {
+                  setShowSettingsPanel(false);
+                  const element = document.getElementById('wedding-directory-cssid');
+                  if (element) element.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${isDarkMode ? "hover:bg-gray-700" : "hover:bg-gray-50"}`}
+              >
+                <img src="/assets/ico-dir.png" alt="Directory" className="w-5 h-5 object-contain" style={{ filter: 'brightness(1) invert(0)' }} />
+                <span className="text-sm" style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#e5e5e5" : "#5c4a3a" }}>Directory</span>
+              </button>
               <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
               <button
                 onClick={() => onToggleScreenDimensions?.()}
