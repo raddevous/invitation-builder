@@ -30,25 +30,19 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
 
-  const fetchInvitation = async () => {
+  // Fetch invitation by access code (called from EditorLogin)
+  const fetchInvitationByAccessCode = async (accessCode: string): Promise<Invitation | null> => {
     try {
-      const res = await fetch(`/api/invitation/${slug}`);
-      if (!res.ok) throw new Error('Failed to fetch invitation');
+      const res = await fetch("/api/auth/access-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode }),
+      });
+      if (!res.ok) return null;
       const data = await res.json();
-      setInvitation(data.invitation);
-      localStorage.setItem('invitation', JSON.stringify(data.invitation));
-    } catch (error) {
-      console.error('Failed to fetch invitation:', error);
-      // Fallback to localStorage if fetch fails
-      const stored = localStorage.getItem('invitation');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setInvitation(parsed);
-        } catch (error) {
-          console.error('Failed to parse stored invitation:', error);
-        }
-      }
+      return data.invitation;
+    } catch {
+      return null;
     }
   };
 
@@ -78,20 +72,17 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         console.error('Failed to parse stored settings:', error);
       }
     }
-
-    fetchInvitation();
   }, [slug]);
 
   // Refetch when returning from editor to ensure we have latest data
   useEffect(() => {
     if (!showEditorPanel && invitation) {
-      fetchInvitation();
+      // User will need to re-enter access code to refresh data
     }
-  }, [showEditorPanel]);
+  }, [showEditorPanel, invitation]);
 
   // Refetch before opening editor to ensure latest data
   const handleOpenEditor = async () => {
-    await fetchInvitation();
     setShowEditorPanel(true);
   };
 
