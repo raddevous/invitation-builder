@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth/middleware";
-import { calculateExpiration } from "@/lib/auth/expiration";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +93,7 @@ export async function PATCH(
     // Get current data before update
     const { data: currentRecord } = await supabaseAdmin
       .from("invitations")
-      .select("data, created_at")
+      .select("data")
       .eq("id", invitationId)
       .single();
 
@@ -104,26 +103,12 @@ export async function PATCH(
       date: currentRecord?.data?.date
     });
 
-    // Check if wedding date changed
-    const oldWeddingDate = currentRecord?.data?.date;
-    const newWeddingDate = data.date;
-    const weddingDateChanged = oldWeddingDate !== newWeddingDate;
-
-    // Prepare update data
-    const updateData: any = {
-      data,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Recalculate expires_at if wedding date changed
-    if (weddingDateChanged && currentRecord?.created_at) {
-      updateData.expires_at = calculateExpiration(newWeddingDate, currentRecord.created_at);
-      console.log('[PATCH] Wedding date changed, recalculating expires_at:', updateData.expires_at);
-    }
-
     const { data: updatedData, error } = await supabaseAdmin
       .from("invitations")
-      .update(updateData)
+      .update({
+        data,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", invitationId)
       .select();
 

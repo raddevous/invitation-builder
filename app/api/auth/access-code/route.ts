@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/auth/jwt";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { isExpired } from "@/lib/auth/expiration";
 
 export async function POST(request: NextRequest) {
   // Check rate limit
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("invitations")
-      .select("id, slug, client_name, template_id, event_type, data, updated_at, expires_at, created_at")
+      .select("id, slug, client_name, template_id, event_type, data, updated_at")
       .eq("access_code", accessCode.trim().toUpperCase())
       .single();
 
@@ -34,14 +33,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Invalid access code" },
         { status: 401 }
-      );
-    }
-
-    // Check if access code has expired
-    if (data.expires_at && isExpired(data.expires_at)) {
-      return NextResponse.json(
-        { error: "Access code has expired. Please contact support." },
-        { status: 403 }
       );
     }
 
