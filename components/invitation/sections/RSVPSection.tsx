@@ -53,6 +53,22 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   const [existingResponse, setExistingResponse] = useState<{ attendance: string; message: string | null } | null>(null);
   const [previewCardIndex, setPreviewCardIndex] = useState(0);
 
+  // Print settings state
+  const [showPrintSettings, setShowPrintSettings] = useState(false);
+  const [isPrintSettingsClosing, setIsPrintSettingsClosing] = useState(false);
+  const [removeRoundCorners, setRemoveRoundCorners] = useState(false);
+  const [removeShadows, setRemoveShadows] = useState(false);
+  const [removePageNumber, setRemovePageNumber] = useState(true);
+  const [tempTextResize, setTempTextResize] = useState(100);
+  const [tempBackgroundZoom, setTempBackgroundZoom] = useState(100);
+  const [tempBackgroundYPosition, setTempBackgroundYPosition] = useState(100);
+  const [tempAdjustHeight, setTempAdjustHeight] = useState(60);
+  const [changeNameToBlank, setChangeNameToBlank] = useState(true);
+  const [seatNumberToUnderscores, setSeatNumberToUnderscores] = useState(true);
+  const [removeMessageBox, setRemoveMessageBox] = useState(true);
+  const [originalStyles, setOriginalStyles] = useState<any>(null);
+  const [isLivePreviewActive, setIsLivePreviewActive] = useState(false);
+
   const predefinedRsvpHeadings = ["RSVP", "Kindly Reply", "Please Respond", "Save Our Date"];
   const predefinedDeadlineTexts = [
     { prefix: "RSVP by", hasLineBreak: false },
@@ -639,6 +655,489 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     }, 300);
   };
 
+  // Print settings functions
+  const storeOriginalStyles = () => {
+    const paperContainer = document.getElementById('rsvp-paper-container');
+    if (!paperContainer) return;
+
+    const styles: any = {
+      container: {
+        borderRadius: paperContainer.style.borderRadius || '',
+        boxShadow: paperContainer.style.boxShadow || '',
+        backgroundSize: paperContainer.style.backgroundSize || '',
+        backgroundPosition: paperContainer.style.backgroundPosition || '',
+        aspectRatio: paperContainer.style.aspectRatio || '',
+        height: paperContainer.style.height || '',
+        offsetHeight: paperContainer.getBoundingClientRect().height,
+      },
+      shadowElements: [],
+      pageElements: [],
+      messageBox: null as any,
+      guestName: null as any,
+      reservedText: null as any
+    };
+
+    // Store message box original display
+    const messageBox = paperContainer.querySelector('[data-rsvp-message-box]');
+    if (messageBox) {
+      styles.messageBox = {
+        element: messageBox,
+        display: (messageBox as HTMLElement).style.display || ''
+      };
+    }
+
+    // Store guest name original content
+    const guestNameEl = paperContainer.querySelector('[data-rsvp-guest-name]');
+    if (guestNameEl) {
+      styles.guestName = {
+        element: guestNameEl,
+        innerHTML: guestNameEl.innerHTML
+      };
+    }
+
+    // Store reserved text original content
+    const reservedTextEl = paperContainer.querySelector('[data-rsvp-reserved-text]');
+    if (reservedTextEl) {
+      styles.reservedText = {
+        element: reservedTextEl,
+        innerHTML: reservedTextEl.innerHTML
+      };
+    }
+
+    const shadowElements = paperContainer.querySelectorAll('*');
+    shadowElements.forEach((el: any) => {
+      styles.shadowElements.push({
+        element: el,
+        boxShadow: el.style.boxShadow || '',
+        textShadow: el.style.textShadow || ''
+      });
+    });
+
+    const pageElements = paperContainer.querySelectorAll('[class*="page"], [id*="page"]');
+    pageElements.forEach((el: any) => {
+      styles.pageElements.push({
+        element: el,
+        display: el.style.display || ''
+      });
+    });
+
+    setOriginalStyles(styles);
+  };
+
+  const applyLivePreview = () => {
+    const paperContainer = document.getElementById('rsvp-paper-container');
+    if (!paperContainer || !originalStyles) return;
+
+    if (removeRoundCorners) {
+      paperContainer.style.borderRadius = '0px';
+    } else {
+      paperContainer.style.borderRadius = originalStyles.container.borderRadius;
+    }
+
+    if (removeShadows) {
+      paperContainer.style.boxShadow = 'none';
+      originalStyles.shadowElements.forEach((item: any) => {
+        item.element.style.boxShadow = 'none';
+        item.element.style.textShadow = 'none';
+      });
+    } else {
+      paperContainer.style.boxShadow = originalStyles.container.boxShadow;
+      originalStyles.shadowElements.forEach((item: any) => {
+        item.element.style.boxShadow = item.boxShadow;
+        item.element.style.textShadow = item.textShadow;
+      });
+    }
+
+    const contentWrapper = document.getElementById('rsvp-content-wrapper');
+    if (contentWrapper) {
+      if (tempTextResize !== 100) {
+        const scaleFactor = tempTextResize / 100;
+        contentWrapper.style.transform = `scale(${scaleFactor})`;
+        contentWrapper.style.transformOrigin = 'center center';
+      } else {
+        contentWrapper.style.transform = '';
+        contentWrapper.style.transformOrigin = '';
+      }
+    }
+
+    const bgZoom = tempBackgroundZoom / 100;
+    const bgYPos = (tempBackgroundYPosition - 100) / 100;
+
+    if (bgZoom !== 1 || bgYPos !== 0) {
+      paperContainer.style.backgroundSize = `${bgZoom * 100}% auto`;
+      paperContainer.style.backgroundPosition = `center ${50 + bgYPos * 50}%`;
+    } else {
+      paperContainer.style.backgroundSize = originalStyles.container.backgroundSize;
+      paperContainer.style.backgroundPosition = originalStyles.container.backgroundPosition;
+    }
+
+    // Apply height adjustment — use stored original height to avoid compounding
+    if (tempAdjustHeight !== 100) {
+      const heightScale = tempAdjustHeight / 100;
+      paperContainer.style.aspectRatio = 'auto';
+      paperContainer.style.height = `${originalStyles.container.offsetHeight * heightScale}px`;
+      const contentWrapper = document.getElementById('rsvp-content-wrapper');
+      if (contentWrapper) {
+        contentWrapper.style.height = '100%';
+      }
+    } else {
+      paperContainer.style.aspectRatio = originalStyles.container.aspectRatio || '3/4';
+      paperContainer.style.height = originalStyles.container.height || '';
+      const contentWrapper = document.getElementById('rsvp-content-wrapper');
+      if (contentWrapper) {
+        contentWrapper.style.height = '';
+      }
+    }
+
+    if (removePageNumber) {
+      originalStyles.pageElements.forEach((item: any) => {
+        item.element.style.display = 'none';
+      });
+    } else {
+      originalStyles.pageElements.forEach((item: any) => {
+        item.element.style.display = item.display;
+      });
+    }
+
+    // Apply message box removal — query fresh each time in case React re-rendered
+    const messageBoxEl = paperContainer.querySelector('[data-rsvp-message-box]');
+    if (messageBoxEl) {
+      if (removeMessageBox) {
+        (messageBoxEl as HTMLElement).style.display = 'none';
+      } else {
+        (messageBoxEl as HTMLElement).style.display = originalStyles.messageBox ? originalStyles.messageBox.display : '';
+      }
+    }
+
+    // Apply name to blank — query fresh each time
+    const guestNameElLive = paperContainer.querySelector('[data-rsvp-guest-name]');
+    if (guestNameElLive && originalStyles.guestName) {
+      if (changeNameToBlank) {
+        guestNameElLive.innerHTML = '<span style="border-bottom: 1px solid currentColor; display: inline-block; width: 200px; height: 1em;"></span>';
+      } else {
+        guestNameElLive.innerHTML = originalStyles.guestName.innerHTML;
+      }
+    }
+
+    // Apply seat number to underscores — query fresh each time
+    const reservedTextElLive = paperContainer.querySelector('[data-rsvp-reserved-text]');
+    if (reservedTextElLive && originalStyles.reservedText) {
+      if (seatNumberToUnderscores) {
+        reservedTextElLive.innerHTML = originalStyles.reservedText.innerHTML.replace(/<strong[^>]*>[^<]*<\/strong>/g, '<strong style="border-bottom: 1px solid currentColor; display: inline-block; min-width: 60px; text-align: center;">&nbsp;</strong>');
+      } else {
+        reservedTextElLive.innerHTML = originalStyles.reservedText.innerHTML;
+      }
+    }
+  };
+
+  const revertLivePreview = () => {
+    if (!originalStyles) return;
+
+    const paperContainer = document.getElementById('rsvp-paper-container');
+    if (!paperContainer) return;
+
+    paperContainer.style.borderRadius = originalStyles.container.borderRadius;
+    paperContainer.style.boxShadow = originalStyles.container.boxShadow;
+    paperContainer.style.backgroundSize = originalStyles.container.backgroundSize;
+    paperContainer.style.backgroundPosition = originalStyles.container.backgroundPosition;
+    paperContainer.style.aspectRatio = originalStyles.container.aspectRatio || '3/4';
+    paperContainer.style.height = originalStyles.container.height || '';
+
+    const contentWrapper = document.getElementById('rsvp-content-wrapper');
+    if (contentWrapper) {
+      contentWrapper.style.transform = '';
+      contentWrapper.style.transformOrigin = '';
+      contentWrapper.style.height = '';
+    }
+
+    originalStyles.shadowElements.forEach((item: any) => {
+      item.element.style.boxShadow = item.boxShadow;
+      item.element.style.textShadow = item.textShadow;
+    });
+
+    originalStyles.pageElements.forEach((item: any) => {
+      item.element.style.display = item.display;
+    });
+
+    // Restore message box — query fresh
+    const messageBoxEl = paperContainer.querySelector('[data-rsvp-message-box]');
+    if (messageBoxEl && originalStyles.messageBox) {
+      (messageBoxEl as HTMLElement).style.display = originalStyles.messageBox.display;
+    }
+
+    // Restore guest name — query fresh
+    const guestNameEl = paperContainer.querySelector('[data-rsvp-guest-name]');
+    if (guestNameEl && originalStyles.guestName) {
+      guestNameEl.innerHTML = originalStyles.guestName.innerHTML;
+    }
+
+    // Restore reserved text — query fresh
+    const reservedTextEl = paperContainer.querySelector('[data-rsvp-reserved-text]');
+    if (reservedTextEl && originalStyles.reservedText) {
+      reservedTextEl.innerHTML = originalStyles.reservedText.innerHTML;
+    }
+
+    setIsLivePreviewActive(false);
+  };
+
+  const handleClosePrintSettings = () => {
+    setIsPrintSettingsClosing(true);
+    setTimeout(() => {
+      setShowPrintSettings(false);
+      setIsPrintSettingsClosing(false);
+    }, 300);
+  };
+
+  const handleCancelPrint = () => {
+    revertLivePreview();
+    setRemoveRoundCorners(false);
+    setRemoveShadows(false);
+    setRemovePageNumber(false);
+    setTempTextResize(100);
+    setTempBackgroundZoom(100);
+    setTempBackgroundYPosition(100);
+    setTempAdjustHeight(100);
+    setChangeNameToBlank(false);
+    setSeatNumberToUnderscores(false);
+    setRemoveMessageBox(false);
+    setOriginalStyles(null);
+    handleClosePrintSettings();
+  };
+
+  const handleBeginPrinting = () => {
+    const paperContainer = document.getElementById('rsvp-paper-container');
+    if (!paperContainer) {
+      console.error('RSVP paper container not found!');
+      return;
+    }
+
+    const clonedContainer = paperContainer.cloneNode(true) as HTMLElement;
+
+    if (removeRoundCorners) {
+      clonedContainer.style.borderRadius = '0px';
+    }
+
+    if (removeShadows) {
+      clonedContainer.style.boxShadow = 'none';
+      const allElements = clonedContainer.querySelectorAll('*');
+      allElements.forEach(el => {
+        (el as HTMLElement).style.boxShadow = 'none';
+        (el as HTMLElement).style.textShadow = 'none';
+      });
+    }
+
+    if (tempTextResize !== 100) {
+      const textElements = clonedContainer.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, div');
+      textElements.forEach(el => {
+        const currentSize = window.getComputedStyle(el as HTMLElement).fontSize;
+        const currentSizeNum = parseFloat(currentSize);
+        const newSize = currentSizeNum * (tempTextResize / 100);
+        (el as HTMLElement).style.fontSize = `${newSize}px`;
+      });
+    }
+
+    const bgZoom = tempBackgroundZoom / 100;
+    const bgYPos = (tempBackgroundYPosition - 100) / 100;
+    let bgPosition = 'center';
+    let bgSize = 'cover';
+
+    if (bgZoom !== 1 || bgYPos !== 0) {
+      bgSize = `${bgZoom * 100}% auto`;
+      bgPosition = `center ${50 + bgYPos * 50}%`;
+    }
+
+    // Apply height adjustment — use original stored height
+    if (tempAdjustHeight !== 100) {
+      const heightScale = tempAdjustHeight / 100;
+      clonedContainer.style.aspectRatio = 'auto';
+      const originalHeight = originalStyles?.container?.offsetHeight || paperContainer.offsetHeight;
+      clonedContainer.style.height = `${originalHeight * heightScale}px`;
+    }
+
+    if (removePageNumber) {
+      const pageElements = clonedContainer.querySelectorAll('[class*="page"], [id*="page"]');
+      pageElements.forEach(el => {
+        (el as HTMLElement).style.display = 'none';
+      });
+    }
+
+    // Apply "Change name to blank" - replace guest name with underscores
+    if (changeNameToBlank) {
+      const nameElements = clonedContainer.querySelectorAll('[data-rsvp-guest-name]');
+      nameElements.forEach(el => {
+        el.innerHTML = '<span style="border-bottom: 1px solid currentColor; display: inline-block; width: 200px; height: 1em;"></span>';
+      });
+    }
+
+    // Apply "Seat number to underscores"
+    if (seatNumberToUnderscores) {
+      const reservedElements = clonedContainer.querySelectorAll('[data-rsvp-reserved-text]');
+      reservedElements.forEach(el => {
+        el.innerHTML = el.innerHTML.replace(/<strong[^>]*>[^<]*<\/strong>/g, '<strong style="border-bottom: 1px solid currentColor; display: inline-block; min-width: 60px; text-align: center;">&nbsp;</strong>');
+      });
+    }
+
+    // Apply "Remove message box"
+    if (removeMessageBox) {
+      const messageBox = clonedContainer.querySelector('[data-rsvp-message-box]');
+      if (messageBox) {
+        (messageBox as HTMLElement).style.display = 'none';
+      }
+    }
+
+    const computedStyles = window.getComputedStyle(paperContainer);
+    const containerStyles = `
+      position: relative;
+      width: 100%;
+      height: auto;
+      min-height: auto;
+      max-height: none;
+      padding: ${computedStyles.padding};
+      margin: 0 auto;
+      border-radius: ${removeRoundCorners ? '0px' : computedStyles.borderRadius};
+      background: ${computedStyles.background};
+      background-image: ${computedStyles.backgroundImage};
+      background-size: ${bgSize};
+      background-position: ${bgPosition};
+      background-repeat: no-repeat;
+      box-shadow: ${removeShadows ? 'none' : computedStyles.boxShadow};
+      overflow: visible;
+      aspect-ratio: auto;
+    `;
+
+    const stylesheets = Array.from(document.styleSheets)
+      .map(sheet => {
+        try {
+          return Array.from(sheet.cssRules)
+            .map(rule => rule.cssText)
+            .join('\n');
+        } catch (e) {
+          return '';
+        }
+      })
+      .join('\n');
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      console.error('Failed to open print window');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>RSVP Print</title>
+          <style>
+            ${stylesheets}
+            body {
+              margin: 0;
+              padding: 0;
+              font-family: inherit;
+              background: white;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              width: 100%;
+            }
+            .print-container {
+              width: 100%;
+              height: 100vh;
+              max-width: none;
+              margin: 0;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+            }
+            #rsvp-paper-container {
+              ${containerStyles}
+              margin: 0 auto !important;
+              position: relative !important;
+              left: auto !important;
+              top: auto !important;
+            }
+            @page {
+              size: A4;
+              margin: 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-container">
+            ${clonedContainer.outerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+
+    setRemoveRoundCorners(false);
+    setRemoveShadows(false);
+    setRemovePageNumber(false);
+    setTempTextResize(100);
+    setTempBackgroundZoom(100);
+    setTempBackgroundYPosition(100);
+    setTempAdjustHeight(100);
+    setChangeNameToBlank(false);
+    setSeatNumberToUnderscores(false);
+    setRemoveMessageBox(false);
+    setOriginalStyles(null);
+    revertLivePreview();
+    handleClosePrintSettings();
+  };
+
+  // Store original styles when print settings panel opens
+  useEffect(() => {
+    if (showPrintSettings && !originalStyles) {
+      setTimeout(() => {
+        storeOriginalStyles();
+      }, 100);
+    }
+  }, [showPrintSettings, originalStyles]);
+
+  // Apply live preview when any setting changes
+  useEffect(() => {
+    if (originalStyles && isLivePreviewActive) {
+      applyLivePreview();
+    }
+  }, [removeRoundCorners, removeShadows, removePageNumber, tempTextResize, tempBackgroundZoom, tempBackgroundYPosition, tempAdjustHeight, removeMessageBox, changeNameToBlank, seatNumberToUnderscores, originalStyles, isLivePreviewActive]);
+
+  // Start live preview when panel opens and styles are stored
+  useEffect(() => {
+    if (showPrintSettings && originalStyles && !isLivePreviewActive) {
+      setIsLivePreviewActive(true);
+      applyLivePreview();
+    }
+  }, [showPrintSettings, originalStyles, isLivePreviewActive]);
+
+  // Handle browser print dialog cancellation
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      if (showPrintSettings && originalStyles) {
+        revertLivePreview();
+        setTimeout(() => {
+          if (showPrintSettings) {
+            setIsLivePreviewActive(true);
+            applyLivePreview();
+          }
+        }, 100);
+      }
+    };
+
+    window.onafterprint = handleAfterPrint;
+
+    return () => {
+      window.onafterprint = null;
+    };
+  }, [showPrintSettings, originalStyles]);
+
   // Auto-added guests from the Entourage list (excludes couple, groom's parents, bride's parents)
   const entourageGuestNames = useMemo(() => getEntourageGuestNames(data.entourage), [data.entourage]);
 
@@ -1137,6 +1636,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
           {/* Lightbox Content */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
             <div 
+              id="rsvp-paper-container"
               className="pointer-events-auto shadow-2xl relative overflow-hidden"
               style={{
                 width: '100%',
@@ -1152,6 +1652,22 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 } : {})
               }}
             >
+              {/* Print button - upper left of paper container */}
+              {!editMode && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTimeout(() => setShowPrintSettings(true), 300);
+                  }}
+                  className="absolute top-4 right-4 p-2 rounded-lg bg-white/80 hover:bg-white/90 dark:bg-gray-800/80 hover:dark:bg-gray-800/90 transition-colors shadow-md print:hidden"
+                  style={{ zIndex: 20 }}
+                  title="Print RSVP"
+                >
+                  <svg className="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                </button>
+              )}
               {/* Paper color layer with hue blend - inside container with rounded edges */}
               <div
                 className="absolute inset-0 pointer-events-none"
@@ -1161,7 +1677,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 }}
               />
               {/* Paper Container Content */}
-              <div className="h-full flex flex-col items-center justify-start p-8 space-y-6 relative z-10">
+              <div id="rsvp-content-wrapper" className="h-full flex flex-col items-center justify-start p-8 space-y-6 relative z-10">
                 {/* RSVP Heading */}
                 <h2
                   className="text-3xl font-bold text-center"
@@ -1224,6 +1740,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 {/* Guest Name */}
                 <div className="w-full justify-center">
                   <span
+                    data-rsvp-guest-name
                     className={`text-sm block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
                     style={{
                       color: data.rsvpPaperTextColor || data.mainColor2,
@@ -1244,6 +1761,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 
                 {/* Reserved Text */}
                 <p
+                  data-rsvp-reserved-text
                   className="text-center text-sm"
                   style={{
                     color: data.rsvpPaperTextColor || data.mainColor2,
@@ -1372,58 +1890,60 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                       </div>
                     </div>
 
-                    {/* Message Input */}
-                    <div className="w-3/4 mx-auto relative">
-                      <textarea
-                        id="rsvp-message-input"
-                        value={guestMessage}
-                        onChange={(e) => setGuestMessage(e.target.value.slice(0, 160))}
-                        placeholder="Add a message (optional)"
-                        className="w-full px-3 py-2 rounded-lg text-sm resize-none focus:outline-none"
+                    {/* Message Input + Submit Button - wrapped for print removal */}
+                    <div data-rsvp-message-box className="space-y-3">
+                      <div className="w-3/4 mx-auto relative">
+                        <textarea
+                          id="rsvp-message-input"
+                          value={guestMessage}
+                          onChange={(e) => setGuestMessage(e.target.value.slice(0, 160))}
+                          placeholder="Add a message (optional)"
+                          className="w-full px-3 py-2 rounded-lg text-sm resize-none focus:outline-none"
+                          style={{
+                            backgroundColor: `${data.rsvpPaperTextColor || data.mainColor2}15`,
+                            color: data.rsvpPaperTextColor || data.mainColor2,
+                            fontFamily: `${data.bodyFont}, serif`,
+                            border: `1px solid ${data.rsvpPaperTextColor || data.mainColor2}33`
+                          }}
+                          rows={4}
+                          maxLength={160}
+                        />
+                        <span 
+                          className="absolute bottom-2 right-3 pointer-events-none"
+                          style={{ 
+                            color: `${data.rsvpPaperTextColor || data.mainColor2}99`,
+                            fontFamily: "'Inter', sans-serif",
+                            fontSize: '9px',
+                            opacity: 0.7
+                          }}
+                        >
+                          {guestMessage.length}/160
+                        </span>
+                      </div>
+                      <style>{`
+                        #rsvp-message-input::placeholder {
+                          color: ${data.rsvpPaperTextColor || data.mainColor2}99;
+                          opacity: 0.6;
+                          font-size: 11px;
+                          font-family: 'Inter', sans-serif;
+                        }
+                      `}</style>
+
+                      {/* Submit Button */}
+                      <button
+                        onClick={handleLightboxSubmit}
+                        disabled={isSubmitting || submitSuccess || !selectedAttendance}
+                        className="px-6 py-2 rounded-lg text-sm font-medium transition-colors"
                         style={{
-                          backgroundColor: `${data.rsvpPaperTextColor || data.mainColor2}15`,
-                          color: data.rsvpPaperTextColor || data.mainColor2,
+                          backgroundColor: data.rsvpPaperTextColor || data.mainColor2,
+                          color: '#ffffff',
                           fontFamily: `${data.bodyFont}, serif`,
-                          border: `1px solid ${data.rsvpPaperTextColor || data.mainColor2}33`
-                        }}
-                        rows={4}
-                        maxLength={160}
-                      />
-                      <span 
-                        className="absolute bottom-2 right-3 pointer-events-none"
-                        style={{ 
-                          color: `${data.rsvpPaperTextColor || data.mainColor2}99`,
-                          fontFamily: "'Inter', sans-serif",
-                          fontSize: '9px',
-                          opacity: 0.7
+                          opacity: (isSubmitting || submitSuccess || !selectedAttendance) ? 0.7 : 1
                         }}
                       >
-                        {guestMessage.length}/160
-                      </span>
+                        {isSubmitting ? 'Submitting...' : submitSuccess ? 'Submitted!' : 'Submit'}
+                      </button>
                     </div>
-                    <style>{`
-                      #rsvp-message-input::placeholder {
-                        color: ${data.rsvpPaperTextColor || data.mainColor2}99;
-                        opacity: 0.6;
-                        font-size: 11px;
-                        font-family: 'Inter', sans-serif;
-                      }
-                    `}</style>
-
-                    {/* Submit Button */}
-                    <button
-                      onClick={handleLightboxSubmit}
-                      disabled={isSubmitting || submitSuccess || !selectedAttendance}
-                      className="px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-                      style={{
-                        backgroundColor: data.rsvpPaperTextColor || data.mainColor2,
-                        color: '#ffffff',
-                        fontFamily: `${data.bodyFont}, serif`,
-                        opacity: (isSubmitting || submitSuccess || !selectedAttendance) ? 0.7 : 1
-                      }}
-                    >
-                      {isSubmitting ? 'Submitting...' : submitSuccess ? 'Submitted!' : 'Submit'}
-                    </button>
                   </>
                 )}
               </div>
@@ -3336,6 +3856,234 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
               >
                 Close
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Print Settings Panel - only show in non-builder mode */}
+      {!editMode && showPrintSettings && (
+        <>
+          {/* Backdrop */}
+          {!isPrintSettingsClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={handleClosePrintSettings} onWheel={handleClosePrintSettings} />}
+
+          {/* Sheet */}
+          <div
+            className={`fixed z-50 shadow-2xl flex flex-col backdrop-blur-xl bg-white dark:bg-gray-900 border border-white/20 dark:border-gray-700/20 ${
+              desktopMode 
+                ? `top-0 bottom-0 ${panelPosition === "left" ? "left-0 border-r" : "right-0 border-l"} ${isPrintSettingsClosing ? (panelPosition === "left" ? "animate-slide-out-side" : "animate-slide-out-side-right") : (panelPosition === "left" ? "animate-slide-in-side" : "animate-slide-in-side-right")}`
+                : `bottom-0 left-0 right-0 rounded-t-3xl ${isPrintSettingsClosing ? "animate-slide-down" : "animate-slide-up"}`
+            }`}
+            style={desktopMode ? { width: "400px" } : { maxWidth: 480, margin: "0 auto", maxHeight: "50vh" }}
+          >
+            {/* Handle bar - only show in mobile mode */}
+            {!desktopMode && (
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <div className={`w-10 h-1 rounded-full ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`} />
+              </div>
+            )}
+
+            {/* Header */}
+            <div className={`flex items-center px-5 py-2 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
+              <h3
+                className={`font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`}
+                style={{ fontFamily: "Inter, sans-serif" }}
+              >
+                Pre-print Settings
+              </h3>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6">
+              {/* Remove Round Corners Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Remove Round Corners
+                </label>
+                <button
+                  onClick={() => setRemoveRoundCorners(!removeRoundCorners)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeRoundCorners ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeRoundCorners ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
+              {/* Remove Shadows Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Remove Shadows
+                </label>
+                <button
+                  onClick={() => setRemoveShadows(!removeShadows)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeShadows ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeShadows ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
+              {/* Remove Page Number Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Remove Page Number
+                </label>
+                <button
+                  onClick={() => setRemovePageNumber(!removePageNumber)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removePageNumber ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removePageNumber ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
+              {/* Change Name to Blank Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Change Name to Blank
+                </label>
+                <button
+                  onClick={() => setChangeNameToBlank(!changeNameToBlank)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ changeNameToBlank ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ changeNameToBlank ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
+              {/* Seat Number to Underscores Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Seat Number to Underscores
+                </label>
+                <button
+                  onClick={() => setSeatNumberToUnderscores(!seatNumberToUnderscores)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ seatNumberToUnderscores ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ seatNumberToUnderscores ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
+              {/* Remove Message Box Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Remove Message Box
+                </label>
+                <button
+                  onClick={() => setRemoveMessageBox(!removeMessageBox)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeMessageBox ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeMessageBox ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
+              {/* Temporary Resize Text Slider */}
+              <div className="space-y-2">
+                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  <span>Temporary Resize Text:</span>
+                  <span>{tempTextResize}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="20"
+                  max="200"
+                  value={tempTextResize}
+                  onChange={(e) => setTempTextResize(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  style={{ 
+                    accentColor: "#B88A78",
+                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                  }}
+                />
+              </div>
+
+              {/* Temporary Background Zoom Slider */}
+              <div className="space-y-2">
+                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  <span>Temporary Background Zoom:</span>
+                  <span>{tempBackgroundZoom}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="150"
+                  value={tempBackgroundZoom}
+                  onChange={(e) => setTempBackgroundZoom(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  style={{ 
+                    accentColor: "#B88A78",
+                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempBackgroundZoom - 50) / 100 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundZoom - 50) / 100 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                  }}
+                />
+              </div>
+
+              {/* Temporary Background Y-Position Slider */}
+              <div className="space-y-2">
+                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  <span>Temporary Background Y-Position:</span>
+                  <span>{tempBackgroundYPosition}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="-50"
+                  max="150"
+                  value={tempBackgroundYPosition}
+                  onChange={(e) => setTempBackgroundYPosition(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  style={{ 
+                    accentColor: "#B88A78",
+                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempBackgroundYPosition + 50) / 200 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundYPosition + 50) / 200 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                  }}
+                />
+              </div>
+
+              {/* Adjust Height Slider */}
+              <div className="space-y-2">
+                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  <span>Adjust Height:</span>
+                  <span>{tempAdjustHeight}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  value={tempAdjustHeight}
+                  onChange={(e) => setTempAdjustHeight(Number(e.target.value))}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  style={{ 
+                    accentColor: "#B88A78",
+                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempAdjustHeight - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempAdjustHeight - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="px-5 py-4 border-t shrink-0" style={{ borderColor: isDarkMode ? "#374151" : "#e5e7eb" }}>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCancelPrint}
+                  className={`flex-1 px-4 py-3 rounded-lg transition-colors ${isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-gray-300" : "bg-gray-200 hover:bg-gray-300 text-gray-700"}`}
+                  style={{ fontFamily: "Inter, sans-serif" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBeginPrinting}
+                  className="flex-1 px-4 py-3 rounded-lg transition-colors bg-[#B88A78] text-white hover:bg-[#9a7666]"
+                  style={{ fontFamily: "Inter, sans-serif" }}
+                >
+                  Begin Printing
+                </button>
+              </div>
             </div>
           </div>
         </>

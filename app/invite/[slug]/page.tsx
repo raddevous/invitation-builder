@@ -16,6 +16,14 @@ export default function InvitePage({ params }: InvitePageProps) {
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [desktopMode, setDesktopMode] = useState(false);
+
+  useEffect(() => {
+    const checkDesktop = () => setDesktopMode(window.innerWidth >= 768);
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -162,7 +170,7 @@ export default function InvitePage({ params }: InvitePageProps) {
           <line x1="12" y1="2" x2="12" y2="15" />
         </svg>
       </button>
-      <InvitationTemplate invitation={invitation} editMode={false} />
+      <InvitationTemplate invitation={invitation} editMode={false} desktopMode={desktopMode} />
     </div>
   );
 }

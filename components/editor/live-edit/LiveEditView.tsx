@@ -6,6 +6,7 @@ import { EditModeContext, EditField } from "@/components/invitation/EditModeCont
 import ImagePickerSheet from "./ImagePickerSheet";
 import InvitationTemplate from "@/components/invitation/InvitationTemplate";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
+import { clearDemoInvitation } from "@/lib/demo/demo-data";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
 interface LiveEditViewProps {
@@ -36,9 +37,10 @@ interface LiveEditViewProps {
   onBack?: () => void;
   showScreenDimensions?: boolean;
   onToggleScreenDimensions?: () => void;
+  isDemoMode?: boolean;
 }
 
-export default function LiveEditView({ invitation, onChange, isActive = true, saveStatus = "saved", isDarkMode = false, onToggleDarkMode, accentColor = "#B88A78", setAccentColor, desktopMode = false, setDesktopMode, panelOpen = true, setPanelOpen, onSetActiveTab, panelPosition = "left", editorManuallyClosed, onResetEditorManuallyClosed, pendingChanges = {}, pendingEntourageChanges, localVisibleSections, hasPendingChanges = false, onHasUnsavedChangesChange, onPendingChangesChange, onHeroHasUnsavedChangesChange, onHeroPendingChangesChange, onBack, showScreenDimensions = false, onToggleScreenDimensions }: LiveEditViewProps) {
+export default function LiveEditView({ invitation, onChange, isActive = true, saveStatus = "saved", isDarkMode = false, onToggleDarkMode, accentColor = "#B88A78", setAccentColor, desktopMode = false, setDesktopMode, panelOpen = true, setPanelOpen, onSetActiveTab, panelPosition = "left", editorManuallyClosed, onResetEditorManuallyClosed, pendingChanges = {}, pendingEntourageChanges, localVisibleSections, hasPendingChanges = false, onHasUnsavedChangesChange, onPendingChangesChange, onHeroHasUnsavedChangesChange, onHeroPendingChangesChange, onBack, showScreenDimensions = false, onToggleScreenDimensions, isDemoMode = false }: LiveEditViewProps) {
   const [activeField, setActiveField] = useState<EditField | null>(null);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showAccentColorPanel, setShowAccentColorPanel] = useState(false);
@@ -591,6 +593,27 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                 </svg>
                 <span className="text-sm" style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#e5e5e5" : "#5c4a3a" }}>Print</span>
               </button>
+
+              {isDemoMode && (
+                <>
+                  <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
+                  <button
+                    onClick={() => {
+                      if (window.confirm("This will reset the demo to its default state and clear all changes you have made. This action cannot be undone. Are you sure?")) {
+                        clearDemoInvitation();
+                        window.location.reload();
+                      }
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${isDarkMode ? "hover:bg-red-900/30 text-red-400" : "hover:bg-red-50 text-red-600"}`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Reset Demo</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

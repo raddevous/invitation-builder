@@ -22,6 +22,7 @@ interface SettingsEditorProps {
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
   invitationId?: string;
+  isDemoMode?: boolean;
 }
 
 const ACCENT_COLORS = [
@@ -36,7 +37,7 @@ const ACCENT_COLORS = [
   "#D946EF", // Orchid Purple
 ];
 
-export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#2563EB", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, invitationId }: SettingsEditorProps) {
+export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#2563EB", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, invitationId, isDemoMode = false }: SettingsEditorProps) {
   const [backupExists, setBackupExists] = useState(false);
   const [backupDate, setBackupDate] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -277,7 +278,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
             onClick={() => setColorPickerExpanded(!colorPickerExpanded)}
           >
-            <div className="shrink-0 text-gray-400">
+            <div className="shrink-0 text-gray-400 order-2">
               {colorPickerExpanded ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 15l-6-6-6 6" />
@@ -288,7 +289,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                 </svg>
               )}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 order-1">
               <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
                 Accent Color
               </h3>
@@ -459,7 +460,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
             onClick={() => setBackupImportExpanded(!backupImportExpanded)}
           >
-            <div className="shrink-0 text-gray-400">
+            <div className="shrink-0 text-gray-400 order-2">
               {backupImportExpanded ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 15l-6-6-6 6" />
@@ -470,7 +471,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                 </svg>
               )}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 order-1">
               <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
                 Backup & Import
               </h3>
@@ -520,6 +521,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
         </div>
 
         {/* Builder Expiration - Collapsible */}
+        {!isDemoMode && (
         <div
           className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
           style={{
@@ -534,7 +536,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
             onClick={() => setExpirationExpanded(!expirationExpanded)}
           >
-            <div className="shrink-0 text-gray-400">
+            <div className="shrink-0 text-gray-400 order-2">
               {expirationExpanded ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 15l-6-6-6 6" />
@@ -545,7 +547,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                 </svg>
               )}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 order-1">
               <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
                 Builder Expiration
               </h3>
@@ -577,6 +579,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Backup warning dialog */}

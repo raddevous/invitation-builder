@@ -1,29 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
+import { useMusic, convertGoogleDriveUrl } from "./MusicContext";
 
 interface MusicPlayerProps {
   data: InvitationData;
   autoPlay?: boolean;
 }
 
-// Helper function to convert Google Drive share URL to direct download URL
-const convertGoogleDriveUrl = (url: string): string => {
-  // Match Google Drive file URLs
-  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (driveMatch && driveMatch[1]) {
-    // Use the direct link format that's more compatible with audio players
-    return `https://drive.google.com/uc?export=download&id=${driveMatch[1]}&alt=media`;
-  }
-  return url;
-};
-
 export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps) {
+  const { isPlaying, registerAudio } = useMusic();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState(false);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [trackUrls, setTrackUrls] = useState<string[]>([]);
+  const autoPlayedRef = useRef(false);
+  const wasPlayingRef = useRef(false);
 
   useEffect(() => {
     async function resolveTracks() {
@@ -55,56 +47,55 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
     resolveTracks();
   }, [data.backgroundMusic, data.musicEnabled, data.musicTrack]);
 
+  // Register the audio element with the shared MusicContext via callback ref
+  const audioCallbackRef = useCallback((audio: HTMLAudioElement | null) => {
+    audioRef.current = audio;
+    registerAudio(audio);
+  }, [registerAudio]);
+
   useEffect(() => {
     if (!audioRef.current || trackUrls.length === 0) return;
-    
+
     const currentUrl = trackUrls[currentTrackIndex];
     if (!currentUrl) return;
 
     audioRef.current.volume = data.musicVolume ?? 0.5;
-    
+
     // Only set src if it's different
     if (audioRef.current.src !== currentUrl) {
       audioRef.current.src = currentUrl;
       audioRef.current.load();
     }
-    
-    // Attempt to play when autoPlay is enabled
-    if (autoPlay && data.musicEnabled) {
-      // Small delay to ensure audio is ready
+
+    // Resume playback when the track changes while music was already playing
+    if (wasPlayingRef.current && isPlaying) {
+      audioRef.current.play().catch(() => {});
+    } else if (autoPlay && data.musicEnabled && !autoPlayedRef.current) {
+      // Attempt a one-shot auto-play when the invitation is opened
+      autoPlayedRef.current = true;
       setTimeout(() => {
-        if (audioRef.current && !playing) {
-          audioRef.current.play().then(() => setPlaying(true)).catch((err) => {
-            console.log("Auto-play prevented by browser:", err);
-          });
-        }
+        audioRef.current?.play().catch((err) => {
+          console.log("Auto-play prevented by browser:", err);
+        });
       }, 100);
     }
-  }, [trackUrls, currentTrackIndex, autoPlay, data.musicEnabled, data.musicVolume, playing]);
+
+    wasPlayingRef.current = isPlaying;
+  }, [trackUrls, currentTrackIndex, autoPlay, data.musicEnabled, data.musicVolume, isPlaying]);
 
   const handleTrackEnd = () => {
-    if (trackUrls.length === 0) return;
-    
+    if (trackUrls.length <= 1) return;
+
     // Move to next track, or loop back to first
     const nextIndex = (currentTrackIndex + 1) % trackUrls.length;
     setCurrentTrackIndex(nextIndex);
   };
 
-  const toggle = () => {
-    if (!audioRef.current || trackUrls.length === 0) return;
-    if (playing) {
-      audioRef.current.pause();
-      setPlaying(false);
-    } else {
-      audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
-    }
-  };
-
   if (!data.musicEnabled || trackUrls.length === 0) return null;
 
   return (
-    <audio 
-      ref={audioRef} 
+    <audio
+      ref={audioCallbackRef}
       onEnded={handleTrackEnd}
       preload="auto"
       loop={trackUrls.length === 1}

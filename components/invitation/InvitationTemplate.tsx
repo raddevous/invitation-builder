@@ -16,6 +16,7 @@ import EntourageSection from "./sections/EntourageSection";
 import FooterSection from "./sections/FooterSection";
 import WeddingDirectorySection from "./sections/WeddingDirectorySection";
 import MusicPlayer from "./MusicPlayer";
+import { MusicProvider } from "./MusicContext";
 import CustomFontLoader from "./CustomFontLoader";
 import { ThemeProvider } from "./ThemeContext";
 
@@ -218,6 +219,7 @@ export default function InvitationTemplate({
 
   return (
     <ThemeProvider isDarkMode={isDarkMode} accentColor={accentColor}>
+      <MusicProvider>
       <div
         className="invitation-wrapper relative w-full"
         style={{
@@ -353,6 +355,7 @@ export default function InvitationTemplate({
         </button>
       )}
     </div>
+    </MusicProvider>
     </ThemeProvider>
   );
 }

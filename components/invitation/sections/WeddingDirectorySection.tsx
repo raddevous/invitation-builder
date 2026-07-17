@@ -11,6 +11,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useMusic } from "../MusicContext";
 import { HOST_LINE_MESSAGES, CLOSING_SENTIMENT_MESSAGES, CUSTOM_CARD_MESSAGES, resolveCustomCardMessage, getNextMessage } from "@/lib/constants/heroMessages";
 
 const STAMP_TEXT_BLEND_MODES = [
@@ -55,6 +56,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   if (!data.sections.weddingdirectory) return null;
 
   const { isDarkMode, accentColor } = useTheme();
+  const { isPlaying, toggle } = useMusic();
   const { options: headingFonts } = usePredefinedOptions("heading_fonts");
   const [showTypographyPanel, setShowTypographyPanel] = useState(false);
   const [isTypographyClosing, setIsTypographyClosing] = useState(false);
@@ -228,7 +230,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       prevVisibleImageIdsRef.current = new Set();
     }
 
-    const invitationItems = directoryItems.filter(item => item.draftDesignType === "envelope" || item.draftDesignType === "invitation" || item.draftDesignType === "invitation-landscape" || item.draftDesignType === "custom-card" || item.draftDesignType === "custom-card-portrait" || item.draftDesignType === "custom-card-square" || item.draftDesignType === "photo-papers");
+    const invitationItems = directoryItems.filter(item => item.draftDesignType === "envelope" || item.draftDesignType === "invitation" || item.draftDesignType === "invitation-landscape" || item.draftDesignType === "custom-card" || item.draftDesignType === "custom-card-portrait" || item.draftDesignType === "custom-card-square" || item.draftDesignType === "photo-papers" || item.draftDesignType === "now-playing");
 
     invitationItems.forEach((item) => {
       const itemId = item.id;
@@ -1064,11 +1066,12 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                       { name: "RSVP", value: "rsvp" },
                       { name: "Details on Paper", value: "details" },
                       { name: "Photo Papers", value: "photo-papers" },
+                      { name: "Now Playing", value: "now-playing" },
                     ]}
                     isDarkMode={isDarkMode}
                     accentColor={accentColor}
                   />
-                  {selectedItem.draftDesignType !== "envelope" && selectedItem.draftDesignType !== "photo-papers" && selectedItem.draftDesignType !== "invitation" && selectedItem.draftDesignType !== "invitation-landscape" && selectedItem.draftDesignType !== "custom-card" && selectedItem.draftDesignType !== "custom-card-portrait" && selectedItem.draftDesignType !== "custom-card-square" && (
+                  {selectedItem.draftDesignType !== "envelope" && selectedItem.draftDesignType !== "photo-papers" && selectedItem.draftDesignType !== "invitation" && selectedItem.draftDesignType !== "invitation-landscape" && selectedItem.draftDesignType !== "custom-card" && selectedItem.draftDesignType !== "custom-card-portrait" && selectedItem.draftDesignType !== "custom-card-square" && selectedItem.draftDesignType !== "now-playing" && (
                     <div className="space-y-2 pt-4">
                       <div className="flex items-center justify-between">
                         <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>COLORED TEXT</label>
@@ -1525,6 +1528,87 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                         isDarkMode={isDarkMode}
                         accentColor={accentColor}
                       />
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "now-playing" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>NOW PLAYING</h4>
+                    <div className="space-y-1">
+                      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Arc Radius (Name Distance)</label>
+                      <input
+                        type="range"
+                        min="40"
+                        max="130"
+                        value={selectedItem.nowPlayingArcRadius ?? 80}
+                        onChange={(e) => handleItemChange(selectedItemId, "nowPlayingArcRadius", parseInt(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nowPlayingArcRadius ?? 80) - 40) / 90 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nowPlayingArcRadius ?? 80) - 40) / 90 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Font Size</label>
+                      <input
+                        type="range"
+                        min="8"
+                        max="28"
+                        value={selectedItem.nowPlayingNameSize ?? 14}
+                        onChange={(e) => handleItemChange(selectedItemId, "nowPlayingNameSize", parseInt(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nowPlayingNameSize ?? 14) - 8) / 20 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nowPlayingNameSize ?? 14) - 8) / 20 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label
+                          className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}
+                          style={{ fontFamily: "Inter, sans-serif" }}
+                        >
+                          SHOW HEARTS
+                        </label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "nowPlayingHeartsEnabled", !selectedItem.nowPlayingHeartsEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.nowPlayingHeartsEnabled}
+                            readOnly
+                            className="sr-only"
+                          />
+                          <div
+                            className={`absolute inset-0 rounded-full transition-colors ${selectedItem.nowPlayingHeartsEnabled ? "" : "opacity-40"}`}
+                            style={{ backgroundColor: selectedItem.nowPlayingHeartsEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.nowPlayingHeartsEnabled ? "translateX(22px)" : "translateX(2px)" }}
+                          />
+                        </div>
+                      </div>
+                      {selectedItem.nowPlayingHeartsEnabled && (
+                        <div className="space-y-1">
+                          <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Heart Size</label>
+                          <input
+                            type="range"
+                            min="10"
+                            max="40"
+                            value={selectedItem.nowPlayingHeartSize ?? 20}
+                            onChange={(e) => handleItemChange(selectedItemId, "nowPlayingHeartSize", parseInt(e.target.value))}
+                            className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                            style={{
+                              accentColor: accentColor,
+                              background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nowPlayingHeartSize ?? 20) - 10) / 30 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nowPlayingHeartSize ?? 20) - 10) / 30 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2382,6 +2466,111 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 </div>
               </div>
             )}
+            {item.draftDesignType === "now-playing" && (
+              <div
+                data-wedding-dir-image={item.id}
+                className="relative w-[150px] h-[150px] md:w-[240px] md:h-[240px] lg:w-[300px] lg:h-[300px] cursor-pointer"
+                style={{
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transition: 'opacity 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (editMode) {
+                    handleOpenItemSettings(item.id);
+                  } else {
+                    toggle();
+                  }
+                }}
+              >
+                <div
+                  className={`w-full h-full ${isPlaying ? "animate-spin" : ""}`}
+                  style={isPlaying ? { animationDuration: '6s' } : undefined}
+                >
+                  <img
+                    src="/assets/weddir-nplay.png"
+                    alt="Now Playing"
+                    className="w-full h-full object-contain"
+                  />
+                  {(() => {
+                    const name1 = data.nameType === "event" ? data.coupleName : data.hisName;
+                    const name2 = data.nameType === "event" ? data.coupleName : data.herName;
+                    if (!name1 && !name2 && !item.nowPlayingHeartsEnabled) return null;
+                    const size = 300;
+                    const cx = size / 2;
+                    const cy = size / 2;
+                    const radius = item.nowPlayingArcRadius ?? 80;
+                    const fontSize = item.nowPlayingNameSize ?? 14;
+                    const fontFamily = getFontFamily(item.nowPlayingNameFont || data.headingFont, "heading");
+                    const color = "#878787";
+                    const heartSize = item.nowPlayingHeartSize ?? 20;
+                    const topPathId = `arc-top-${item.id}`;
+                    const bottomPathId = `arc-bottom-${item.id}`;
+                    return (
+                      <svg
+                        viewBox={`0 0 ${size} ${size}`}
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                      >
+                        <defs>
+                          <path id={topPathId} d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`} />
+                          <path id={bottomPathId} d={`M ${cx + radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx - radius} ${cy}`} />
+                        </defs>
+                        {name1 && (
+                          <text
+                            fill={color}
+                            fontSize={fontSize}
+                            fontFamily={fontFamily}
+                            textAnchor="middle"
+                          >
+                            <textPath href={`#${topPathId}`} xlinkHref={`#${topPathId}`} startOffset="50%">
+                              {name1}
+                            </textPath>
+                          </text>
+                        )}
+                        {name2 && (
+                          <text
+                            fill={color}
+                            fontSize={fontSize}
+                            fontFamily={fontFamily}
+                            textAnchor="middle"
+                          >
+                            <textPath href={`#${bottomPathId}`} xlinkHref={`#${bottomPathId}`} startOffset="50%">
+                              {name2}
+                            </textPath>
+                          </text>
+                        )}
+                        {item.nowPlayingHeartsEnabled && (
+                          <>
+                            <text
+                              x={cx - radius}
+                              y={cy}
+                              fill={color}
+                              fontSize={heartSize}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              transform={`rotate(-90 ${cx - radius} ${cy})`}
+                            >
+                              {"\u2665"}
+                            </text>
+                            <text
+                              x={cx + radius}
+                              y={cy}
+                              fill={color}
+                              fontSize={heartSize}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              transform={`rotate(90 ${cx + radius} ${cy})`}
+                            >
+                              {"\u2665"}
+                            </text>
+                          </>
+                        )}
+                      </svg>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -3100,6 +3289,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                               "rsvp": "RSVP",
                               "details": "Details on Paper",
                               "photo-papers": "Photo Papers",
+                              "now-playing": "Now Playing",
                             };
                             return designNames[item.draftDesignType] || item.draftDesignType;
                           })()}

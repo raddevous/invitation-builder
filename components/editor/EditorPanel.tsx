@@ -29,7 +29,7 @@ interface EditorPanelProps {
 
 export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false, isDemoMode = false }: EditorPanelProps) {
   const [invitation, setInvitation] = useState<Invitation>(initial);
-  const [activeTab, setActiveTab] = useState<TabId>("details");
+  const [activeTab, setActiveTab] = useState<TabId>("live");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [hasEverSaved, setHasEverSaved] = useState(false);
@@ -884,6 +884,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           onBack={handleBack}
           showScreenDimensions={localShowScreenDimensions}
           onToggleScreenDimensions={handleToggleScreenDimensions}
+          isDemoMode={isDemoMode}
         />
 
         {/* Universal Apply button - appears when there are pending changes */}

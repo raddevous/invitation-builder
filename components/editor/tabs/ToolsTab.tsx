@@ -270,6 +270,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         hideInstructions={hideInstructions}
         showScreenDimensions={showScreenDimensions}
         invitationId={invitationId}
+        isDemoMode={isDemoMode}
       />
     );
   }

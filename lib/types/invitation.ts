@@ -831,4 +831,11 @@ export interface WeddingDirectoryItem {
     type: "envelope-open" | "fade-in" | "slide-up" | "none";
     scrollTrigger: number;
   };
+  nowPlayingName1?: string;
+  nowPlayingName2?: string;
+  nowPlayingNameFont?: string;
+  nowPlayingNameSize?: number;
+  nowPlayingArcRadius?: number;
+  nowPlayingHeartsEnabled?: boolean;
+  nowPlayingHeartSize?: number;
 }
