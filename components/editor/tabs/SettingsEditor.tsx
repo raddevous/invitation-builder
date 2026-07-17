@@ -21,6 +21,7 @@ interface SettingsEditorProps {
   hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
+  invitationId?: string;
 }
 
 const ACCENT_COLORS = [
@@ -35,20 +36,36 @@ const ACCENT_COLORS = [
   "#D946EF", // Orchid Purple
 ];
 
-export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#2563EB", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false }: SettingsEditorProps) {
+export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#2563EB", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, invitationId }: SettingsEditorProps) {
   const [backupExists, setBackupExists] = useState(false);
   const [backupDate, setBackupDate] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [colorPickerExpanded, setColorPickerExpanded] = useState(false);
   const [backupImportExpanded, setBackupImportExpanded] = useState(false);
+  const [expirationExpanded, setExpirationExpanded] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [showBackupWarning, setShowBackupWarning] = useState(false);
   const [showImportWarning, setShowImportWarning] = useState(false);
 
   // Check for existing backup on mount
   useEffect(() => {
     checkBackup();
+    fetchExpiration();
   }, []);
+
+  const fetchExpiration = async () => {
+    if (!invitationId) return;
+    try {
+      const res = await fetch(`/api/invitation/${invitationId}`);
+      const data = await res.json();
+      if (data.invitation?.expires_at) {
+        setExpiresAt(data.invitation.expires_at);
+      }
+    } catch (error) {
+      console.error("Error fetching expiration:", error);
+    }
+  };
 
   const checkBackup = async () => {
     try {
@@ -498,6 +515,65 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                   </button>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Builder Expiration - Collapsible */}
+        <div
+          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          style={{
+            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            ...(expirationExpanded ? {
+              boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
+            } : {})
+          }}
+        >
+          {/* Header */}
+          <div
+            className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+            onClick={() => setExpirationExpanded(!expirationExpanded)}
+          >
+            <div className="shrink-0 text-gray-400">
+              {expirationExpanded ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 15l-6-6-6 6" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1">
+              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                Builder Expiration
+              </h3>
+              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                You can no longer edit when your builder expires 1 year during creation
+              </p>
+            </div>
+          </div>
+
+          {/* Content */}
+          {expirationExpanded && (
+            <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
+              {expiresAt ? (
+                <div className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
+                  <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                    Expires on: {new Date(expiresAt).toLocaleDateString()}
+                  </p>
+                </div>
+              ) : (
+                <div className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
+                  <p className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
+                    Expiration date not set
+                  </p>
+                </div>
+              )}
+              <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                Your builder will expire 1 year from the signup date or 30 days after the wedding day, whichever is earlier.
+              </p>
             </div>
           )}
         </div>

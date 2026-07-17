@@ -9,7 +9,7 @@ const getInvitationBySlug = unstable_cache(
   async (slug: string) => {
     const { data, error } = await supabaseAdmin
       .from("invitations")
-      .select("id, slug, template_id, event_type, client_name, data, updated_at")
+      .select("id, slug, template_id, event_type, client_name, data, updated_at, expires_at")
       .eq("slug", slug)
       .single();
 
@@ -25,6 +25,7 @@ const getInvitationBySlug = unstable_cache(
       clientName: data.client_name,
       data: data.data,
       updatedAt: data.updated_at,
+      expiresAt: data.expires_at,
     };
   },
   ["invitation"],

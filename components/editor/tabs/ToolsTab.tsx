@@ -267,6 +267,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         hideSaveConfirmationDialog={hideSaveConfirmationDialog}
         hideInstructions={hideInstructions}
         showScreenDimensions={showScreenDimensions}
+        invitationId={invitationId}
       />
     );
   }
