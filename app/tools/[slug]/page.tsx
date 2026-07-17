@@ -18,6 +18,7 @@ interface AppSettings {
 export default function ToolsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [invitation, setInvitation] = useState<Invitation | null>(null);
+  const [slugValid, setSlugValid] = useState<boolean | null>(null);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     isDarkMode: true,
@@ -29,6 +30,19 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
+
+  // Check if slug exists on mount
+  useEffect(() => {
+    async function checkSlug() {
+      try {
+        const res = await fetch(`/api/invitation/${slug}`);
+        setSlugValid(res.ok);
+      } catch {
+        setSlugValid(false);
+      }
+    }
+    checkSlug();
+  }, [slug]);
 
   // Fetch invitation by access code (called from EditorLogin)
   const fetchInvitationByAccessCode = async (accessCode: string): Promise<Invitation | null> => {
@@ -127,6 +141,59 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
       setShowSaveStatus(false);
     }
   }, [saveStatus]);
+
+  // Show loading while checking slug
+  if (slugValid === null) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: "#fff8f3" }}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin"
+            style={{ borderColor: "#e8cfc3", borderTopColor: "#b88a78" }}
+          />
+          <p
+            className="text-sm italic"
+            style={{ color: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+          >
+            Checking invitation…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if slug is invalid
+  if (slugValid === false) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center px-6 text-center"
+        style={{ backgroundColor: "#fff8f3" }}
+      >
+        <p
+          className="text-3xl mb-3"
+          style={{ fontFamily: "Playfair Display, serif", color: "#b88a78" }}
+        >
+          Invitation Not Found
+        </p>
+        <p
+          className="text-sm mb-6"
+          style={{ color: "#8a6252", fontFamily: "Cormorant Garamond, serif" }}
+        >
+          This invitation link may be invalid or has been removed.
+        </p>
+        <button
+          onClick={() => window.location.href = '/'}
+          className="px-6 py-3 rounded-lg text-white font-medium transition-all"
+          style={{ backgroundColor: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+        >
+          Go Home
+        </button>
+      </div>
+    );
+  }
 
   if (!invitation) {
     return <EditorLogin onLogin={setInvitation} />;
