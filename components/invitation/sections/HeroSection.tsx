@@ -499,7 +499,6 @@ export default function HeroSection({
             color: heroMergedData.heroIconTextColor || "white",
             fontFamily: getFontFamily(heroMergedData.heroOthersTypography || data.bodyFont, "body"),
             textShadow: `0 2px 4px rgba(0, 0, 0, ${heroMergedData.heroTextShadowOpacity ?? 0.1})`,
-            marginTop: heroMergedData.heroHostLineImage && heroMergedData.heroHostLineImage !== "hostline-00" ? -60 : 0,
             fontSize: `${(typeof window !== 'undefined' && window.innerWidth < 768 ? 0.7 : 1) * (heroMergedData.heroOthersTextSize ?? 1) * 100}%`
           }}
         >
@@ -1067,8 +1066,7 @@ export default function HeroSection({
               maskImage: `url(/assets/${heroMergedData.heroClosingSentimentImage || data.heroClosingSentimentImage}.png)`,
               maskSize: "contain",
               maskPosition: "center",
-              maskRepeat: "no-repeat",
-              marginTop: -60
+              maskRepeat: "no-repeat"
             }}
           />
         )}

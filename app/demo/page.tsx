@@ -18,8 +18,8 @@ export default function DemoPage() {
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
-    isDarkMode: true,
-    accentColor: "#2563EB",
+    isDarkMode: false,
+    accentColor: "#b88a78",
     hideSaveConfirmationDialog: false,
     hideInstructions: false,
     showScreenDimensions: false,

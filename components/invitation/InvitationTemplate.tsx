@@ -60,7 +60,12 @@ export default function InvitationTemplate({
 }: InvitationTemplateProps) {
   const [opened, setOpened] = useState(previewMode);
   const [musicAutoPlay, setMusicAutoPlay] = useState(previewMode && !editMode);
-  const [localData, setLocalData] = useState(invitation.data);
+  const normalizeData = (data: InvitationData): InvitationData => {
+    const { sections, ...rest } = data;
+    return { ...rest, sections: sections ?? {} };
+  };
+
+  const [localData, setLocalData] = useState(() => normalizeData(invitation.data));
   const { data } = invitation;
 
   // Use the merged data directly since it's already merged in LiveEditView
@@ -68,7 +73,7 @@ export default function InvitationTemplate({
 
   // Sync localData with invitation.data when it changes
   useEffect(() => {
-    setLocalData(invitation.data);
+    setLocalData(normalizeData(invitation.data));
   }, [invitation.data]);
 
   const handleOpen = useCallback(() => {

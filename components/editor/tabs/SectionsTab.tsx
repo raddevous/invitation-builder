@@ -87,10 +87,8 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   const [localVisibleSections, setLocalVisibleSections] = useState(data.entourage?.visibleSections || {});
   const [pendingEntourageChanges, setPendingEntourageChanges] = useState(data.entourage || {});
-  const baseSectionOrder = data.sectionOrder && data.sectionOrder.includes("entourage") 
-    ? data.sectionOrder 
-    : defaultSectionOrder;
-  const sectionOrder = Array.from(new Set([...baseSectionOrder, ...defaultSectionOrder]));
+  const baseSectionOrder = Array.from(new Set(["hero", ...(data.sectionOrder || []), ...defaultSectionOrder, "footer"]));
+  const sectionOrder = baseSectionOrder;
   const [activeGiftType, setActiveGiftType] = useState<"bank" | "wallet">("bank");
   const [isArrangeMode, setIsArrangeMode] = useState(false);
   const [tempSectionOrder, setTempSectionOrder] = useState<string[]>(sectionOrder);
