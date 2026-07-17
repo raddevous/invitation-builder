@@ -8,6 +8,10 @@ import EditorLogin from "@/components/editor/EditorLogin";
 export default function ToolsLandingPage() {
   const router = useRouter();
 
+  const handleTryDemo = () => {
+    router.push("/demo");
+  };
+
   const handleLogin = (inv: Invitation) => {
     // Store invitation in localStorage to preserve data (persists across sessions)
     // Don't include settings in invitation data
@@ -24,5 +28,5 @@ export default function ToolsLandingPage() {
     router.push(`/tools/${inv.slug}`);
   };
 
-  return <EditorLogin onLogin={handleLogin} />;
+  return <EditorLogin onLogin={handleLogin} onTryDemo={handleTryDemo} />;
 }

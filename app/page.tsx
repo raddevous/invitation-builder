@@ -22,6 +22,13 @@ export default function Home() {
           >
             Edit My Invitation
           </Link>
+          <Link
+            href="/demo"
+            className="w-full max-w-xs py-3 px-6 rounded-full font-medium tracking-wide transition-all hover:opacity-90 active:scale-95 border-2"
+            style={{ borderColor: "#b88a78", color: "#b88a78", fontFamily: "Cormorant Garamond, serif", fontSize: "1.1rem" }}
+          >
+            Try Demo
+          </Link>
         </div>
       </div>
     </main>
