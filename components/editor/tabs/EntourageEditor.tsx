@@ -1330,7 +1330,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
-                            {i === 0 && names.length < 12 && (
+                            {i === 0 && names.length < 24 && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1438,7 +1438,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
-                            {i === 0 && names.length < 12 && (
+                            {i === 0 && names.length < 24 && (
                               <button
                                 type="button"
                                 onClick={() => {
