@@ -9,6 +9,7 @@ interface MediaEditorProps {
   onClose: () => void;
   invitationId?: string;
   onSave?: (updatedData: InvitationData) => Promise<void>;
+  isDemoMode?: boolean;
 }
 
 // Helper to convert hex to rgba
@@ -42,7 +43,7 @@ const MEDIA_ITEMS = [
   { id: "music", label: "Music", description: "Background music settings" },
 ];
 
-export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#B88A78", onClose, invitationId, onSave }: MediaEditorProps) {
+export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#B88A78", onClose, invitationId, onSave, isDemoMode = false }: MediaEditorProps) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["logo", "gallery", "venue", "fonts", "music"]));
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -200,6 +201,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
 
   const handleMusicUpload = async (index: number, file: File) => {
+    if (isDemoMode) {
+      alert("Music upload is available after you sign up and purchase your invitation.");
+      return;
+    }
+
     if (!invitationId) {
       alert("Invitation ID is required for file upload");
       return;
@@ -256,6 +262,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
 
   const handleFontUpload = async (type: 'heading' | 'body', file: File) => {
+    if (isDemoMode) {
+      alert("Custom font upload is available after you sign up and purchase your invitation.");
+      return;
+    }
+
     if (!invitationId) {
       alert("Invitation ID is required for file upload");
       return;
@@ -311,6 +322,15 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
 
   const handleDeleteFont = (type: 'heading' | 'body') => {
+    if (isDemoMode) {
+      if (type === 'heading') {
+        setPendingHeadingFont("");
+      } else {
+        setPendingBodyFont("");
+      }
+      return;
+    }
+
     const url = type === 'heading' ? pendingHeadingFont : pendingBodyFont;
     if (url) {
       const pathMatch = url.match(/\/user-uploads\/(.+)$/);
@@ -333,6 +353,19 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
 
   const handleDeleteMusic = async () => {
+    if (isDemoMode) {
+      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
+      onChange("backgroundMusic", [] as unknown as string);
+      onChange("backgroundMusicFileNames", [] as unknown as string);
+      setPendingBackgroundMusic([]);
+      setPendingBackgroundMusicFileNames([]);
+      setShowDeleteDialog(false);
+      if (onSave) {
+        await onSave(updatedData);
+      }
+      return;
+    }
+
     // If no music file exists, just clear the dialog and state
     if (!pendingBackgroundMusic?.[0]) {
       const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };

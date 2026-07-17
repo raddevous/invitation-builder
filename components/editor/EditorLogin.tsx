@@ -5,9 +5,10 @@ import type { Invitation } from "@/lib/types/invitation";
 
 interface EditorLoginProps {
   onLogin: (invitation: Invitation) => void;
+  onTryDemo?: () => void;
 }
 
-export default function EditorLogin({ onLogin }: EditorLoginProps) {
+export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -112,6 +113,36 @@ export default function EditorLogin({ onLogin }: EditorLoginProps) {
           >
             {loading ? "Verifying…" : "Open Editor"}
           </button>
+
+          {onTryDemo && (
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t" style={{ borderColor: "#e8cfc3" }} />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-2" style={{ backgroundColor: "#fff8f3", color: "#8a6252" }}>
+                  or
+                </span>
+              </div>
+            </div>
+          )}
+
+          {onTryDemo && (
+            <button
+              type="button"
+              onClick={onTryDemo}
+              className="w-full py-4 rounded-2xl font-medium tracking-wide transition-all active:scale-95 border-2"
+              style={{
+                borderColor: "#b88a78",
+                color: "#b88a78",
+                backgroundColor: "transparent",
+                fontFamily: "Cormorant Garamond, serif",
+                fontSize: "1.1rem",
+              }}
+            >
+              Try Demo
+            </button>
+          )}
         </form>
 
         <p

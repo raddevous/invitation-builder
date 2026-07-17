@@ -25,6 +25,7 @@ interface ToolsTabProps {
   hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
+  isDemoMode?: boolean;
 }
 
 interface ToolTileProps {
@@ -64,7 +65,7 @@ function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#B8
   );
 }
 
-export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#2563EB", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions }: ToolsTabProps) {
+export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#2563EB", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isDemoMode = false }: ToolsTabProps) {
   const [showEntourageEditor, setShowEntourageEditor] = useState(false);
   const [showGuestEditor, setShowGuestEditor] = useState(false);
   const [showRSVPResponseEditor, setShowRSVPResponseEditor] = useState(false);
@@ -251,6 +252,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         onClose={() => setShowMediaEditor(false)}
         invitationId={slug}
         onSave={onSave}
+        isDemoMode={isDemoMode}
       />
     );
   }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { Invitation, InvitationData } from "@/lib/types/invitation";
 import { supabase } from "@/lib/supabase/client";
 import { debounce, buildInviteUrl } from "@/lib/utils";
+import { saveDemoInvitation } from "@/lib/demo/demo-data";
 import EventDetailsTab from "./tabs/EventDetailsTab";
 import SectionsTab from "./tabs/SectionsTab";
 import LiveEditView from "./live-edit/LiveEditView";
@@ -23,9 +24,10 @@ interface EditorPanelProps {
   invitation: Invitation;
   onBack?: () => void;
   showScreenDimensions?: boolean;
+  isDemoMode?: boolean;
 }
 
-export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false }: EditorPanelProps) {
+export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false, isDemoMode = false }: EditorPanelProps) {
   const [invitation, setInvitation] = useState<Invitation>(initial);
   const [activeTab, setActiveTab] = useState<TabId>("details");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
@@ -56,6 +58,13 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [hideInstructions, setHideInstructions] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [localShowScreenDimensions, setLocalShowScreenDimensions] = useState(showScreenDimensions);
+  const [demoToast, setDemoToast] = useState<string | null>(null);
+
+  // Show demo mode toast message
+  const showDemoToast = (message: string) => {
+    setDemoToast(message);
+    setTimeout(() => setDemoToast(null), 3000);
+  };
 
   // Sync invitation state with prop when it changes (e.g., when refetched from tools page)
   useEffect(() => {
@@ -156,6 +165,8 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   // Subscribe to realtime updates from other sessions
   useEffect(() => {
+    if (isDemoMode) return;
+
     const channel = supabase
       .channel(`invitation:${invitation.id}`)
       .on(
@@ -248,14 +259,27 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   // Debounced save function
   const saveRef = useRef(
-    debounce(async (id: string, slug: string, data: InvitationData, shouldCallCallback: boolean = false) => {
+    debounce(async (id: string, slug: string, data: InvitationData, demoMode: boolean = false) => {
       setSaveStatus("saving");
       isSavingRef.current = true;
       try {
         // Merge any queued pending changes with the data being saved
         const dataToSave = { ...data, ...pendingChangesRef.current };
-        // Exclude settings from the data being saved to Supabase
+        // Exclude settings from the data being saved
         const { isDarkMode, accentColor, ...finalDataToSave } = dataToSave;
+
+        if (demoMode) {
+          // Save to localStorage in demo mode
+          saveDemoInvitation(finalDataToSave as InvitationData);
+          console.log('[EditorPanel] Demo mode - saved locally:', { dataKeys: Object.keys(finalDataToSave) });
+          setSaveStatus("saved");
+          setHasUnsavedChanges(false);
+          setHasEverSaved(true);
+          setPendingChanges({});
+          isSavingRef.current = false;
+          return;
+        }
+
         console.log('[EditorPanel] Saving:', { id, slug, dataKeys: Object.keys(finalDataToSave) });
         console.log('[EditorPanel] Sample data values:', {
           hisName: finalDataToSave.hisName,
@@ -286,7 +310,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         // Clear isSaving flag after a short delay to allow realtime updates from other sessions
         setTimeout(() => { isSavingRef.current = false; }, 2000);
       }
-    }, 2000) as (id: string, slug: string, data: InvitationData) => void
+    }, 2000) as (id: string, slug: string, data: InvitationData, demoMode: boolean) => void
   );
 
   const handleChange = useCallback(
@@ -294,12 +318,12 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       setHasUnsavedChanges(true);
       setInvitation((prev) => {
         const newData = { ...prev.data, [field]: value };
-        saveRef.current(prev.id, prev.slug, newData);
+        saveRef.current(prev.id, prev.slug, newData, isDemoMode);
         return { ...prev, data: newData };
       });
       // Don't set saving status here - let the debounced function handle it
     },
-    []
+    [isDemoMode]
   );
 
   // Helper function to deep compare values
@@ -345,10 +369,10 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       const visibleSections = { ...pendingEntourage?.visibleSections, ...localVisibleSections };
       dataToSave.entourage = { ...pendingEntourage, visibleSections };
 
-      // Exclude settings from the data being saved to Supabase
+      // Exclude settings from the data being saved
       const { isDarkMode, accentColor, ...finalDataToSave } = dataToSave;
 
-      console.log('[EditorPanel] Immediate save:', { id: invitation.id, slug: invitation.slug, dataKeys: Object.keys(finalDataToSave) });
+      console.log('[EditorPanel] Immediate save:', { id: invitation.id, slug: invitation.slug, demoMode: isDemoMode, dataKeys: Object.keys(finalDataToSave) });
 
       // Update local state
       if (Object.keys(pendingChanges).length > 0 || Object.keys(pendingCountdownChanges).length > 0 || Object.keys(pendingHeroChanges).length > 0 || pendingEntourageChanges || Object.keys(localVisibleSections).length > 0) {
@@ -361,6 +385,17 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         setPendingHeroChanges({});
         setPendingEntourageChanges(null);
         setLocalVisibleSections({});
+      }
+
+      if (isDemoMode) {
+        // Save to localStorage in demo mode
+        saveDemoInvitation(finalDataToSave as InvitationData);
+        console.log('[EditorPanel] Demo mode - immediate saved locally');
+        setSaveStatus("saved");
+        setHasUnsavedChanges(false);
+        setHasEverSaved(true);
+        isSavingRef.current = false;
+        return;
       }
 
       const res = await fetch(`/api/invitation/${invitation.slug}`, {
@@ -383,7 +418,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     } finally {
       setTimeout(() => { isSavingRef.current = false; }, 2000);
     }
-  }, [invitation.id, invitation.slug, invitation.data, pendingChanges, pendingCountdownChanges, pendingHeroChanges]);
+  }, [invitation.id, invitation.slug, invitation.data, pendingChanges, pendingCountdownChanges, pendingHeroChanges, isDemoMode]);
 
   // Apply pending changes and save immediately
   const handleApplyPendingChanges = useCallback(async () => {
@@ -544,6 +579,10 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   };
 
   const copyInviteLink = () => {
+    if (isDemoMode) {
+      showDemoToast("Sharing is available after you sign up and purchase your invitation.");
+      return;
+    }
     const url = buildInviteUrl(invitation.slug);
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
@@ -993,6 +1032,13 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         onClose={() => setShowSaveConfirmationDialog(false)}
         onHideSaveConfirmationDialogChange={handleHideSaveConfirmationDialogChange}
       />
+
+      {/* Demo mode toast */}
+      {demoToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white px-4 py-2 rounded-lg text-sm shadow-lg max-w-sm text-center">
+          {demoToast}
+        </div>
+      )}
     </div>
   );
 }
