@@ -5,7 +5,6 @@ import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
 import LoginDialog from "@/components/editor/LoginDialog";
 import QRCode from "qrcode";
 import { Capacitor } from "@capacitor/core";
-import { Media } from "@capacitor-community/media";
 import { buildInviteUrl } from "@/lib/utils";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
@@ -96,6 +95,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
     if (Capacitor.isNativePlatform()) {
       try {
+        const { Media } = await import("@capacitor-community/media");
         const fileName = `qr-${slug || 'invitation'}`;
         const albums = await Media.getAlbums();
         const album = albums.albums.find(a => a.name === 'InstaVow') || albums.albums[0];
