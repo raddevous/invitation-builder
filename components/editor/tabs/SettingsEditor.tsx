@@ -4,6 +4,9 @@ import BackupWarningDialog from "@/components/shared/BackupWarningDialog";
 import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
 import LoginDialog from "@/components/editor/LoginDialog";
 import QRCode from "qrcode";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { buildInviteUrl } from "@/lib/utils";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
@@ -89,14 +92,36 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
     }
   }, [expandedSection, qrDataUrl, isDemoMode, generateQrCode]);
 
-  const handleSaveQrCode = () => {
+  const handleSaveQrCode = async () => {
     if (!qrDataUrl) return;
-    const link = document.createElement("a");
-    link.href = qrDataUrl;
-    link.download = `qr-${slug || "invitation"}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const base64 = qrDataUrl.split(',')[1];
+        const fileName = `qr-${slug || 'invitation'}.png`;
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+        await Share.share({
+          title: 'QR Code',
+          text: 'Save or share your invitation QR code',
+          url: result.uri,
+          dialogTitle: 'Save QR Code',
+        });
+      } catch (error) {
+        console.error('Error saving QR code:', error);
+      }
+    } else {
+      const link = document.createElement("a");
+      link.href = qrDataUrl;
+      link.download = `qr-${slug || "invitation"}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const fetchExpiration = async () => {
