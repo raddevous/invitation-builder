@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import BackButtonHandler from "@/components/BackButtonHandler";
 
 export const metadata: Metadata = {
   title: "Instavow - Instant design, Personal touch, Shared in a link.",
@@ -22,7 +23,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased"><BackButtonHandler />{children}</body>
     </html>
   );
 }
