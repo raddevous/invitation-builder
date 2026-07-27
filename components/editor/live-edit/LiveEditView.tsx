@@ -13,6 +13,7 @@ import ColorControl from "@/components/shared/ColorControl";
 import { clearDemoInvitation } from "@/lib/demo/demo-data";
 import { buildInviteUrl } from "@/lib/utils";
 import { shareInviteLink } from "@/lib/utils/share";
+import { unregisterPushNotifications } from "@/lib/utils/push";
 import { createPortal } from "react-dom";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
@@ -1028,7 +1029,8 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                 <>
                   <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      await unregisterPushNotifications();
                       localStorage.removeItem('invitation');
                       localStorage.removeItem('appSettings');
                       localStorage.removeItem('weddingChecklist');

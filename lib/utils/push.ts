@@ -2,6 +2,8 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications, Token } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
+let currentToken: string | null = null;
+
 export async function registerPushNotifications(invitationId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
@@ -10,23 +12,29 @@ export async function registerPushNotifications(invitationId: string): Promise<v
     if (permStatus.receive === "prompt") {
       permStatus = await PushNotifications.requestPermissions();
     }
-    if (permStatus.receive !== "granted") {
-      console.log("[Push] Permission not granted");
-      return;
-    }
+    if (permStatus.receive !== "granted") return;
+
+    // Create notification channel for foreground notifications
+    await LocalNotifications.createChannel({
+      id: "rsvp-notifications",
+      name: "RSVP Notifications",
+      description: "Notifications for new RSVP responses",
+      importance: 5,
+      visibility: 1,
+      sound: "default",
+    });
 
     PushNotifications.addListener("registration", async (token: Token) => {
-      console.log("[Push] Registration token:", token.value);
+      currentToken = token.value;
       try {
-        const res = await fetch("/api/push-token", {
+        await fetch("/api/push-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ invitationId, token: token.value }),
         });
-        console.log("[Push] Token save response:", res.status, await res.text());
-      } catch (err) {
-        console.error("[Push] Token save failed:", err);
+      } catch {
+        // best-effort
       }
     });
 
@@ -35,17 +43,7 @@ export async function registerPushNotifications(invitationId: string): Promise<v
     });
 
     PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-      console.log("[Push] Notification received in foreground:", notification);
       try {
-        await LocalNotifications.createChannel({
-          id: "rsvp-notifications",
-          name: "RSVP Notifications",
-          description: "Notifications for new RSVP responses",
-          importance: 5,
-          visibility: 1,
-          sound: "default",
-        });
-
         await LocalNotifications.schedule({
           notifications: [
             {
@@ -59,13 +57,32 @@ export async function registerPushNotifications(invitationId: string): Promise<v
             },
           ],
         });
-      } catch (err) {
-        console.error("[Push] Local notification failed:", err);
+      } catch {
+        // best-effort
       }
     });
 
     await PushNotifications.register();
-  } catch (err) {
-    console.error("[Push] Setup failed:", err);
+  } catch {
+    // best-effort
+  }
+}
+
+export async function unregisterPushNotifications(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    if (currentToken) {
+      await fetch("/api/push-token", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: currentToken }),
+      }).catch(() => {});
+      currentToken = null;
+    }
+    await PushNotifications.unregister();
+  } catch {
+    // best-effort
   }
 }
