@@ -7,6 +7,7 @@ import EditorLogin from "@/components/editor/EditorLogin";
 import ToolsTab from "@/components/editor/tabs/ToolsTab";
 import EditorPanel from "@/components/editor/EditorPanel";
 import { debounce, updateFavicon } from "@/lib/utils";
+import { registerPushNotifications } from "@/lib/utils/push";
 
 interface AppSettings {
   isDarkMode: boolean;
@@ -60,6 +61,13 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasToolsUnsavedChanges]);
+
+  // Register for push notifications when invitation is loaded
+  useEffect(() => {
+    if (invitation?.id) {
+      registerPushNotifications(invitation.id);
+    }
+  }, [invitation?.id]);
 
   // Check if slug exists on mount
   useEffect(() => {

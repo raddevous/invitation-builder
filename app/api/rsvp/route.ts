@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { sendPushNotification } from "@/lib/firebase/admin";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +39,32 @@ export async function POST(request: NextRequest) {
         { error: "Failed to save RSVP" },
         { status: 500 }
       );
+    }
+
+    // Send push notification to the host (best-effort, non-blocking)
+    try {
+      const { data: tokens } = await supabaseAdmin
+        .from("push_tokens")
+        .select("token")
+        .eq("invitation_id", invitationId);
+
+      if (tokens && tokens.length > 0) {
+        const attendanceLabel = attendance === "attending" ? "attending" : "not attending";
+        const messageBody = `${guestName} is ${attendanceLabel}${guestCount > 1 ? ` (+${guestCount - 1})` : ""}`;
+
+        await Promise.all(
+          tokens.map(({ token }) =>
+            sendPushNotification(
+              token,
+              "New RSVP",
+              messageBody,
+              { invitationId, guestName, attendance }
+            ).catch(() => {})
+          )
+        );
+      }
+    } catch {
+      // push notification failure should not affect RSVP save
     }
 
     return NextResponse.json({ success: true, id: data.id });
