@@ -72,7 +72,7 @@ export default function ToolsLandingPage() {
       accentColor: accentColor ?? "#6998EE",
     }));
 
-    router.push(`/tools/${inv.slug}`);
+    router.replace(`/tools/${inv.slug}`);
   };
 
   if (checking) return null;

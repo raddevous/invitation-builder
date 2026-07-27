@@ -9,10 +9,17 @@ export function setupBackButtonHandler(): void {
   listenerRegistered = true;
 
   App.addListener("backButton", ({ canGoBack }) => {
-    if (canGoBack) {
+    const path = window.location.pathname;
+
+    // Treat these as root pages — minimize instead of going back
+    const isRootPage =
+      path === "/" ||
+      path === "/tools" ||
+      /^\/tools\/[^/]+$/.test(path);
+
+    if (canGoBack && !isRootPage) {
       window.history.back();
     } else {
-      // No history to go back to — minimize app instead of exiting
       App.minimizeApp();
     }
   });
