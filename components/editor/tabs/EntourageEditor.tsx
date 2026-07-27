@@ -18,12 +18,12 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-export default function EntourageEditor({ data, onChange, isDarkMode = false, accentColor = "#B88A78", onClose, onSave }: EntourageEditorProps) {
+export default function EntourageEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave }: EntourageEditorProps) {
   const [pendingEntourageChanges, setPendingEntourageChanges] = useState(data.entourage || {});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   const [localVisibleSections, setLocalVisibleSections] = useState(data.entourage?.visibleSections || {});
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const initialEntourageSnapshot = useRef(JSON.stringify({ ...(data.entourage || {}), visibleSections: data.entourage?.visibleSections || {} }));
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   const localVisibleSectionsRef = useRef(localVisibleSections);
 
@@ -35,6 +35,12 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
   }, [hasUnsavedChanges]);
+
+  // Revert detection: compare pending state with initial snapshot
+  useEffect(() => {
+    const currentEntourage = { ...pendingEntourageChanges, visibleSections: localVisibleSections };
+    setHasUnsavedChanges(JSON.stringify(currentEntourage) !== initialEntourageSnapshot.current);
+  }, [pendingEntourageChanges, localVisibleSections]);
 
   // Helper function to update nested entourage data (local only)
   const updateEntourageField = (path: string, value: any) => {
@@ -51,22 +57,16 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
     
     current[keys[keys.length - 1]] = value;
     setPendingEntourageChanges(entourage);
-    setHasUnsavedChanges(true);
   };
 
-  // Save entourage changes
+  // Apply entourage changes to parent state (no API save)
   const saveEntourage = useCallback(() => {
     const updated = { ...pendingEntourageChanges, visibleSections: localVisibleSectionsRef.current };
-    console.log('[EntourageEditor] Saving entourage:', JSON.stringify(updated).substring(0, 500) + '...');
     setPendingEntourageChanges(updated);
     onChange("entourage", updated);
+    initialEntourageSnapshot.current = JSON.stringify(updated);
     setHasUnsavedChanges(false);
-    if (onSave) {
-      const fullData = { ...data, entourage: updated };
-      console.log('[EntourageEditor] Calling onSave with full data, entourage keys:', Object.keys(updated));
-      onSave(fullData);
-    }
-  }, [onChange, pendingEntourageChanges, onSave, data]);
+  }, [onChange, pendingEntourageChanges]);
 
   // Handle local checkbox changes (only updates local state)
   const handleVisibilityCheckboxChange = (section: string, checked: boolean) => {
@@ -75,7 +75,6 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
       [section]: checked
     };
     setLocalVisibleSections(updatedSections);
-    setHasUnsavedChanges(true);
 
     // Clear input fields when disabling a section
     if (!checked) {
@@ -147,25 +146,11 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
     }
   };
 
-  // Handle close with unsaved changes check
+  // Handle close - auto-apply pending changes, no save prompt
   const handleClose = () => {
     if (hasUnsavedChanges) {
-      setShowUnsavedDialog(true);
-    } else {
-      onClose();
+      saveEntourage();
     }
-  };
-
-  const handleDiscardChanges = () => {
-    setShowUnsavedDialog(false);
-    setPendingEntourageChanges(data.entourage || {});
-    setHasUnsavedChanges(false);
-    onClose();
-  };
-
-  const handleSaveAndClose = () => {
-    setShowUnsavedDialog(false);
-    saveEntourage();
     onClose();
   };
 
@@ -2245,54 +2230,6 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
           )}
         </div>
 
-      {/* Footer with save button */}
-      <div className="p-4">
-        {hasUnsavedChanges && (
-          <div className="flex justify-center">
-            <button
-              onClick={saveEntourage}
-              className="px-6 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-              style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-            >
-              Save Changes
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Unsaved changes dialog */}
-      {showUnsavedDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}>
-            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Unsaved Changes
-            </h3>
-            <p className={`text-sm mb-6 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              You have unsaved changes. Do you want to save them or discard them?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleDiscardChanges}
-                className={`flex-1 px-4 py-2 border rounded-lg text-sm transition-colors ${
-                  isDarkMode 
-                    ? "border-gray-600 text-gray-300 hover:bg-gray-700" 
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Discard
-              </button>
-              <button
-                onClick={handleSaveAndClose}
-                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-                style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

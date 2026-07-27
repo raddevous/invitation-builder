@@ -24,7 +24,7 @@ export default function SignupPage() {
           href="/"
           className="inline-block w-full max-w-xs py-3 px-6 rounded-full text-white font-medium tracking-wide transition-all hover:opacity-90 active:scale-95"
           style={{
-            backgroundColor: "#b88a78",
+            backgroundColor: "#6998EE",
             fontFamily: "Cormorant Garamond, serif",
             fontSize: "1.1rem",
           }}

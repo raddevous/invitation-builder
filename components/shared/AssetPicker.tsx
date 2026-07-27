@@ -19,7 +19,7 @@ export default function AssetPicker({
   value,
   onChange,
   allowNone = false,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
 }: AssetPickerProps) {
   const [assets, setAssets] = useState<StockAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +69,7 @@ export default function AssetPicker({
               onClick={() => onChange(asset.id)}
               className={`aspect-square rounded-xl border-2 overflow-hidden transition-all active:scale-95 relative ${
                 value === asset.id
-                  ? "border-[#b88a78] shadow-md"
+                  ? "border-[#6998EE] shadow-md"
                   : "border-gray-200 hover:border-gray-300"
               }`}
               style={{ borderColor: value === asset.id ? accentColor : undefined }}

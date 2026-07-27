@@ -15,15 +15,13 @@ export interface InvitationSections {
 export type WelcomeScreenType =
   | "classic-envelope"
   | "full-envelope"
-  | "curtain"
-  | "bloom"
-  | "none";
+  | "curtain";
 
 export type DividerType = "none" | "divider-1" | "divider-2" | "divider-3" | "divider-4";
 
 export type DividerStyle = "centered-single" | "split-horizontal" | "mirrored-corners";
 
-export type BackgroundType = "color" | "gradient" | "image" | "video" | "animation";
+export type BackgroundType = "color" | "gradient" | "image" | "video" | "animation" | "custom-image";
 
 export interface GradientBackground {
   firstColor: string;
@@ -108,6 +106,7 @@ export interface InvitationData {
   heroIconColorTintOpacity?: number;
   heroIconMarginAdjustment?: number;
   heroIconSize?: number;
+  heroIconVisibility?: number;
   heroIconTypography?: string;
   heroIconTextColor?: string;
   heroIconName2First?: boolean;
@@ -120,10 +119,20 @@ export interface InvitationData {
   heroDateStructureSize?: number;
   heroDateStructureSpacing?: number;
   heroVenueStructure?: "default" | "icon";
+  heroVenueSize?: number;
+  heroVenueSpacing?: number;
   heroHostLineImage?: "hostline-00" | "hostline-01" | "hostline-02" | "hostline-03" | "hostline-04" | "hostline-05" | "hostline-06" | "hostline-07" | "hostline-08" | "hostline-09";
   heroHostLineImageOpacity?: number;
+  heroHostLineImageSize?: number;
+  heroHostLineImageSpacing?: number;
+  heroHostLineTextSize?: number;
+  heroHostLineTextSpacing?: number;
   heroClosingSentimentImage?: "fsentiment-00" | "fsentiment-01" | "fsentiment-02" | "fsentiment-03" | "fsentiment-04" | "fsentiment-05" | "fsentiment-06" | "fsentiment-07";
   heroClosingSentimentImageOpacity?: number;
+  heroClosingSentimentImageSize?: number;
+  heroClosingSentimentImageSpacing?: number;
+  heroClosingSentimentTextSize?: number;
+  heroClosingSentimentTextSpacing?: number;
   heroOthersTextSize?: number;
   heroTextShadowOpacity?: number;
   heroNameSize?: number;
@@ -304,6 +313,10 @@ export interface InvitationData {
   countdownDividerColorBlend?: boolean;
   countdownShowDate?: boolean;
   countdownCrystalColor?: string;
+  countdownClockSize?: number;
+  countdownClockSizeMobile?: number;
+  countdownDateSize?: number;
+  countdownDateSizeMobile?: number;
   countdownDateStructure?: "default" | "alternative" | "icon" | "elegant" | "modern";
   dresscodeHeading?: string;
   dresscodeDivider?: DividerType;
@@ -514,7 +527,7 @@ export interface InvitationData {
   rsvpNotAttendingWithMessageThankYouText?: string; // Custom thank you text for not attending guests with message
   rsvpTitleSpecificMessages?: Record<string, string>; // Custom messages for each entourage title
   rsvpEntourageHonorifics?: Record<string, "M" | "Mr." | "Ms." | "Mrs.">; // Honorifics for entourage-derived guests, keyed by guest name
-  rsvpEntourageGuestDetails?: Record<string, { plusOne: string; tableNumber: string }>; // Additional details for entourage guests, keyed by guest name
+  rsvpEntourageGuestDetails?: Record<string, { plusOne: string; tableNumber: string; instruction?: string }>; // Additional details for entourage guests, keyed by guest name
   rsvpGuestDetails?: Record<number, { plusOne: string; tableNumber: string }>; // Additional details for normal guests, keyed by index
   venueLayout?: {
     baseShape: 'rectangle' | 'circle' | 'square';
@@ -562,10 +575,33 @@ export interface InvitationData {
     colors: string[] | Record<string, string>;
     imageSet?: string;
     tip?: string;
+    accentVariant?: string;
+    accentColor?: string;
+    customLabel?: string;
   }>;
+  groomColor?: string;
+  brideColor?: string;
   timelineEvents?: Array<{ title: string; description: string }>;
+  storyTimeline?: Array<{ id: string; title: string; date: string; description: string; photoUrl: string }>;
+  weddingProgram?: Array<{ id: string; name: string; eventDetails: string; place: string; time: string; imageVariant: number; iconSrc?: string }>;
+  eventDetailsEmptyMessageIndex?: number;
+  timelineEmptyMessageIndex?: number;
   imageTransforms?: Record<string, ImageTransform>;
   welcomeScreenType?: WelcomeScreenType;
+  welcomeRandomScreen?: boolean;
+  welcomeScreenLabel?: string;
+  welcomeEnvelopeColor?: string;
+  welcomeEnvelopeTexture?: string;
+  welcomeFullEnvelopeStdImage?: number;
+  welcomeTopMessage?: string;
+  welcomeTopMessageFont?: string;
+  welcomeTopMessageColor?: string;
+  welcomeBackgroundType?: BackgroundType;
+  welcomeBackgroundColor?: string;
+  welcomeBackgroundGradient?: GradientBackground;
+  welcomeBackgroundImage?: ImageBackground;
+  welcomeBackgroundVideo?: VideoBackground;
+  welcomeBackgroundOverlayColor?: string;
   welcomeElements?: Record<string, WelcomeElementSettings>;
   entourage?: {
     topText?: string;
@@ -821,6 +857,10 @@ export interface WeddingDirectoryItem {
   photoPapersFontType?: string;
   photoPapersImage1?: string;
   photoPapersImage2?: string;
+  photoPapersImage1PositionX?: number;
+  photoPapersImage1PositionY?: number;
+  photoPapersImage2PositionX?: number;
+  photoPapersImage2PositionY?: number;
   textOverlay?: {
     content: string;
     color: string;
@@ -838,4 +878,16 @@ export interface WeddingDirectoryItem {
   nowPlayingArcRadius?: number;
   nowPlayingHeartsEnabled?: boolean;
   nowPlayingHeartSize?: number;
+  rsvpFont?: string;
+  eventDetailsText?: string;
+  eventDetailsFont?: string;
+  dressCodeText?: string;
+  dressCodeFont?: string;
+  giftGuideText?: string;
+  giftGuideFont?: string;
+  othersTextSize?: number;
+  dateTimeFont?: string;
+  textShadowEnabled?: boolean;
+  storyFont?: string;
+  storyText?: string;
 }

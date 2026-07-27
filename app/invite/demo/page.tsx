@@ -9,7 +9,7 @@ export default function DemoInvitePage() {
       <div className="max-w-md space-y-6">
         <p
           className="text-sm tracking-[0.3em] uppercase"
-          style={{ color: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+          style={{ color: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
         >
           Demo Preview
         </p>
@@ -39,7 +39,7 @@ export default function DemoInvitePage() {
             href="/signup"
             className="w-full max-w-xs py-3 px-6 rounded-full text-white font-medium tracking-wide transition-all hover:opacity-90 active:scale-95"
             style={{
-              backgroundColor: "#b88a78",
+              backgroundColor: "#6998EE",
               fontFamily: "Cormorant Garamond, serif",
               fontSize: "1.1rem",
             }}
@@ -50,8 +50,8 @@ export default function DemoInvitePage() {
             href="/demo"
             className="w-full max-w-xs py-3 px-6 rounded-full font-medium tracking-wide transition-all hover:opacity-90 active:scale-95 border-2"
             style={{
-              borderColor: "#b88a78",
-              color: "#b88a78",
+              borderColor: "#6998EE",
+              color: "#6998EE",
               fontFamily: "Cormorant Garamond, serif",
               fontSize: "1.1rem",
             }}

@@ -3,6 +3,7 @@
 import { useEffect, useState, use } from "react";
 import type { Invitation, InvitationData } from "@/lib/types/invitation";
 import { supabase } from "@/lib/supabase/client";
+import { updateFavicon } from "@/lib/utils";
 import InvitationTemplate from "@/components/invitation/InvitationTemplate";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,13 @@ export default function InvitePage({ params }: InvitePageProps) {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [desktopMode, setDesktopMode] = useState(false);
+
+  useEffect(() => {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+    window.scrollTo(0, 0);
+  }, []);
 
   useEffect(() => {
     const checkDesktop = () => setDesktopMode(window.innerWidth >= 768);
@@ -59,6 +67,11 @@ export default function InvitePage({ params }: InvitePageProps) {
     document.title = title;
   }, [invitation?.data]);
 
+  // Use the user-defined display logo as the page favicon
+  useEffect(() => {
+    updateFavicon(invitation?.data?.heroIcon);
+  }, [invitation?.data?.heroIcon]);
+
   // Subscribe to realtime changes so the public page updates live
   useEffect(() => {
     if (!invitation?.id) return;
@@ -74,7 +87,7 @@ export default function InvitePage({ params }: InvitePageProps) {
           filter: `id=eq.${invitation.id}`,
         },
         (payload) => {
-          if (payload.new) {
+          if (payload.new && payload.new.data) {
             setInvitation((prev) =>
               prev ? { ...prev, data: payload.new.data as InvitationData } : prev
             );
@@ -88,44 +101,55 @@ export default function InvitePage({ params }: InvitePageProps) {
     };
   }, [invitation?.id]);
 
-  const handleShare = async () => {
-    const shareUrl = window.location.href;
-    const shareData = {
-      title: document.title,
-      url: shareUrl,
+  // Content protection for guest mode
+  useEffect(() => {
+    if (!invitation) return;
+
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    const preventDrag = (e: DragEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'IMG' || target.tagName === 'VIDEO' || target.tagName === 'A') {
+        e.preventDefault();
+      }
     };
 
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (err) {
-        console.error("Error sharing:", err);
+    const preventKeyShortcuts = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'u' || e.key === 'p')) {
+        e.preventDefault();
       }
-    } else {
-      // Fallback: copy to clipboard
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        alert("Link copied to clipboard!");
-      } catch (err) {
-        console.error("Error copying to clipboard:", err);
+      if (e.key === 'F12') {
+        e.preventDefault();
       }
-    }
-  };
+    };
+
+    document.addEventListener('contextmenu', preventContextMenu);
+    document.addEventListener('dragstart', preventDrag);
+    document.addEventListener('keydown', preventKeyShortcuts);
+
+    return () => {
+      document.removeEventListener('contextmenu', preventContextMenu);
+      document.removeEventListener('dragstart', preventDrag);
+      document.removeEventListener('keydown', preventKeyShortcuts);
+    };
+  }, [invitation]);
 
   if (loading) {
+    const mc1 = invitation?.data?.mainColor1 || "#1B3B5F";
+    const mc2 = invitation?.data?.mainColor2 || "#6998EE";
     return (
       <div
         className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: "#fff8f3" }}
+        style={{ backgroundColor: mc1 }}
       >
         <div className="flex flex-col items-center gap-4">
           <div
             className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin"
-            style={{ borderColor: "#e8cfc3", borderTopColor: "#b88a78" }}
+            style={{ borderColor: mc2, borderTopColor: "transparent" }}
           />
           <p
             className="text-sm italic"
-            style={{ color: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+            style={{ color: mc2, fontFamily: "Inter, sans-serif" }}
           >
             Opening your invitation…
           </p>
@@ -142,7 +166,7 @@ export default function InvitePage({ params }: InvitePageProps) {
       >
         <p
           className="text-3xl mb-3"
-          style={{ fontFamily: "Playfair Display, serif", color: "#b88a78" }}
+          style={{ fontFamily: "Playfair Display, serif", color: "#6998EE" }}
         >
           Invitation Not Found
         </p>
@@ -157,19 +181,7 @@ export default function InvitePage({ params }: InvitePageProps) {
   }
 
   return (
-    <div className="relative">
-      <button
-        onClick={handleShare}
-        className="fixed top-4 right-4 z-50 p-3 rounded-full bg-white/90 backdrop-blur-sm shadow-lg hover:bg-white transition-colors"
-        style={{ border: "1px solid #e8cfc3" }}
-        aria-label="Share invitation"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b88a78" strokeWidth="2">
-          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-          <polyline points="16 6 12 2 8 6" />
-          <line x1="12" y1="2" x2="12" y2="15" />
-        </svg>
-      </button>
+    <div className="relative" style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
       <InvitationTemplate invitation={invitation} editMode={false} desktopMode={desktopMode} />
     </div>
   );

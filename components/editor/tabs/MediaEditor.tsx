@@ -43,24 +43,35 @@ const MEDIA_ITEMS = [
   { id: "music", label: "Music", description: "Background music settings" },
 ];
 
-export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#B88A78", onClose, invitationId, onSave, isDemoMode = false }: MediaEditorProps) {
+export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, invitationId, onSave, isDemoMode = false }: MediaEditorProps) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["logo", "gallery", "venue", "fonts", "music"]));
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [musicDeleteIdx, setMusicDeleteIdx] = useState<number | null>(null);
 
   // Local state for sections (no auto-save)
   const [pendingLogo, setPendingLogo] = useState(data.heroIcon || "");
+  const [logoUrlInput, setLogoUrlInput] = useState("");
+  const [showLogoUrlInput, setShowLogoUrlInput] = useState(false);
   const [pendingGallery, setPendingGallery] = useState<string[]>(data.galleryImages || []);
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
   const [showGalleryUrlInput, setShowGalleryUrlInput] = useState(false);
-  const galleryLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const galleryDragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [galleryDeleteIdx, setGalleryDeleteIdx] = useState<number | null>(null);
+  const [galleryDragIdx, setGalleryDragIdx] = useState<number | null>(null);
+  const galleryDragStart = useRef({ x: 0, y: 0 });
+  const galleryDragTriggered = useRef(false);
   const [pendingVenue, setPendingVenue] = useState<string[]>(data.venueImages || []);
   const [venueUrlInput, setVenueUrlInput] = useState("");
   const [showVenueUrlInput, setShowVenueUrlInput] = useState(false);
-  const venueLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const venueDragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [venueDeleteIdx, setVenueDeleteIdx] = useState<number | null>(null);
+  const [venueDragIdx, setVenueDragIdx] = useState<number | null>(null);
+  const venueDragStart = useRef({ x: 0, y: 0 });
+  const venueDragTriggered = useRef(false);
+  const isDraggingImage = useRef(false);
+  const [dragToast, setDragToast] = useState<string | null>(null);
   const [pendingHeadingFont, setPendingHeadingFont] = useState(data.customHeadingFont || "");
   const [pendingBodyFont, setPendingBodyFont] = useState(data.customBodyFont || "");
   const [pendingBackgroundMusic, setPendingBackgroundMusic] = useState<string[]>(data.backgroundMusic || []);
@@ -71,9 +82,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   const [hasGalleryChanges, setHasGalleryChanges] = useState(false);
   const [hasVenueChanges, setHasVenueChanges] = useState(false);
   const [hasFontsChanges, setHasFontsChanges] = useState(false);
+  const [hasMusicChanges, setHasMusicChanges] = useState(false);
 
   // Combined check for any changes
-  const hasAnyChanges = hasLogoChanges || hasGalleryChanges || hasVenueChanges || hasFontsChanges;
+  const hasAnyChanges = hasLogoChanges || hasGalleryChanges || hasVenueChanges || hasFontsChanges || hasMusicChanges;
 
   // Update change tracking when data changes
   useEffect(() => {
@@ -103,8 +115,30 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     );
   }, [pendingHeadingFont, pendingBodyFont, data.customHeadingFont, data.customBodyFont]);
 
-  // Combined apply handler
-  const handleApplyAll = () => {
+  useEffect(() => {
+    const currentMusic = data.backgroundMusic || [];
+    const currentFileNames = data.backgroundMusicFileNames || [];
+    setHasMusicChanges(
+      pendingBackgroundMusic.length !== currentMusic.length ||
+      pendingBackgroundMusic.some((url, i) => url !== currentMusic[i]) ||
+      pendingBackgroundMusicFileNames.length !== currentFileNames.length ||
+      pendingBackgroundMusicFileNames.some((name, i) => name !== currentFileNames[i])
+    );
+  }, [pendingBackgroundMusic, pendingBackgroundMusicFileNames, data.backgroundMusic, data.backgroundMusicFileNames]);
+
+  // Prevent page scroll during image drag-and-drop reordering
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isDraggingImage.current) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => document.removeEventListener('touchmove', handleTouchMove);
+  }, []);
+
+  // Apply pending changes to parent state (no API save)
+  const applyPendingChanges = () => {
     if (hasLogoChanges) {
       onChange("heroIcon", pendingLogo);
     }
@@ -118,56 +152,15 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       onChange("customHeadingFont", pendingHeadingFont);
       onChange("customBodyFont", pendingBodyFont);
     }
-    // Reset all change flags
-    setHasLogoChanges(false);
-    setHasGalleryChanges(false);
-    setHasVenueChanges(false);
-    setHasFontsChanges(false);
-    if (onSave) {
-      const updatedData = { ...data };
-      if (hasLogoChanges) updatedData.heroIcon = pendingLogo;
-      if (hasGalleryChanges) updatedData.galleryImages = pendingGallery as any;
-      if (hasVenueChanges) updatedData.venueImages = pendingVenue as any;
-      if (hasFontsChanges) {
-        updatedData.customHeadingFont = pendingHeadingFont;
-        updatedData.customBodyFont = pendingBodyFont;
-      }
-      onSave(updatedData);
+    if (hasMusicChanges) {
+      onChange("backgroundMusic", pendingBackgroundMusic as unknown as string);
+      onChange("backgroundMusicFileNames", pendingBackgroundMusicFileNames as unknown as string);
     }
   };
 
-  // Handle close with unsaved changes check
+  // Handle close - auto-apply pending changes, no save prompt
   const handleClose = () => {
-    if (hasAnyChanges) {
-      setShowUnsavedDialog(true);
-    } else {
-      onClose();
-    }
-  };
-
-  const handleDiscardChanges = () => {
-    setShowUnsavedDialog(false);
-    setPendingLogo(data.heroIcon || "");
-    setPendingGallery(data.galleryImages || []);
-    setGalleryUrlInput("");
-    setShowGalleryUrlInput(false);
-    setPendingVenue(data.venueImages || []);
-    setVenueUrlInput("");
-    setShowVenueUrlInput(false);
-    setPendingHeadingFont(data.customHeadingFont || "");
-    setPendingBodyFont(data.customBodyFont || "");
-    setPendingBackgroundMusic(data.backgroundMusic || []);
-    setPendingBackgroundMusicFileNames(data.backgroundMusicFileNames || []);
-    setHasLogoChanges(false);
-    setHasGalleryChanges(false);
-    setHasVenueChanges(false);
-    setHasFontsChanges(false);
-    onClose();
-  };
-
-  const handleSaveAndClose = async () => {
-    setShowUnsavedDialog(false);
-    handleApplyAll();
+    applyPendingChanges();
     onClose();
   };
 
@@ -229,6 +222,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -238,19 +232,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
 
       const result = await response.json();
       
-      // Update the music URL and file name - auto-save immediately
-      const newMusic = [...(data.backgroundMusic || [])];
-      const newFileNames = [...(data.backgroundMusicFileNames || [])];
+      // Update pending state only - save happens via Apply button
+      const newMusic = [...pendingBackgroundMusic];
+      const newFileNames = [...pendingBackgroundMusicFileNames];
       newMusic[index] = result.url;
       newFileNames[index] = file.name;
-      const updatedData = { ...data, backgroundMusic: newMusic as any, backgroundMusicFileNames: newFileNames as any };
-      onChange("backgroundMusic", newMusic as unknown as string);
-      onChange("backgroundMusicFileNames", newFileNames as unknown as string);
-      // Save to Supabase immediately
-      if (onSave) {
-        await onSave(updatedData);
-      }
-      // Also update local state to keep UI in sync
       setPendingBackgroundMusic(newMusic);
       setPendingBackgroundMusicFileNames(newFileNames);
     } catch (error) {
@@ -299,6 +285,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -341,6 +328,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ path: pathMatch[1] }),
+          credentials: "include",
         }).catch((error) => console.error("Delete font error:", error));
       }
     }
@@ -353,107 +341,68 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
 
   const handleDeleteMusic = async () => {
-    if (isDemoMode) {
-      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
-      onChange("backgroundMusic", [] as unknown as string);
-      onChange("backgroundMusicFileNames", [] as unknown as string);
-      setPendingBackgroundMusic([]);
-      setPendingBackgroundMusicFileNames([]);
+    const idx = musicDeleteIdx;
+    if (idx === null) {
       setShowDeleteDialog(false);
-      if (onSave) {
-        await onSave(updatedData);
-      }
       return;
     }
 
-    // If no music file exists, just clear the dialog and state
-    if (!pendingBackgroundMusic?.[0]) {
-      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
-      onChange("backgroundMusic", [] as unknown as string);
-      onChange("backgroundMusicFileNames", [] as unknown as string);
-      setPendingBackgroundMusic([]);
-      setPendingBackgroundMusicFileNames([]);
-      setShowDeleteDialog(false);
-      if (onSave) {
-        await onSave(updatedData);
-      }
-      return;
-    }
+    const url = pendingBackgroundMusic[idx];
 
-    if (!invitationId) {
-      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
-      onChange("backgroundMusic", [] as unknown as string);
-      onChange("backgroundMusicFileNames", [] as unknown as string);
-      setPendingBackgroundMusic([]);
-      setPendingBackgroundMusicFileNames([]);
-      setShowDeleteDialog(false);
-      if (onSave) {
-        await onSave(updatedData);
-      }
-      return;
-    }
+    // Remove from pending state
+    const newMusic = pendingBackgroundMusic.filter((_, i) => i !== idx);
+    const newFileNames = pendingBackgroundMusicFileNames.filter((_, i) => i !== idx);
+    setPendingBackgroundMusic(newMusic);
+    setPendingBackgroundMusicFileNames(newFileNames);
+    setMusicDeleteIdx(null);
+    setShowDeleteDialog(false);
 
-    // Extract file path from URL
-    const url = pendingBackgroundMusic[0];
-    const pathMatch = url.match(/\/user-uploads\/(.+)$/);
-    if (!pathMatch) {
-      console.error("Could not extract file path from URL");
-      // Still clear the data even if we can't delete from storage
-      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
-      onChange("backgroundMusic", [] as unknown as string);
-      onChange("backgroundMusicFileNames", [] as unknown as string);
-      setPendingBackgroundMusic([]);
-      setPendingBackgroundMusicFileNames([]);
-      setShowDeleteDialog(false);
-      if (onSave) {
-        await onSave(updatedData);
-      }
-      return;
-    }
-
-    const filePath = pathMatch[1];
-
-    try {
-      const response = await fetch("/api/delete-file", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ path: filePath }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Delete failed");
-      }
-
-      // Clear the music data - auto-save immediately
-      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
-      onChange("backgroundMusic", [] as unknown as string);
-      onChange("backgroundMusicFileNames", [] as unknown as string);
-      setPendingBackgroundMusic([]);
-      setPendingBackgroundMusicFileNames([]);
-      setShowDeleteDialog(false);
-      if (onSave) {
-        await onSave(updatedData);
-      }
-    } catch (error) {
-      console.error("Delete error:", error);
-      // Still clear the data even if storage delete failed
-      const updatedData = { ...data, backgroundMusic: [] as any, backgroundMusicFileNames: [] as any };
-      onChange("backgroundMusic", [] as unknown as string);
-      onChange("backgroundMusicFileNames", [] as unknown as string);
-      setPendingBackgroundMusic([]);
-      setPendingBackgroundMusicFileNames([]);
-      setShowDeleteDialog(false);
-      if (onSave) {
-        await onSave(updatedData);
+    // Attempt to delete from storage if it's a user-uploaded file
+    if (!isDemoMode && url && invitationId) {
+      const pathMatch = url.match(/\/user-uploads\/(.+)$/);
+      if (pathMatch) {
+        try {
+          await fetch("/api/delete-file", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ path: pathMatch[1] }),
+            credentials: "include",
+          });
+        } catch (error) {
+          console.error("Delete error:", error);
+        }
       }
     }
   };
 
   return (
     <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+      {/* Drag indicator toast */}
+      {dragToast && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+          style={{ animation: "media-drag-toast-in 0.2s ease-out" }}
+        >
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-black/80 backdrop-blur-sm shadow-lg">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "media-drag-grip 1s ease-in-out infinite" }}>
+              <line x1="8" y1="6" x2="8" y2="6.01" /><line x1="16" y1="6" x2="16" y2="6.01" /><line x1="8" y1="12" x2="8" y2="12.01" /><line x1="16" y1="12" x2="16" y2="12.01" /><line x1="8" y1="18" x2="8" y2="18.01" /><line x1="16" y1="18" x2="16" y2="18.01" />
+            </svg>
+            <span className="text-white text-sm font-medium" style={{ fontFamily: "Inter, sans-serif" }}>{dragToast}</span>
+          </div>
+        </div>
+      )}
+      <style>{`
+        @keyframes media-drag-toast-in {
+          from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes media-drag-grip {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+      `}</style>
       {/* Header - fixed, not scrollable */}
       <div className={`flex items-center gap-3 p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
         <button
@@ -481,16 +430,19 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
         {MEDIA_ITEMS.map((item) => (
           <div
             key={item.id}
-            className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+            onMouseEnter={() => setHoveredItem(item.id)}
+            onMouseLeave={() => setHoveredItem(null)}
+            className={`border rounded-xl overflow-hidden transition-all duration-300`}
             style={{
               backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+              borderColor: hoveredItem === item.id ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
               ...(!collapsedSections.has(item.id) ? {
                 boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
               } : {})
             }}
           >
             <div 
-              className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+              className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
               onClick={() => handleToggle(item.id)}
             >
               <div className="flex-1">
@@ -518,40 +470,126 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                   <label className="block text-base font-bold tracking-wide uppercase text-center" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>DISPLAY LOGO</label>
                   
                   <div className="space-y-3">
-                    {/* Preview */}
-                    {pendingLogo && (
-                      <div className="w-16 h-16 rounded-lg overflow-hidden flex items-center justify-center mx-auto">
-                        {data.heroIconColorTint ? (
-                          <div
-                            className="w-full h-full"
-                            style={{
-                              backgroundColor: accentColor,
-                              opacity: data.heroIconColorTintOpacity ?? 1,
-                              WebkitMaskImage: `url(${pendingLogo})`,
-                              WebkitMaskSize: "contain",
-                              WebkitMaskPosition: "center",
-                              WebkitMaskRepeat: "no-repeat",
-                              maskImage: `url(${pendingLogo})`,
-                              maskSize: "contain",
-                              maskPosition: "center",
-                              maskRepeat: "no-repeat",
+                    {/* Preview with Change/Remove buttons */}
+                    {pendingLogo && !showLogoUrlInput && (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-16 h-16 rounded-lg overflow-hidden flex items-center justify-center">
+                          {data.heroIconColorTint ? (
+                            <div
+                              className="w-full h-full"
+                              style={{
+                                backgroundColor: accentColor,
+                                opacity: data.heroIconColorTintOpacity ?? 1,
+                                WebkitMaskImage: `url(${pendingLogo})`,
+                                WebkitMaskSize: "contain",
+                                WebkitMaskPosition: "center",
+                                WebkitMaskRepeat: "no-repeat",
+                                maskImage: `url(${pendingLogo})`,
+                                maskSize: "contain",
+                                maskPosition: "center",
+                                maskRepeat: "no-repeat",
+                              }}
+                            />
+                          ) : (
+                            <img src={pendingLogo} alt="Logo" className="w-full h-full object-contain" />
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLogoUrlInput(pendingLogo);
+                              setShowLogoUrlInput(true);
                             }}
-                          />
-                        ) : (
-                          <img src={pendingLogo} alt="Logo" className="w-full h-full object-contain" />
-                        )}
+                            className="text-xs px-3 py-1 rounded-lg transition-colors"
+                            style={{ fontFamily: "Inter, sans-serif", color: accentColor, border: `1px solid ${accentColor}` }}
+                          >
+                            Change
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingLogo("");
+                              setShowLogoUrlInput(false);
+                              setLogoUrlInput("");
+                            }}
+                            className="text-xs px-3 py-1 rounded-lg transition-colors text-red-500"
+                            style={{ fontFamily: "Inter, sans-serif", border: "1px solid #ef4444" }}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     )}
                     
-                    {/* URL Input */}
-                    <input
-                      type="text"
-                      value={pendingLogo}
-                      onChange={(e) => setPendingLogo(convertGoogleDriveUrl(e.target.value))}
-                      placeholder="Paste logo URL or Google Drive link..."
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                      style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                    />
+                    {/* Add Logo Button (dashed outline) - shown when no logo and no URL input */}
+                    {!pendingLogo && !showLogoUrlInput && (
+                      <button
+                        type="button"
+                        onClick={() => setShowLogoUrlInput(true)}
+                        className="w-full py-8 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2 transition-colors"
+                        style={{
+                          borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                          color: isDarkMode ? "#6b7280" : "#9ca3af",
+                        }}
+                      >
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Add Logo</span>
+                      </button>
+                    )}
+                    
+                    {/* URL Input with ADD button */}
+                    {showLogoUrlInput && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={logoUrlInput}
+                            onChange={(e) => setLogoUrlInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && logoUrlInput.trim()) {
+                                setPendingLogo(convertGoogleDriveUrl(logoUrlInput.trim()));
+                                setLogoUrlInput("");
+                                setShowLogoUrlInput(false);
+                              }
+                            }}
+                            placeholder="Paste logo URL or Google Drive link..."
+                            autoFocus
+                            className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                            style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (logoUrlInput.trim()) {
+                                setPendingLogo(convertGoogleDriveUrl(logoUrlInput.trim()));
+                                setLogoUrlInput("");
+                                setShowLogoUrlInput(false);
+                              }
+                            }}
+                            className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                            style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                        {pendingLogo && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowLogoUrlInput(false);
+                              setLogoUrlInput("");
+                            }}
+                            className="text-xs w-full text-center"
+                            style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#6b7280" : "#9ca3af" }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -570,27 +608,86 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                       {pendingGallery.map((imgUrl, idx) => (
                         <div
                           key={idx}
+                          data-gallery-idx={idx}
                           className="relative aspect-square rounded-lg overflow-hidden cursor-pointer select-none group"
                           style={{
-                            outline: galleryDeleteIdx === idx ? `2px solid #ef4444` : "none",
-                            outlineOffset: galleryDeleteIdx === idx ? "2px" : "0",
+                            outline: galleryDeleteIdx === idx ? `2px solid #ef4444` : galleryDragIdx === idx ? `2px solid ${accentColor}` : "none",
+                            outlineOffset: galleryDeleteIdx === idx || galleryDragIdx === idx ? "2px" : "0",
+                            boxShadow: galleryDragIdx === idx ? `0 0 12px 4px ${hexToRgba(accentColor, 0.6)}, 0 0 4px 2px ${hexToRgba(accentColor, 0.4)}` : "none",
+                            opacity: galleryDragIdx === idx ? 0.6 : 1,
+                            touchAction: 'pan-y',
+                            WebkitTouchCallout: 'none',
                           }}
-                          onPointerDown={() => {
-                            galleryLongPressTimer.current = setTimeout(() => {
+                          onContextMenu={(e) => e.preventDefault()}
+                          onDragStart={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (galleryDragTriggered.current) {
+                              galleryDragTriggered.current = false;
+                              return;
+                            }
+                            if (galleryDeleteIdx === idx) {
+                              setGalleryDeleteIdx(null);
+                            } else {
                               setGalleryDeleteIdx(idx);
-                            }, 500);
+                            }
+                          }}
+                          onPointerDown={(e) => {
+                            galleryDragStart.current = { x: e.clientX, y: e.clientY };
+                            galleryDragTriggered.current = false;
+                            if (galleryDragTimer.current) clearTimeout(galleryDragTimer.current);
+                            galleryDragTimer.current = setTimeout(() => {
+                              galleryDragTriggered.current = true;
+                              isDraggingImage.current = true;
+                              setGalleryDragIdx(idx);
+                              setGalleryDeleteIdx(null);
+                              setDragToast("Drag to reorder photos");
+                            }, 350);
+                          }}
+                          onPointerMove={(e) => {
+                            if (galleryDragTimer.current && !galleryDragTriggered.current) {
+                              const dx = e.clientX - galleryDragStart.current.x;
+                              const dy = e.clientY - galleryDragStart.current.y;
+                              if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                clearTimeout(galleryDragTimer.current);
+                                galleryDragTimer.current = null;
+                              }
+                            }
+                            if (galleryDragTriggered.current && galleryDragIdx !== null) {
+                              const els = document.elementsFromPoint(e.clientX, e.clientY);
+                              const cell = els.find((el: Element) => el.hasAttribute('data-gallery-idx'));
+                              if (cell) {
+                                const overIdx = parseInt(cell.getAttribute('data-gallery-idx')!, 10);
+                                if (overIdx !== galleryDragIdx) {
+                                  const newGallery = [...pendingGallery];
+                                  const [moved] = newGallery.splice(galleryDragIdx, 1);
+                                  newGallery.splice(overIdx, 0, moved);
+                                  setPendingGallery(newGallery);
+                                  setGalleryDragIdx(overIdx);
+                                }
+                              }
+                            }
                           }}
                           onPointerUp={() => {
-                            if (galleryLongPressTimer.current) {
-                              clearTimeout(galleryLongPressTimer.current);
-                              galleryLongPressTimer.current = null;
+                            if (galleryDragTimer.current) {
+                              clearTimeout(galleryDragTimer.current);
+                              galleryDragTimer.current = null;
                             }
+                            if (galleryDragTriggered.current) {
+                              setGalleryDragIdx(null);
+                              isDraggingImage.current = false;
+                              setDragToast(null);
+                            }
+                            setTimeout(() => { galleryDragTriggered.current = false; }, 100);
                           }}
-                          onPointerLeave={() => {
-                            if (galleryLongPressTimer.current) {
-                              clearTimeout(galleryLongPressTimer.current);
-                              galleryLongPressTimer.current = null;
+                          onPointerCancel={() => {
+                            if (galleryDragTimer.current) {
+                              clearTimeout(galleryDragTimer.current);
+                              galleryDragTimer.current = null;
                             }
+                            setGalleryDragIdx(null);
+                            isDraggingImage.current = false;
+                            setDragToast(null);
+                            setTimeout(() => { galleryDragTriggered.current = false; }, 100);
                           }}
                         >
                           <img
@@ -612,31 +709,28 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           {/* Delete confirmation overlay */}
                           {galleryDeleteIdx === idx && (
                             <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
-                              <p className="text-white text-xs font-medium text-center px-2">Delete this image?</p>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const newImages = pendingGallery.filter((_, i) => i !== idx);
-                                    setPendingGallery(newImages);
-                                    setGalleryDeleteIdx(null);
-                                  }}
-                                  className="px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
-                                >
-                                  Delete
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setGalleryDeleteIdx(null);
-                                  }}
-                                  className="px-3 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newImages = pendingGallery.filter((_, i) => i !== idx);
+                                  setPendingGallery(newImages);
+                                  setGalleryDeleteIdx(null);
+                                }}
+                                className="px-4 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setGalleryDeleteIdx(null);
+                                }}
+                                className="px-4 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
+                              >
+                                Cancel
+                              </button>
                             </div>
                           )}
                         </div>
@@ -726,10 +820,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     </p>
                   )}
 
-                  {/* Long press hint */}
+                  {/* Hint */}
                   {pendingGallery.length > 0 && pendingGallery.length < 25 && (
                     <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                      Hold down an image to delete
+                      Tap to delete · Hold to drag and reorder
                     </p>
                   )}
                 </div>
@@ -749,27 +843,86 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                       {pendingVenue.map((imgUrl, idx) => (
                         <div
                           key={idx}
+                          data-venue-idx={idx}
                           className="relative aspect-square rounded-lg overflow-hidden cursor-pointer select-none group"
                           style={{
-                            outline: venueDeleteIdx === idx ? `2px solid #ef4444` : "none",
-                            outlineOffset: venueDeleteIdx === idx ? "2px" : "0",
+                            outline: venueDeleteIdx === idx ? `2px solid #ef4444` : venueDragIdx === idx ? `2px solid ${accentColor}` : "none",
+                            outlineOffset: venueDeleteIdx === idx || venueDragIdx === idx ? "2px" : "0",
+                            boxShadow: venueDragIdx === idx ? `0 0 12px 4px ${hexToRgba(accentColor, 0.6)}, 0 0 4px 2px ${hexToRgba(accentColor, 0.4)}` : "none",
+                            opacity: venueDragIdx === idx ? 0.6 : 1,
+                            touchAction: 'pan-y',
+                            WebkitTouchCallout: 'none',
                           }}
-                          onPointerDown={() => {
-                            venueLongPressTimer.current = setTimeout(() => {
+                          onContextMenu={(e) => e.preventDefault()}
+                          onDragStart={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (venueDragTriggered.current) {
+                              venueDragTriggered.current = false;
+                              return;
+                            }
+                            if (venueDeleteIdx === idx) {
+                              setVenueDeleteIdx(null);
+                            } else {
                               setVenueDeleteIdx(idx);
-                            }, 500);
+                            }
+                          }}
+                          onPointerDown={(e) => {
+                            venueDragStart.current = { x: e.clientX, y: e.clientY };
+                            venueDragTriggered.current = false;
+                            if (venueDragTimer.current) clearTimeout(venueDragTimer.current);
+                            venueDragTimer.current = setTimeout(() => {
+                              venueDragTriggered.current = true;
+                              isDraggingImage.current = true;
+                              setVenueDragIdx(idx);
+                              setVenueDeleteIdx(null);
+                              setDragToast("Drag to reorder photos");
+                            }, 350);
+                          }}
+                          onPointerMove={(e) => {
+                            if (venueDragTimer.current && !venueDragTriggered.current) {
+                              const dx = e.clientX - venueDragStart.current.x;
+                              const dy = e.clientY - venueDragStart.current.y;
+                              if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                clearTimeout(venueDragTimer.current);
+                                venueDragTimer.current = null;
+                              }
+                            }
+                            if (venueDragTriggered.current && venueDragIdx !== null) {
+                              const els = document.elementsFromPoint(e.clientX, e.clientY);
+                              const cell = els.find((el: Element) => el.hasAttribute('data-venue-idx'));
+                              if (cell) {
+                                const overIdx = parseInt(cell.getAttribute('data-venue-idx')!, 10);
+                                if (overIdx !== venueDragIdx) {
+                                  const newVenue = [...pendingVenue];
+                                  const [moved] = newVenue.splice(venueDragIdx, 1);
+                                  newVenue.splice(overIdx, 0, moved);
+                                  setPendingVenue(newVenue);
+                                  setVenueDragIdx(overIdx);
+                                }
+                              }
+                            }
                           }}
                           onPointerUp={() => {
-                            if (venueLongPressTimer.current) {
-                              clearTimeout(venueLongPressTimer.current);
-                              venueLongPressTimer.current = null;
+                            if (venueDragTimer.current) {
+                              clearTimeout(venueDragTimer.current);
+                              venueDragTimer.current = null;
                             }
+                            if (venueDragTriggered.current) {
+                              setVenueDragIdx(null);
+                              isDraggingImage.current = false;
+                              setDragToast(null);
+                            }
+                            setTimeout(() => { venueDragTriggered.current = false; }, 100);
                           }}
-                          onPointerLeave={() => {
-                            if (venueLongPressTimer.current) {
-                              clearTimeout(venueLongPressTimer.current);
-                              venueLongPressTimer.current = null;
+                          onPointerCancel={() => {
+                            if (venueDragTimer.current) {
+                              clearTimeout(venueDragTimer.current);
+                              venueDragTimer.current = null;
                             }
+                            setVenueDragIdx(null);
+                            isDraggingImage.current = false;
+                            setDragToast(null);
+                            setTimeout(() => { venueDragTriggered.current = false; }, 100);
                           }}
                         >
                           <img
@@ -791,31 +944,28 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           {/* Delete confirmation overlay */}
                           {venueDeleteIdx === idx && (
                             <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
-                              <p className="text-white text-xs font-medium text-center px-2">Delete this image?</p>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const newImages = pendingVenue.filter((_, i) => i !== idx);
-                                    setPendingVenue(newImages);
-                                    setVenueDeleteIdx(null);
-                                  }}
-                                  className="px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
-                                >
-                                  Delete
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setVenueDeleteIdx(null);
-                                  }}
-                                  className="px-3 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newImages = pendingVenue.filter((_, i) => i !== idx);
+                                  setPendingVenue(newImages);
+                                  setVenueDeleteIdx(null);
+                                }}
+                                className="px-4 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVenueDeleteIdx(null);
+                                }}
+                                className="px-4 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
+                              >
+                                Cancel
+                              </button>
                             </div>
                           )}
                         </div>
@@ -905,10 +1055,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     </p>
                   )}
 
-                  {/* Long press hint */}
+                  {/* Hint */}
                   {pendingVenue.length > 0 && pendingVenue.length < 5 && (
                     <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                      Hold down an image to delete
+                      Tap to delete · Hold to drag and reorder
                     </p>
                   )}
                 </div>
@@ -1064,24 +1214,49 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                 <div className="space-y-2">
-                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Background Music</label>
+                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Background Music (up to 3)</label>
                   
-                  {!pendingBackgroundMusic.length ? (
+                  {/* Render existing tracks */}
+                  {pendingBackgroundMusic.map((url, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                        style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                      >
+                        {pendingBackgroundMusicFileNames[idx] || `Track ${idx + 1}`}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMusicDeleteIdx(idx);
+                          setShowDeleteDialog(true);
+                        }}
+                        className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
+                        title="Remove track"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Upload slots for empty positions (up to 3 total) */}
+                  {pendingBackgroundMusic.length < 3 && (
                     <div className="flex gap-2">
-                      {/* Upload button (initial) */}
                       <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                        uploadingIndex === 0
+                        uploadingIndex !== null
                           ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
                           : "border-gray-200 text-gray-600"
                       }`} style={
-                        uploadingIndex !== 0
+                        uploadingIndex === null
                           ? {
                               borderColor: accentColor,
                               backgroundColor: `${accentColor}05`
                             }
                           : undefined
                       }>
-                        {uploadingIndex === 0 ? (
+                        {uploadingIndex === pendingBackgroundMusic.length ? (
                           <>
                             <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
@@ -1095,7 +1270,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                               <polyline points="17,8 12,3 7,8" />
                               <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
-                            <span className="text-sm">Upload music file</span>
+                            <span className="text-sm">Upload music file {pendingBackgroundMusic.length > 0 ? `(${pendingBackgroundMusic.length + 1}/3)` : ""}</span>
                           </>
                         )}
                         <input
@@ -1104,35 +1279,13 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              handleMusicUpload(0, file);
+                              handleMusicUpload(pendingBackgroundMusic.length, file);
                             }
                           }}
                           disabled={uploadingIndex !== null}
                           className="hidden"
                         />
                       </label>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 items-center">
-                      {/* File name display */}
-                      <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                        style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                      >
-                        Music File Added
-                      </div>
-                      
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={() => setShowDeleteDialog(true)}
-                        className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
-                        title="Remove file"
-                      >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
                     </div>
                   )}
                 </div>
@@ -1142,20 +1295,6 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
         ))}
       </div>
 
-      {/* Single Apply button - shown when there are any changes, fixed at bottom */}
-      {hasAnyChanges && (
-        <div className="p-4 border-t shrink-0" style={{ borderColor: isDarkMode ? "#374151" : "#e5e7eb" }}>
-          <button
-            type="button"
-            onClick={handleApplyAll}
-            className="w-full px-4 py-3 text-white rounded-lg text-sm font-medium transition-colors"
-            style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-          >
-            Apply Changes
-          </button>
-        </div>
-      )}
-
       {/* Delete confirmation dialog */}
       {showDeleteDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDeleteDialog(false)}>
@@ -1164,10 +1303,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Delete Music File
+              Delete Music Track
             </h3>
             <p className={`text-sm mb-6 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Are you sure you want to delete this music file? This action cannot be undone.
+              Are you sure you want to delete this music track? This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button
@@ -1189,40 +1328,6 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                 style={{ fontFamily: "Inter, sans-serif" }}
               >
                 Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Unsaved changes dialog */}
-      {showUnsavedDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}>
-            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Unsaved Changes
-            </h3>
-            <p className={`text-sm mb-6 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              You have unsaved changes. Do you want to save them or discard them?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleDiscardChanges}
-                className={`flex-1 px-4 py-2 border rounded-lg text-sm transition-colors ${
-                  isDarkMode 
-                    ? "border-gray-600 text-gray-300 hover:bg-gray-700" 
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Discard
-              </button>
-              <button
-                onClick={handleSaveAndClose}
-                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-                style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-              >
-                Save
               </button>
             </div>
           </div>

@@ -25,11 +25,11 @@ const PRESETS = [
   "#D4AF37", // Warm Gold
 ];
 
-export default function ColorControl({ label, value, onChange, isDarkMode = false, accentColor = "#B88A78", disabled = false, predefinedColors }: ColorControlProps) {
+export default function ColorControl({ label, value, onChange, isDarkMode = false, accentColor = "#6998EE", disabled = false, predefinedColors }: ColorControlProps) {
   const presets = predefinedColors && predefinedColors.length > 0 ? predefinedColors : PRESETS;
   return (
     <div className="space-y-2">
-      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{label}</label>
+      {label && <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{label}</label>}
       <div className="flex items-center gap-2">
         <div className="relative">
           <input

@@ -4,6 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+const hexToRgba = (hex: string, alpha: number): string => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 interface LoginDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,7 +18,7 @@ interface LoginDialogProps {
   accentColor?: string;
 }
 
-export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accentColor = "#b88a78" }: LoginDialogProps) {
+export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accentColor = "#6998EE" }: LoginDialogProps) {
   const [accessCode, setAccessCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,7 +49,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
       localStorage.setItem("invitation", JSON.stringify(invitationToStore));
       localStorage.setItem("appSettings", JSON.stringify({
         isDarkMode: invDarkMode ?? true,
-        accentColor: invAccentColor ?? "#2563EB",
+        accentColor: invAccentColor ?? "#6998EE",
       }));
 
       router.push(`/tools/${data.invitation.slug}`);
@@ -68,13 +75,13 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
       >
         <h2
           className="text-2xl text-center"
-          style={{ fontFamily: "Playfair Display, serif", color: isDarkMode ? "#e5e5e5" : "#5c4a3a" }}
+          style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#e5e5e5" : accentColor }}
         >
           Sign In
         </h2>
         <p
           className="text-sm text-center"
-          style={{ color: "#8a6252", fontFamily: "Cormorant Garamond, serif" }}
+          style={{ color: isDarkMode ? "#9ca3af" : accentColor, fontFamily: "Inter, sans-serif" }}
         >
           Enter your access code to open your invitation.
         </p>
@@ -89,7 +96,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
             autoComplete="off"
             className="w-full px-4 py-3 border rounded-2xl text-center text-lg font-mono tracking-[0.3em] focus:outline-none"
             style={{
-              borderColor: error ? "#f87171" : isDarkMode ? "#374151" : "#e8cfc3",
+              borderColor: error ? "#f87171" : isDarkMode ? "#374151" : hexToRgba(accentColor, 0.3),
               backgroundColor: isDarkMode ? "#374151" : "white",
               color: isDarkMode ? "#e5e5e5" : "#5c4a3a",
             }}
@@ -100,7 +107,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
             type="submit"
             disabled={loading || !accessCode.trim()}
             className="w-full py-3 rounded-2xl text-white font-medium tracking-wide transition-all active:scale-95 disabled:opacity-50"
-            style={{ backgroundColor: accentColor, fontFamily: "Cormorant Garamond, serif", fontSize: "1.1rem" }}
+            style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif", fontSize: "1.1rem" }}
           >
             {loading ? "Verifying…" : "Login"}
           </button>
@@ -108,10 +115,10 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
 
         <div className="relative my-4">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t" style={{ borderColor: isDarkMode ? "#374151" : "#e8cfc3" }} />
+            <div className="w-full border-t" style={{ borderColor: isDarkMode ? "#374151" : hexToRgba(accentColor, 0.3) }} />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="px-2" style={{ backgroundColor: isDarkMode ? "#1f2937" : "#fff8f3", color: "#8a6252" }}>
+            <span className="px-2" style={{ backgroundColor: isDarkMode ? "#1f2937" : "#fff8f3", color: isDarkMode ? "#9ca3af" : accentColor, fontFamily: "Inter, sans-serif" }}>
               OR
             </span>
           </div>
@@ -122,9 +129,9 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
           onClick={onClose}
           className="block w-full py-3 rounded-2xl text-center font-medium tracking-wide transition-all active:scale-95 border-2"
           style={{
-            borderColor: isDarkMode ? "#e5e5e5" : "#5c4a3a",
-            color: isDarkMode ? "#e5e5e5" : "#5c4a3a",
-            fontFamily: "Cormorant Garamond, serif",
+            borderColor: isDarkMode ? "#e5e5e5" : accentColor,
+            color: isDarkMode ? "#e5e5e5" : accentColor,
+            fontFamily: "Inter, sans-serif",
             fontSize: "1.1rem",
           }}
         >

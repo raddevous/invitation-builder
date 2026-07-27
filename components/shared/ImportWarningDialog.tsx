@@ -13,7 +13,7 @@ export default function ImportWarningDialog({
   isOpen,
   lastBackupDate,
   isDarkMode = false,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
   onConfirm,
   onCancel,
 }: ImportWarningDialogProps) {

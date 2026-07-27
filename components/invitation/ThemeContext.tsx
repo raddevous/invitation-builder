@@ -9,13 +9,13 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType>({
   isDarkMode: true,
-  accentColor: "#2563EB",
+  accentColor: "#6998EE",
 });
 
 export function ThemeProvider({ 
   children, 
   isDarkMode = true, 
-  accentColor = "#2563EB" 
+  accentColor = "#6998EE" 
 }: { 
   children: ReactNode; 
   isDarkMode?: boolean; 

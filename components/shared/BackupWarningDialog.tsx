@@ -13,7 +13,7 @@ export default function BackupWarningDialog({
   isOpen,
   lastBackupDate,
   isDarkMode = false,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
   onConfirm,
   onCancel,
 }: BackupWarningDialogProps) {

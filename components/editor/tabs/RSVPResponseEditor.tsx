@@ -30,7 +30,7 @@ type RSVPResponse = {
   submitted_at: string;
 };
 
-export default function RSVPResponseEditor({ data, invitationId, onChange, isDarkMode = false, accentColor = "#B88A78", onClose }: RSVPResponseEditorProps) {
+export default function RSVPResponseEditor({ data, invitationId, onChange, isDarkMode = false, accentColor = "#6998EE", onClose }: RSVPResponseEditorProps) {
   const [filter, setFilter] = useState<ResponseFilter>("all");
   const [responses, setResponses] = useState<RSVPResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,7 +269,7 @@ export default function RSVPResponseEditor({ data, invitationId, onChange, isDar
         {/* Search Box */}
         <input
           type="text"
-          placeholder="Search guests..."
+          placeholder="Search or add guests..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className={`w-full px-4 py-2 rounded-lg text-sm focus:outline-none transition-colors ${

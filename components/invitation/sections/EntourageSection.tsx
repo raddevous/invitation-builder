@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { InvitationData } from '@/lib/types/invitation';
 import FontControl from '@/components/shared/FontControl';
 import HybridFontControl from '@/components/shared/HybridFontControl';
 import ColorControl from '@/components/shared/ColorControl';
+import PhotoGalleryPicker from '@/components/shared/PhotoGalleryPicker';
 import Divider from './Divider';
 import DividerSettingsPanel from '@/components/shared/DividerSettingsPanel';
 import { usePredefinedOptions } from '@/lib/hooks/usePredefinedOptions';
@@ -13,15 +15,15 @@ interface EntourageSectionProps {
   data: InvitationData;
   editMode?: boolean;
   onChange?: (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => void;
-  printResizeScale?: number;
   desktopMode?: boolean;
   panelPosition?: "left" | "right";
   onPanelOpen?: () => void;
   onPanelClose?: () => void;
+  onPrePrintPanelChange?: (open: boolean) => void;
   localVisibleSections?: Record<string, boolean>;
 }
 
-const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = false, onChange = () => {}, printResizeScale = 100, desktopMode = false, panelPosition = "left", onPanelOpen = () => {}, onPanelClose = () => {}, localVisibleSections }) => {
+const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = false, onChange = () => {}, desktopMode = false, panelPosition = "left", onPanelOpen = () => {}, onPanelClose = () => {}, onPrePrintPanelChange = () => {}, localVisibleSections }) => {
   const { isDarkMode, accentColor } = useTheme();
   const entourage = data.entourage || {};
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -39,11 +41,25 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
   
   // Additional pre-print options
   const [removeShadows, setRemoveShadows] = useState(false);
-  const [removePageNumber, setRemovePageNumber] = useState(false);
+  const [removePagination, setRemovePagination] = useState(false);
   const [tempTextResize, setTempTextResize] = useState(100); // 20 to 200
-  const [tempBackgroundZoom, setTempBackgroundZoom] = useState(100); // 50 to 150
-  const [tempBackgroundYPosition, setTempBackgroundYPosition] = useState(100); // -50 to 150
-  
+  const [tempBackgroundZoom, setTempBackgroundZoom] = useState(100); // 50 to 200
+  const [tempBackgroundYPosition, setTempBackgroundYPosition] = useState(0); // -50 to 50
+  const [tempBackgroundXPosition, setTempBackgroundXPosition] = useState(0); // -50 to 50
+  const [tempRemoveBackground, setTempRemoveBackground] = useState(false);
+  const [tempBackgroundImage, setTempBackgroundImage] = useState<string | null>(null);
+  const [tempBackgroundOpacity, setTempBackgroundOpacity] = useState(1);
+  const [showTempBackgroundPicker, setShowTempBackgroundPicker] = useState(false);
+  const [isTempBackgroundPickerClosing, setIsTempBackgroundPickerClosing] = useState(false);
+  const [tempColorOverlayEnabled, setTempColorOverlayEnabled] = useState(false);
+  const [tempOverlayType, setTempOverlayType] = useState<"solid" | "gradient">("solid");
+  const [tempOverlayColor1, setTempOverlayColor1] = useState<string | null>(null);
+  const [tempOverlayColor2, setTempOverlayColor2] = useState<string | null>(null);
+  const [tempOverlayOpacity1, setTempOverlayOpacity1] = useState(0.7);
+  const [tempOverlayOpacity2, setTempOverlayOpacity2] = useState(0.7);
+  const [tempTextColor, setTempTextColor] = useState<string | null>(null);
+  const prePrintToastRef = useRef<HTMLDivElement | null>(null);
+
   // Live preview state
   const [originalStyles, setOriginalStyles] = useState<any>(null);
   const [isLivePreviewActive, setIsLivePreviewActive] = useState(false);
@@ -72,7 +88,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     if (originalStyles && isLivePreviewActive) {
       applyLivePreview();
     }
-  }, [removeRoundCorners, removeShadows, removePageNumber, tempTextResize, tempBackgroundZoom, tempBackgroundYPosition, originalStyles, isLivePreviewActive]);
+  }, [removeRoundCorners, removeShadows, removePagination, tempTextResize, originalStyles, isLivePreviewActive]);
 
   // Start live preview when panel opens and styles are stored
   useEffect(() => {
@@ -178,6 +194,44 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       setShowDividerSettingsPanel(false);
       setIsDividerSettingsClosing(false);
     }, 300);
+  };
+
+  // Pre-print toast and temporary background helpers
+  const showPrePrintToast = () => {
+    if (prePrintToastRef.current) return;
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg z-[60] text-sm ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`;
+    toast.textContent = 'Close Pre-print Settings first';
+    toast.style.fontFamily = 'Inter, sans-serif';
+    document.body.appendChild(toast);
+    prePrintToastRef.current = toast;
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => {
+        toast.remove();
+        if (prePrintToastRef.current === toast) prePrintToastRef.current = null;
+      }, 300);
+    }, 2000);
+  };
+
+  const handleOpenTempBackgroundPicker = () => {
+    setIsTempBackgroundPickerClosing(false);
+    setShowTempBackgroundPicker(true);
+  };
+
+  const handleCloseTempBackgroundPicker = () => {
+    setIsTempBackgroundPickerClosing(true);
+    setTimeout(() => {
+      setShowTempBackgroundPicker(false);
+      setIsTempBackgroundPickerClosing(false);
+    }, 300);
+  };
+
+  const resolveGalleryUrl = (url: string) => {
+    if (!url) return "";
+    if (url.startsWith("http") || url.startsWith("/")) return url;
+    return `/stock/gallery/${url}`;
   };
 
   // Calculate if there are 2 pages
@@ -419,50 +473,104 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
         setCurrentPage((prev) => (prev % totalPages) + 1);
       }
     };
+
+    // Responsive scale: clamp between 0.33 and 1, based on viewport width vs 8in (768px)
+    // Using transform: scale() instead of CSS zoom for cross-browser support (iOS Safari < 17 doesn't support zoom)
     
     return (
     <div
+      className="entourage-paper-wrapper mx-auto relative"
+      style={{
+        width: "100%",
+        maxWidth: "8in",
+        height: rearrangeMode ? "auto" : `calc(${calculatedHeight}in * var(--entourage-scale, 1))`,
+        ['--entourage-scale' as string]: `clamp(0.33, calc((100vw - var(--entourage-padding, 64px)) / 768px), 1)`,
+      }}
+    >
+    <div
       id="entourage-paper-container"
-      className={`rounded-lg p-8 relative mx-auto overflow-hidden flex flex-col [zoom:0.6] md:[zoom:1] ${rearrangeMode ? 'justify-start' : 'justify-center'}`}
+      className={`rounded-lg p-8 relative mx-auto overflow-hidden flex flex-col ${rearrangeMode ? 'justify-start' : 'justify-center'}`}
       style={{
         cursor: editMode && !rearrangeMode && isPage1 ? "pointer" : (!editMode && totalPages > 1 ? "pointer" : undefined),
+        width: "8in",
         maxWidth: "8in",
         height: rearrangeMode ? "auto" : `${calculatedHeight}in`,
-        minHeight: rearrangeMode ? undefined : undefined,
+        transform: `scale(var(--entourage-scale, 1))`,
+        transformOrigin: "top left",
         boxShadow: "0 10px 16px -3px rgba(0, 0, 0, 0.06), 0 6px 10px -3px rgba(0, 0, 0, 0.04), 0 25px 30px -6px rgba(0, 0, 0, 0.06), 0 10px 12px -4px rgba(0, 0, 0, 0.04), -10px 0 16px -3px rgba(0, 0, 0, 0.06), 10px 0 16px -3px rgba(0, 0, 0, 0.06), -6px 0 10px -3px rgba(0, 0, 0, 0.04), 6px 0 10px -3px rgba(0, 0, 0, 0.04), -10px -10px 16px -3px rgba(0, 0, 0, 0.06), 10px -10px 16px -3px rgba(0, 0, 0, 0.06)",
-        ...(mergedEntourage.paperBackground && mergedEntourage.paperBackground !== "none" ? {
-          backgroundImage: mergedEntourage.paperBackground === "custom"
-            ? `url(${mergedEntourage.paperBackgroundCustom || ""})`
-            : `url(/assets/texturebg${mergedEntourage.paperBackground.replace('texture', '')}.jpg)`,
-          backgroundSize: rearrangeMode ? 'cover' : (desktopMode ? `${mergedEntourage.paperBackgroundZoom || 100}%` : 'cover'),
-          backgroundPosition: rearrangeMode ? 'center' : (desktopMode ? `center ${mergedEntourage.paperBackgroundYPosition || 0}%` : 'center'),
+        ...(!tempRemoveBackground ? {
+          backgroundImage: mergedEntourage.paperBackground && mergedEntourage.paperBackground !== "none"
+            ? (mergedEntourage.paperBackground === "custom"
+                ? `url(${mergedEntourage.paperBackgroundCustom || ""})`
+                : `url(/assets/texturebg${mergedEntourage.paperBackground.replace('texture', '')}.jpg)`)
+            : undefined,
+          backgroundSize: `${mergedEntourage.paperBackgroundZoom || 100}% auto`,
+          backgroundPosition: `50% ${mergedEntourage.paperBackgroundYPosition || 0}%`,
           backgroundRepeat: "no-repeat"
         } : {})
       }}
       onClick={handleClick}
     >
-      {/* Paper color overlay */}
+      {tempTextColor && (
+        <style>{`
+          #entourage-paper-container,
+          #entourage-paper-container * {
+            color: ${tempTextColor} !important;
+          }
+        `}</style>
+      )}
+      {/* Paper color layer */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
+          zIndex: 10,
           backgroundColor: mergedEntourage.paperColor ? (
-            (mergedEntourage.paperOpacity ?? 100) === 100 
-              ? mergedEntourage.paperColor 
+            (mergedEntourage.paperOpacity ?? 100) === 100
+              ? mergedEntourage.paperColor
               : `${mergedEntourage.paperColor}${Math.round((mergedEntourage.paperOpacity ?? 100) / 100 * 255).toString(16).padStart(2, '0')}`
           ) : "#ffffff",
           mixBlendMode: mergedEntourage.paperBlendMode || "hue"
         }}
       />
-      {/* Printer icon - only show in non-builder mode */}
-      {!editMode && !rearrangeMode && (
+
+      {/* Temporary background overlay */}
+      {tempColorOverlayEnabled && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            zIndex: 20,
+            backgroundImage: tempBackgroundImage ? `url(${resolveGalleryUrl(tempBackgroundImage)})` : 'none',
+            backgroundSize: `${tempBackgroundZoom}% auto`,
+            backgroundPosition: `${50 + tempBackgroundXPosition}% ${50 + tempBackgroundYPosition}%`,
+            backgroundRepeat: 'no-repeat',
+            opacity: tempBackgroundOpacity
+          }}
+        />
+      )}
+
+      {/* Overlay Type layer */}
+      {tempColorOverlayEnabled && tempOverlayColor1 && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            zIndex: 30,
+            ...(tempOverlayType === "gradient" && tempOverlayColor2
+              ? { background: `linear-gradient(135deg, ${hexToRgba(tempOverlayColor1, tempOverlayOpacity1)}, ${hexToRgba(tempOverlayColor2, tempOverlayOpacity2)})` }
+              : { backgroundColor: hexToRgba(tempOverlayColor1, tempOverlayOpacity1) }),
+            mixBlendMode: 'normal'
+          }}
+        />
+      )}
+      {/* Printer icon - only show in guest mode (upper-right); hidden in build mode or when pre-print settings are open */}
+      {!rearrangeMode && !showPrintSettings && !isPrintSettingsClosing && (
         <button
           onClick={(e) => {
             e.stopPropagation();
-            // Show print settings after a short delay
-            setTimeout(() => setShowPrintSettings(true), 300);
+            setShowPrintSettings(true);
           }}
-          className="absolute top-4 right-4 p-2 rounded-lg bg-white/80 hover:bg-white/90 dark:bg-gray-800/80 hover:dark:bg-gray-800/90 transition-colors shadow-md print:hidden"
-          style={{ zIndex: 10 }}
+          id="entourage-print-trigger"
+          className={`absolute top-4 p-2 rounded-lg bg-white/80 hover:bg-white/90 dark:bg-gray-800/80 hover:dark:bg-gray-800/90 transition-colors shadow-md print:hidden ${editMode ? 'hidden' : 'right-4'}`}
+          style={{ zIndex: 60 }}
           title="Print Entourage"
         >
           <svg className="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -473,7 +581,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       
       {/* Reset/Cancel/Save buttons in rearrange mode */}
       {rearrangeMode && isPage1 && (
-        <div className="absolute top-4 right-4 flex gap-2 z-10">
+        <div className="absolute top-4 right-4 flex gap-2 z-50">
           {/* Reset List Button - always show in rearrange mode */}
           <button
             onClick={() => {
@@ -699,22 +807,23 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
         </div>
       )}
 
-      <div 
+      <div
         id="entourage-content-wrapper"
-        style={{ 
-          transform: `scale(${printResizeScale / 100}) scale(${tempTextResize / 100})`, 
-          transformOrigin: "center center" 
+        className="relative z-40"
+        style={{
+          transform: `scale(${tempTextResize / 100})`,
+          transformOrigin: "center center"
         }}
       >
         {children}
         {/* Page number at bottom - only show if there are 2 pages and not in rearrange mode */}
         {totalPages > 1 && !rearrangeMode && (
-          <div 
-            className={`absolute -bottom-15 left-0 right-0 flex items-center justify-center ${removePageNumber ? 'hidden' : ''}`}
-            style={{ display: removePageNumber ? 'none' : 'flex' }}
+          <div
+            className={`absolute -bottom-15 left-0 right-0 flex items-center justify-center entourage-pagination ${removePagination ? 'hidden' : ''}`}
+            style={{ display: removePagination ? 'none' : 'flex' }}
           >
             <span 
-              className="text-[10px] text-gray-400 font-sans" 
+              className="text-sm text-gray-400 font-sans" 
               style={{ 
                 fontFamily: "Inter, sans-serif"
               }}
@@ -724,6 +833,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
           </div>
         )}
       </div>
+    </div>
     </div>
     );
   };
@@ -1111,8 +1221,6 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       container: {
         borderRadius: paperContainer.style.borderRadius || '',
         boxShadow: paperContainer.style.boxShadow || '',
-        backgroundSize: paperContainer.style.backgroundSize || '',
-        backgroundPosition: paperContainer.style.backgroundPosition || '',
       },
       textElements: [],
       shadowElements: [],
@@ -1130,8 +1238,8 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       });
     });
     
-    // Store original page elements visibility
-    const pageElements = paperContainer.querySelectorAll('[class*="page"], [id*="page"]');
+    // Store original pagination elements visibility
+    const pageElements = paperContainer.querySelectorAll('.entourage-pagination');
     pageElements.forEach((el: any) => {
       styles.pageElements.push({
         element: el,
@@ -1175,28 +1283,18 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     if (contentWrapper) {
       if (tempTextResize !== 100) {
         const scaleFactor = tempTextResize / 100;
-        contentWrapper.style.transform = `scale(${printResizeScale / 100}) scale(${scaleFactor})`;
+        contentWrapper.style.transform = `scale(${scaleFactor})`;
         contentWrapper.style.transformOrigin = 'center center';
       } else {
-        contentWrapper.style.transform = `scale(${printResizeScale / 100})`;
+        contentWrapper.style.transform = 'scale(1)';
         contentWrapper.style.transformOrigin = 'top center';
       }
     }
     
-    // Apply background zoom and position
-    const bgZoom = tempBackgroundZoom / 100;
-    const bgYPos = (tempBackgroundYPosition - 100) / 100;
+    // Background size/position are now controlled by React render
     
-    if (bgZoom !== 1 || bgYPos !== 0) {
-      paperContainer.style.backgroundSize = `${bgZoom * 100}% auto`;
-      paperContainer.style.backgroundPosition = `center ${50 + bgYPos * 50}%`;
-    } else {
-      paperContainer.style.backgroundSize = originalStyles.container.backgroundSize;
-      paperContainer.style.backgroundPosition = originalStyles.container.backgroundPosition;
-    }
-    
-    // Apply page number removal
-    if (removePageNumber) {
+    // Apply pagination removal (page number and next/previous arrows)
+    if (removePagination) {
       originalStyles.pageElements.forEach((item: any) => {
         item.element.style.display = 'none';
       });
@@ -1216,13 +1314,11 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     // Revert container styles
     paperContainer.style.borderRadius = originalStyles.container.borderRadius;
     paperContainer.style.boxShadow = originalStyles.container.boxShadow;
-    paperContainer.style.backgroundSize = originalStyles.container.backgroundSize;
-    paperContainer.style.backgroundPosition = originalStyles.container.backgroundPosition;
     
     // Revert content wrapper transform
     const contentWrapper = document.getElementById('entourage-content-wrapper');
     if (contentWrapper) {
-      contentWrapper.style.transform = `scale(${printResizeScale / 100})`;
+      contentWrapper.style.transform = 'scale(1)';
       contentWrapper.style.transformOrigin = 'top center';
     }
     
@@ -1233,7 +1329,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       item.element.style.textShadow = item.textShadow;
     });
     
-    // Revert page elements
+    // Revert pagination elements
     originalStyles.pageElements.forEach((item: any) => {
       item.element.style.display = item.display;
     });
@@ -1250,6 +1346,10 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     }, 300);
   };
 
+  useEffect(() => {
+    onPrePrintPanelChange(showPrintSettings || isPrintSettingsClosing);
+  }, [showPrintSettings, isPrintSettingsClosing, onPrePrintPanelChange]);
+
   const handleCancelPrint = () => {
     // Revert live preview changes
     revertLivePreview();
@@ -1257,10 +1357,21 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     // Revert all temporary changes
     setRemoveRoundCorners(false);
     setRemoveShadows(false);
-    setRemovePageNumber(false);
+    setRemovePagination(false);
     setTempTextResize(100);
     setTempBackgroundZoom(100);
-    setTempBackgroundYPosition(100);
+    setTempBackgroundYPosition(0);
+    setTempBackgroundXPosition(0);
+    setTempRemoveBackground(false);
+    setTempBackgroundImage(null);
+    setTempBackgroundOpacity(1);
+    setTempColorOverlayEnabled(false);
+    setTempOverlayType("solid");
+    setTempOverlayColor1(null);
+    setTempOverlayColor2(null);
+    setTempOverlayOpacity1(0.7);
+    setTempOverlayOpacity2(0.7);
+    setTempTextColor(null);
     
     // Clear original styles
     setOriginalStyles(null);
@@ -1306,20 +1417,9 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       });
     }
     
-    // Apply background zoom and position
-    const bgZoom = tempBackgroundZoom / 100;
-    const bgYPos = (tempBackgroundYPosition - 100) / 100;
-    let bgPosition = 'center';
-    let bgSize = 'cover';
-    
-    if (bgZoom !== 1 || bgYPos !== 0) {
-      bgSize = `${bgZoom * 100}% auto`;
-      bgPosition = `center ${50 + bgYPos * 50}%`;
-    }
-    
-    // Remove page numbers if enabled
-    if (removePageNumber) {
-      const pageElements = clonedContainer.querySelectorAll('[class*="page"], [id*="page"]');
+    // Remove pagination (page number and next/previous arrows) if enabled
+    if (removePagination) {
+      const pageElements = clonedContainer.querySelectorAll('.entourage-pagination');
       pageElements.forEach(el => {
         (el as HTMLElement).style.display = 'none';
       });
@@ -1338,8 +1438,8 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       border-radius: ${removeRoundCorners ? '0px' : computedStyles.borderRadius};
       background: ${computedStyles.background};
       background-image: ${computedStyles.backgroundImage};
-      background-size: ${bgSize};
-      background-position: ${bgPosition};
+      background-size: ${computedStyles.backgroundSize};
+      background-position: ${computedStyles.backgroundPosition};
       background-repeat: no-repeat;
       box-shadow: ${removeShadows ? 'none' : computedStyles.boxShadow};
       overflow: visible;
@@ -1426,14 +1526,27 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     // Revert all temporary changes after printing
     setRemoveRoundCorners(false);
     setRemoveShadows(false);
-    setRemovePageNumber(false);
+    setRemovePagination(false);
     setTempTextResize(100);
     setTempBackgroundZoom(100);
-    setTempBackgroundYPosition(100);
+    setTempBackgroundYPosition(0);
+    setTempBackgroundXPosition(0);
+    setTempRemoveBackground(false);
+    setTempBackgroundImage(null);
+    setTempBackgroundOpacity(1);
+    setTempColorOverlayEnabled(false);
+    setTempOverlayType("solid");
+    setTempOverlayColor1(null);
+    setTempOverlayColor2(null);
+    setTempOverlayOpacity1(0.7);
+    setTempOverlayOpacity2(0.7);
+    setTempTextColor(null);
     
-    // Clear original styles and revert live preview
-    setOriginalStyles(null);
+    // Revert live preview before clearing original styles
     revertLivePreview();
+    
+    // Clear original styles
+    setOriginalStyles(null);
     
     handleClosePrintSettings();
   };
@@ -1443,7 +1556,18 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
   const effectiveVerticalFlip = entourageUseDefaultDivider ? (data.universalDividerVerticalFlip ?? false) : (data.entourageDividerVerticalFlip ?? false);
 
   return (
-    <section className="pt-0 pb-8 px-8 text-center relative min-h-[200px]" style={{
+    <>
+    <style>{`
+      .entourage-paper-wrapper {
+        --entourage-padding: 64px;
+      }
+      @media (max-width: 682px) {
+        .entourage-paper-wrapper {
+          --entourage-padding: 32px;
+        }
+      }
+    `}</style>
+    <section className="pt-0 pb-8 px-8 max-[682px]:px-4 relative min-h-[200px]" style={{
       backgroundColor: mergedData.entourageUseMainColor !== false
         ? (data.mainColor1 || "transparent")
         : mergedData.entourageBackgroundType === "gradient"
@@ -1453,15 +1577,14 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
             : mergedData.entourageBackgroundType === "video"
               ? undefined
               : (mergedData.entourageBackgroundColor || "transparent"),
-      background: mergedData.entourageUseMainColor !== false
-        ? (data.mainColor1 || "transparent")
+      backgroundImage: mergedData.entourageUseMainColor !== false
+        ? undefined
         : mergedData.entourageBackgroundType === "gradient" && mergedData.entourageGradient
           ? `linear-gradient(135deg, ${mergedData.entourageGradient.firstColor || "#ffffff"}, ${mergedData.entourageGradient.secondColor || "#ffffff"})`
           : undefined,
       ...(mergedData.entourageBackgroundType === "image" && mergedData.entourageImage?.urls && mergedData.entourageImage.urls.length > 0 ? {
         backgroundImage: `url(${mergedData.entourageImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
         backgroundPosition: 'center center',
-        backgroundAttachment: 'fixed',
         backgroundRepeat: 'no-repeat',
         backgroundSize: 'cover'
       } : {}),
@@ -1470,11 +1593,18 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
     
     {/* Gradient Overlay - positioned behind content */}
     {(mergedData.entourageBackgroundType === "image" || mergedData.entourageBackgroundType === "video") && mergedData.entourageGradient && (
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background: `linear-gradient(135deg, ${hexToRgba(mergedData.entourageGradient.firstColor || "#ffffff", (mergedData.entourageGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.entourageGradient.secondColor || "#ffffff", (mergedData.entourageGradient.secondOpacity || 50) / 100)})`,
-        opacity: 1,
-        zIndex: 1
-      }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.entourageGradient.firstColor || "#ffffff", (mergedData.entourageGradient.firstOpacity !== undefined ? mergedData.entourageGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.entourageGradient.secondColor || "#ffffff", (mergedData.entourageGradient.secondOpacity !== undefined ? mergedData.entourageGradient.secondOpacity : 50) / 100)})`,
+          opacity: 1,
+          zIndex: 1
+        }} />
+      </div>
     )}
 
     {/* Background Video */}
@@ -1505,17 +1635,26 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={entourageUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.entourageDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={entourageUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.entourageDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={entourageUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.entourageDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={entourageUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.entourageDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={entourageUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.entourageDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(entourageUseDefaultDivider ? data.universalDivider : data.entourageDivider) === "divider-1" ? predefinedDividerImagesCentered : (entourageUseDefaultDivider ? data.universalDivider : data.entourageDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = entourageUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.entourageDivider || "divider-1");
           if (entourageUseDefaultDivider) {
             onChange?.("entourageDividerUseDefault", false);
+            onChange?.("entourageDivider", currentType);
           }
-          onChange?.("entourageDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("entourageDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("entourageDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("entourageDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -1565,12 +1704,11 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
         />
       )}
       
-      {/* Heading area - clickable to open typography panel */}
-      <div className="mb-6">
+      <div className="max-w-2xl mx-auto max-[682px]:max-w-none">
         {/* Top text - outside paper container */}
         <p
           id="entourage-top-text"
-          className="text-center mb-1 md:mb-6 uppercase scale-[0.7] lg:scale-100"
+          className="text-center mb-1 md:mb-4 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
           style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.headingFont : (mergedData.entourageHeadingTypography || data.headingFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${(mergedData.entourageBottomTextFontSize || 100) / 100}rem` }}
         >
           <span
@@ -1583,7 +1721,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
 
         {/* Header - outside paper container */}
         <h2
-          className="text-xl mb-1 md:mb-6 lg:mb-6 text-center font-bold uppercase whitespace-nowrap scale-[0.55] lg:scale-100"
+          className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
           style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.headingFont : (mergedData.entourageHeadingTypography || data.headingFont), color: mergedData.entourageUseMainColor !== false ? data.mainColor2 : (mergedData.entourageHeadingColor || data.mainColor2), fontSize: `${(mergedData.entourageHeadingFontSize || 100) * 3}%`, lineHeight: '1.2' }}
         >
           <span
@@ -1596,8 +1734,8 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
 
         {/* Bottom text - outside paper container */}
         <p
-          className="text-center text-sm mb-2 md:mb-6 scale-[0.7] lg:scale-100"
-          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.bodyFont : (mergedData.entourageBottomTextTypography || data.bodyFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${(mergedData.entourageBottomTextFontSize || 100) / 100 * 0.85}rem` }}
+          className="text-center mb-6 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.bodyFont : (mergedData.entourageBottomTextTypography || data.bodyFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${(mergedData.entourageBottomTextFontSize || 100) / 100}rem` }}
         >
           <span
             className={editMode && !rearrangeMode ? "cursor-pointer" : ""}
@@ -2408,7 +2546,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
                 {editMode && hasPage2 && currentPage === 1 && (
                   <button
                     onClick={() => setCurrentPage(2)}
-                    className="absolute right-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
+                    className="entourage-pagination absolute right-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
                     title="Next page"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
@@ -2740,7 +2878,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
             {editMode && (
               <button
                 onClick={() => setCurrentPage(1)}
-                className="absolute left-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
+                className="entourage-pagination absolute left-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
                 title="Previous page"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
@@ -2753,7 +2891,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
             {editMode && hasPage3 && (
               <button
                 onClick={() => setCurrentPage(3)}
-                className="absolute right-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
+                className="entourage-pagination absolute right-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
                 title="Next page"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
@@ -3070,7 +3208,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
             {editMode && (
               <button
                 onClick={() => setCurrentPage(2)}
-                className="absolute left-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
+                className="entourage-pagination absolute left-[-20px] top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
                 title="Previous page"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
@@ -4029,20 +4167,22 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
         </>
       )}
 
-      {/* Print Settings Panel - only show in non-builder mode */}
-      {!editMode && showPrintSettings && (
+      {/* Print Settings Panel */}
+      {showPrintSettings && (
         <>
           {/* Backdrop */}
-          {!isPrintSettingsClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={handleClosePrintSettings} onWheel={handleClosePrintSettings} />}
+          {!isPrintSettingsClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={showPrePrintToast} onWheel={showPrePrintToast} />}
 
           {/* Sheet */}
           <div
-            className={`fixed z-50 shadow-2xl flex flex-col backdrop-blur-xl bg-white dark:bg-gray-900 border border-white/20 dark:border-gray-700/20 ${
+            className={`fixed z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"} border ${isDarkMode ? "border-gray-700" : "border-gray-200"} ${
               desktopMode 
                 ? `top-0 bottom-0 ${panelPosition === "left" ? "left-0 border-r" : "right-0 border-l"} ${isPrintSettingsClosing ? (panelPosition === "left" ? "animate-slide-out-side" : "animate-slide-out-side-right") : (panelPosition === "left" ? "animate-slide-in-side" : "animate-slide-in-side-right")}`
                 : `bottom-0 left-0 right-0 rounded-t-3xl ${isPrintSettingsClosing ? "animate-slide-down" : "animate-slide-up"}`
             }`}
             style={desktopMode ? { width: "400px" } : { maxWidth: 480, margin: "0 auto", maxHeight: "50vh" }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
           >
             {/* Handle bar - only show in mobile mode */}
             {!desktopMode && (
@@ -4063,6 +4203,26 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6">
+              <p className={`text-xs text-center ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                ADJUST TO FIT ON YOUR PRINT. ADJUSTMENTS ARE TEMPORARY AND WILL REVERT ONCE PANEL IS CLOSED.
+              </p>
+
+              {/* Temporary Remove Background Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Temporary Remove Background
+                </label>
+                <button
+                  onClick={() => setTempRemoveBackground(!tempRemoveBackground)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ tempRemoveBackground ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: tempRemoveBackground ? accentColor : undefined }}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ tempRemoveBackground ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
               {/* Remove Round Corners Toggle */}
               <div className="flex items-center justify-between">
                 <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
@@ -4070,7 +4230,8 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
                 </label>
                 <button
                   onClick={() => setRemoveRoundCorners(!removeRoundCorners)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeRoundCorners ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeRoundCorners ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removeRoundCorners ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeRoundCorners ? "translate-x-6" : "translate-x-1" }`}
@@ -4086,7 +4247,8 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
                 </label>
                 <button
                   onClick={() => setRemoveShadows(!removeShadows)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeShadows ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeShadows ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removeShadows ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeShadows ? "translate-x-6" : "translate-x-1" }`}
@@ -4095,20 +4257,21 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
               </div>
 
 
-              {/* Remove Page Number Toggle */}
+              {/* Remove Pagination Toggle */}
               <div className="flex items-center justify-between">
                 <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  Remove Page Number
+                  Remove Pagination Arrow & Number
                 </label>
                 <button
                   onClick={() => {
-                  console.log('Toggle removePageNumber from', removePageNumber, 'to', !removePageNumber);
-                  setRemovePageNumber(!removePageNumber);
+                  console.log('Toggle removePagination from', removePagination, 'to', !removePagination);
+                  setRemovePagination(!removePagination);
                 }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removePageNumber ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removePagination ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removePagination ? accentColor : undefined }}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removePageNumber ? "translate-x-6" : "translate-x-1" }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removePagination ? "translate-x-6" : "translate-x-1" }`}
                   />
                 </button>
               </div>
@@ -4128,50 +4291,219 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
                   onChange={(e) => setTempTextResize(Number(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                   style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                    accentColor: accentColor,
+                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
                   }}
                 />
               </div>
 
-              {/* Temporary Background Zoom Slider */}
-              <div className="space-y-2">
-                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  <span>Temporary Background Zoom:</span>
-                  <span>{tempBackgroundZoom}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="150"
-                  value={tempBackgroundZoom}
-                  onChange={(e) => setTempBackgroundZoom(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                  style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempBackgroundZoom - 50) / 100 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundZoom - 50) / 100 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
-                  }}
-                />
-              </div>
+              {/* TEXT COLOR */}
+              <ColorControl
+                label="TEXT COLOR"
+                value={tempTextColor ?? ""}
+                onChange={(value) => setTempTextColor(value || null)}
+                isDarkMode={isDarkMode}
+                accentColor={accentColor}
+                predefinedColors={predefinedSectionColors.map(c => c.value)}
+              />
 
-              {/* Temporary Background Y-Position Slider */}
-              <div className="space-y-2">
-                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  <span>Temporary Background Y-Position:</span>
-                  <span>{tempBackgroundYPosition}%</span>
+              <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} />
+
+              {/* ADDITIONAL BACKGROUND OVERLAY */}
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-300" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>ADDITIONAL BACKGROUND OVERLAY</label>
+                  <button
+                    onClick={() => setTempColorOverlayEnabled((prev) => !prev)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      tempColorOverlayEnabled ? '' : (isDarkMode ? "bg-gray-600" : "bg-gray-200")
+                    }`}
+                    style={{ backgroundColor: tempColorOverlayEnabled ? accentColor : undefined }}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        tempColorOverlayEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
                 </div>
-                <input
-                  type="range"
-                  min="-50"
-                  max="150"
-                  value={tempBackgroundYPosition}
-                  onChange={(e) => setTempBackgroundYPosition(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                  style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempBackgroundYPosition + 50) / 200 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundYPosition + 50) / 200 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
-                  }}
-                />
+
+                {tempColorOverlayEnabled && (
+                  <>
+                    {/* Additional Background */}
+                    <button
+                      onClick={handleOpenTempBackgroundPicker}
+                      className={`w-full py-3 border-2 border-dashed rounded-lg font-medium transition-colors ${isDarkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"}`}
+                      style={{ borderColor: accentColor, color: accentColor, fontFamily: "Inter, sans-serif" }}
+                    >
+                      Additional Background
+                    </button>
+
+                    {/* Background Transparency */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>BACKGROUND TRANSPARENCY</label>
+                        <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                          {Math.round(tempBackgroundOpacity * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={tempBackgroundOpacity}
+                        onChange={(e) => setTempBackgroundOpacity(parseFloat(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempBackgroundOpacity * 100}%, rgba(255,255,255,0.3) ${tempBackgroundOpacity * 100}%, rgba(255,255,255,0.3) 100%)`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Temporary Background Zoom Slider */}
+                    <div className="space-y-2">
+                      <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        <span>Temporary Background Zoom:</span>
+                        <span>{tempBackgroundZoom}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        value={tempBackgroundZoom}
+                        onChange={(e) => setTempBackgroundZoom(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(tempBackgroundZoom - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundZoom - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    {/* Adjust UP - DOWN Slider */}
+                    <div className="space-y-2">
+                      <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        <span>Adjust UP - DOWN</span>
+                        <span>{tempBackgroundYPosition}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-50"
+                        max="50"
+                        value={tempBackgroundYPosition}
+                        onChange={(e) => setTempBackgroundYPosition(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        style={{ 
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempBackgroundYPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${tempBackgroundYPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    {/* Adjust LEFT - RIGHT Slider */}
+                    <div className="space-y-2">
+                      <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        <span>Adjust LEFT - RIGHT</span>
+                        <span>{tempBackgroundXPosition}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-50"
+                        max="50"
+                        value={tempBackgroundXPosition}
+                        onChange={(e) => setTempBackgroundXPosition(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        style={{ 
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempBackgroundXPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${tempBackgroundXPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    {/* Overlay Type */}
+                    <div className="space-y-1">
+                      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Overlay Type</label>
+                      <select
+                        value={tempOverlayType}
+                        onChange={(e) => setTempOverlayType(e.target.value as "solid" | "gradient")}
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                        style={{ ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }), fontFamily: "Inter, sans-serif" }}
+                      >
+                        <option value="solid">Solid Color</option>
+                        <option value="gradient">Gradient</option>
+                      </select>
+                    </div>
+
+                    {/* Overlay Color 1 */}
+                    <ColorControl
+                      label="Overlay Color 1"
+                      value={tempOverlayColor1 ?? ""}
+                      onChange={(value) => setTempOverlayColor1(value || null)}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                      predefinedColors={predefinedSectionColors.map(c => c.value)}
+                    />
+
+                    {/* Transparency for Color 1 */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Transparency</label>
+                        <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                          {Math.round(tempOverlayOpacity1 * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={tempOverlayOpacity1}
+                        onChange={(e) => setTempOverlayOpacity1(parseFloat(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempOverlayOpacity1 * 100}%, rgba(255,255,255,0.3) ${tempOverlayOpacity1 * 100}%, rgba(255,255,255,0.3) 100%)`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Overlay Color 2 - only for gradient */}
+                    {tempOverlayType === "gradient" && (
+                      <ColorControl
+                        label="Overlay Color 2"
+                        value={tempOverlayColor2 ?? ""}
+                        onChange={(value) => setTempOverlayColor2(value || null)}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        predefinedColors={predefinedSectionColors.map(c => c.value)}
+                      />
+                    )}
+
+                    {/* Transparency for Color 2 - only for gradient */}
+                    {tempOverlayType === "gradient" && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Transparency</label>
+                          <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                            {Math.round(tempOverlayOpacity2 * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={tempOverlayOpacity2}
+                          onChange={(e) => setTempOverlayOpacity2(parseFloat(e.target.value))}
+                          className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempOverlayOpacity2 * 100}%, rgba(255,255,255,0.3) ${tempOverlayOpacity2 * 100}%, rgba(255,255,255,0.3) 100%)`,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -4183,12 +4515,12 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
                   className={`flex-1 px-4 py-3 rounded-lg transition-colors ${isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-gray-300" : "bg-gray-200 hover:bg-gray-300 text-gray-700"}`}
                   style={{ fontFamily: "Inter, sans-serif" }}
                 >
-                  Cancel
+                  CLOSE
                 </button>
                 <button
                   onClick={handleBeginPrinting}
-                  className="flex-1 px-4 py-3 rounded-lg transition-colors bg-[#B88A78] text-white hover:bg-[#9a7666]"
-                  style={{ fontFamily: "Inter, sans-serif" }}
+                  className="flex-1 px-4 py-3 rounded-lg transition-colors text-white hover:brightness-90"
+                  style={{ fontFamily: "Inter, sans-serif", backgroundColor: accentColor }}
                 >
                   Begin Printing
                 </button>
@@ -4197,7 +4529,27 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
           </div>
         </>
       )}
+
+      {/* Temporary background picker */}
+      {showTempBackgroundPicker && createPortal(
+        <PhotoGalleryPicker
+          galleryImages={data.galleryImages || []}
+          selectedUrl={tempBackgroundImage || ""}
+          isDarkMode={isDarkMode}
+          accentColor={accentColor}
+          desktopMode={desktopMode}
+          panelPosition={panelPosition}
+          isClosing={isTempBackgroundPickerClosing}
+          onSelect={(url) => {
+            setTempBackgroundImage(url || null);
+            handleCloseTempBackgroundPicker();
+          }}
+          onClose={handleCloseTempBackgroundPicker}
+        />,
+        document.body
+      )}
     </section>
+    </>
   );
 };
 

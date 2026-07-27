@@ -10,6 +10,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { TIMELINE_EMPTY_MESSAGES, getNextMessage } from "@/lib/constants/heroMessages";
 
 interface StoryTimelineItem {
   id: string;
@@ -45,17 +46,24 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
   const [storyTimeline, setStoryTimeline] = useState<StoryTimelineContainer[]>([]);
   const [timelineState, setTimelineState] = useState(0);
 
-  // Load story timeline from localStorage
+  // Load story timeline from data.storyTimeline
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('storyTimeline');
-      if (stored) {
-        setStoryTimeline(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error('Failed to load story timeline:', error);
+    if (data.storyTimeline && data.storyTimeline.length > 0) {
+      const containers: StoryTimelineContainer[] = data.storyTimeline.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        item: {
+          id: item.id,
+          title: item.title,
+          date: item.date,
+          description: item.description,
+          photoUrl: item.photoUrl
+        },
+        isExpanded: false
+      }));
+      setStoryTimeline(containers);
     }
-  }, []);
+  }, [data.storyTimeline]);
 
   const handleCloseDividerSettingsPanel = () => {
     setIsDividerSettingsClosing(true);
@@ -180,8 +188,6 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
     event => event.title.trim() !== "" || event.description.trim() !== ""
   );
 
-  if (events.length === 0) return null;
-
   const timelineUseDefaultDivider = data.timelineDividerUseDefault ?? true;
   const effectivePullDown = timelineUseDefaultDivider ? (data.universalDividerPullDown ?? 0) : (data.timelineDividerPullDown ?? 0);
   const effectiveVerticalFlip = timelineUseDefaultDivider ? (data.universalDividerVerticalFlip ?? false) : (data.timelineDividerVerticalFlip ?? false);
@@ -198,15 +204,14 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
               : mergedData.timelineBackgroundType === "video"
                 ? undefined
                 : (mergedData.timelineBackgroundColor || "transparent"),
-        background: mergedData.timelineUseMainColor !== false
-          ? (data.mainColor1 || "transparent")
+        backgroundImage: mergedData.timelineUseMainColor !== false
+          ? undefined
           : mergedData.timelineBackgroundType === "gradient" && mergedData.timelineGradient
             ? `linear-gradient(135deg, ${mergedData.timelineGradient.firstColor || "#ffffff"}, ${mergedData.timelineGradient.secondColor || "#ffffff"})`
             : undefined,
         ...(mergedData.timelineBackgroundType === "image" && mergedData.timelineImage?.urls && mergedData.timelineImage.urls.length > 0 ? {
           backgroundImage: `url(${mergedData.timelineImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
           backgroundPosition: 'center center',
-          backgroundAttachment: 'fixed',
           backgroundRepeat: 'no-repeat',
           backgroundSize: 'cover'
         } : {}),
@@ -214,11 +219,18 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
       }}>
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.timelineBackgroundType === "image" || mergedData.timelineBackgroundType === "video") && mergedData.timelineGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.timelineGradient.firstColor || "#ffffff", (mergedData.timelineGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.timelineGradient.secondColor || "#ffffff", (mergedData.timelineGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.timelineGradient.firstColor || "#ffffff", (mergedData.timelineGradient.firstOpacity !== undefined ? mergedData.timelineGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.timelineGradient.secondColor || "#ffffff", (mergedData.timelineGradient.secondOpacity !== undefined ? mergedData.timelineGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -249,17 +261,26 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={timelineUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.timelineDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={timelineUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.timelineDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={timelineUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.timelineDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={timelineUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.timelineDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={timelineUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.timelineDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(timelineUseDefaultDivider ? data.universalDivider : data.timelineDivider) === "divider-1" ? predefinedDividerImagesCentered : (timelineUseDefaultDivider ? data.universalDivider : data.timelineDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = timelineUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.timelineDivider || "divider-1");
           if (timelineUseDefaultDivider) {
             onChange?.("timelineDividerUseDefault", false);
+            onChange?.("timelineDivider", currentType);
           }
-          onChange?.("timelineDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("timelineDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("timelineDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("timelineDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -309,7 +330,7 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
         />
       )}
       <h2
-        className="text-2xl font-bold uppercase mb-1 lg:mb-12 text-center scale-[0.55] lg:scale-100"
+        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center max-[320px]:scale-[0.4] scale-[0.55] lg:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.timelineUseMainColor !== false ? data.mainColor2 : (mergedData.timelineHeadingColor || data.mainColor2),
           fontFamily: mergedData.timelineUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.timelineHeadingTypography || data.headingFont, "heading"),
@@ -331,9 +352,9 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
         </span>
       </h2>
 
-      {mergedData.timelineMessage && (
+      {mergedData.timelineMessage && events.length > 0 && (
         <p
-          className="text-center mb-12 leading-relaxed scale-[0.7] lg:scale-100"
+          className="text-center text-sm mb-6 leading-relaxed scale-[0.7] lg:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
           style={{
             color: mergedData.timelineUseMainColor !== false ? data.neutralColor1 : (mergedData.timelineMessageColor || data.neutralColor1),
             fontFamily: mergedData.timelineUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.timelineMessageTypography || data.bodyFont, "body"),
@@ -345,10 +366,33 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
         </p>
       )}
 
+      {/* Empty state message when no story timeline entries */}
+      {events.length === 0 && (
+        <div className="text-center py-8 px-4 mb-[60px]">
+          <p
+            className={`leading-relaxed scale-[0.7] lg:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm ${editMode ? "cursor-pointer" : ""}`}
+            style={{
+              color: mergedData.timelineUseMainColor !== false ? data.neutralColor1 : (mergedData.timelineMessageColor || data.neutralColor1),
+              fontFamily: mergedData.timelineUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.timelineMessageTypography || data.bodyFont, "body"),
+              fontSize: `${mergedData.timelineMessageFontSize || 100}%`,
+              opacity: 0.7,
+              fontStyle: "italic"
+            }}
+            onClick={editMode ? () => {
+              const currentIndex = data.timelineEmptyMessageIndex ?? 0;
+              const { nextIndex } = getNextMessage(TIMELINE_EMPTY_MESSAGES, currentIndex);
+              onChange?.("timelineEmptyMessageIndex", nextIndex);
+            } : undefined}
+          >
+            {TIMELINE_EMPTY_MESSAGES[data.timelineEmptyMessageIndex ?? 0]}
+          </p>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto py-8">
         <div className={`timeline-container state-${timelineState}`}>
           {events.map((event, index) => (
-            <div key={event.id} className="timeline-row cursor-pointer" onClick={() => setTimelineState(prev => (prev + 1) % 4)}>
+            <div key={event.id} className={`timeline-row ${editMode ? "cursor-pointer" : ""}`} onClick={editMode ? () => setTimelineState(prev => (prev + 1) % 4) : undefined}>
               {/* Column 1: Left Content Area (45%) */}
               <div className="timeline-col timeline-col-left">
                 <div className="timeline-content">

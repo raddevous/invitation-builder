@@ -40,8 +40,47 @@ function maskAccountName(name: string): string {
 // Parse EMVCo QR payment format to extract account name
 function parseQRPaymentData(qrData: string): string {
   try {
-    // EMVCo format uses length-value pairs
-    // Tag 59 is merchant account name
+    // EMVCo format uses length-value pairs with nested TLV structures
+    // We need to parse the TLV structure properly
+    
+    // Helper to parse TLV at a given position
+    function parseTLV(data: string, pos: number): { tag: string; length: number; value: string; nextPos: number } | null {
+      if (pos + 4 > data.length) return null;
+      const tag = data.substring(pos, pos + 2);
+      const lengthStr = data.substring(pos + 2, pos + 4);
+      const length = parseInt(lengthStr, 10);
+      if (isNaN(length) || pos + 4 + length > data.length) return null;
+      const value = data.substring(pos + 4, pos + 4 + length);
+      return { tag, length, value, nextPos: pos + 4 + length };
+    }
+    
+    // Recursively search for tag 59 (merchant name) in TLV structure
+    function findTag59(data: string): string | null {
+      let pos = 0;
+      while (pos < data.length) {
+        const tlv = parseTLV(data, pos);
+        if (!tlv) break;
+        
+        if (tlv.tag === "59") {
+          return tlv.value;
+        }
+        
+        // Check nested TLV (tags like 26-51 often contain sub-TLVs)
+        if (tlv.length > 4) {
+          const nested = findTag59(tlv.value);
+          if (nested) return nested;
+        }
+        
+        pos = tlv.nextPos;
+      }
+      return null;
+    }
+    
+    // Try proper TLV parsing first
+    const name = findTag59(qrData);
+    if (name) return name;
+    
+    // Fallback: regex for tag 59 (less reliable but catches some edge cases)
     const tag59Match = qrData.match(/59(\d{2})(.+)/);
     if (tag59Match) {
       const length = parseInt(tag59Match[1], 10);
@@ -49,21 +88,43 @@ function parseQRPaymentData(qrData: string): string {
       return name;
     }
     
-    // If no tag 59, try to find any readable name in the data
-    // Look for patterns that might be names (uppercase letters with spaces)
-    const nameMatch = qrData.match(/[A-Z][A-Z\s]+/g);
+    // Fallback: look for merchant name in sub-TLV tag 01 within tag 26-51
+    // Common in Philippine QR codes (GCash, Maya, etc.)
+    for (let tagNum = 26; tagNum <= 51; tagNum++) {
+      const tagStr = String(tagNum).padStart(2, '0');
+      const tagRegex = new RegExp(`${tagStr}(\\d{2})(.+)`);
+      const match = qrData.match(tagRegex);
+      if (match) {
+        const innerLen = parseInt(match[1], 10);
+        const innerData = match[2].substring(0, innerLen);
+        // Sub-tag 01 often contains merchant name
+        const subMatch = innerData.match(/01(\d{2})(.+)/);
+        if (subMatch) {
+          const subLen = parseInt(subMatch[1], 10);
+          const subName = subMatch[2].substring(0, subLen);
+          if (subName && /[a-zA-Z]/.test(subName)) return subName;
+        }
+      }
+    }
+    
+    // Fallback: look for readable name patterns
+    const nameMatch = qrData.match(/[A-Z][a-zA-Z\s]{2,}/g);
     if (nameMatch) {
-      // Return the longest match that looks like a name
+      // Return the longest match that looks like a name (not just noise)
+      const filtered = nameMatch.filter(n => n.trim().length >= 3 && !/^[A-Z]+$/.test(n));
+      if (filtered.length > 0) {
+        return filtered.sort((a, b) => b.length - a.length)[0];
+      }
       return nameMatch.sort((a, b) => b.length - a.length)[0];
     }
     
-    return qrData;
+    return "";
   } catch {
-    return qrData;
+    return "";
   }
 }
 
-export default function QRUpload({ qrCode, maskedName, onQRCodeChange, accentColor = "#B88A78", isDarkMode = false }: QRUploadProps) {
+export default function QRUpload({ qrCode, maskedName, onQRCodeChange, accentColor = "#6998EE", isDarkMode = false }: QRUploadProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,8 +193,17 @@ export default function QRUpload({ qrCode, maskedName, onQRCodeChange, accentCol
     setIsScanning(true);
 
     try {
-      // Get cropped canvas
-      const canvas = cropperRef.current.getCroppedCanvas();
+      // Get cropped canvas with max resolution for better QR readability
+      const containerData = cropperRef.current.getContainerData();
+      const cropData = cropperRef.current.getData();
+      // Scale up for better quality while keeping reasonable size
+      const maxDimension = 1024;
+      const scale = Math.min(maxDimension / Math.max(cropData.width, cropData.height), 4);
+      const canvas = cropperRef.current.getCroppedCanvas({
+        width: Math.round(cropData.width * scale),
+        height: Math.round(cropData.height * scale),
+        imageSmoothingQuality: 'high'
+      });
       const croppedDataUrl = canvas.toDataURL("image/png");
 
       // Convert to blob for QR scanning
@@ -168,6 +238,7 @@ export default function QRUpload({ qrCode, maskedName, onQRCodeChange, accentCol
       } catch (scanError) {
         // If scanning fails, still upload the image but leave name empty
         console.warn("QR scan failed, uploading image only:", scanError);
+        setError("Could not read QR data. The image will be uploaded but no name was detected.");
         onQRCodeChange(croppedDataUrl, "");
       }
     } catch (err) {
@@ -203,10 +274,13 @@ export default function QRUpload({ qrCode, maskedName, onQRCodeChange, accentCol
       if (window.Cropper) {
         // @ts-ignore
         cropperRef.current = new window.Cropper(imageRef.current, {
-          aspectRatio: NaN,
+          aspectRatio: 1,
           viewMode: 1,
-          autoCropArea: 0.8,
+          autoCropArea: 0.9,
           responsive: true,
+          background: false,
+          zoomable: true,
+          scalable: true,
         });
       }
     }

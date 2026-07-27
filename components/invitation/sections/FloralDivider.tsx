@@ -3,7 +3,7 @@ interface FloralDividerProps {
   className?: string;
 }
 
-export default function FloralDivider({ color = "#b88a78", className = "" }: FloralDividerProps) {
+export default function FloralDivider({ color = "#6998EE", className = "" }: FloralDividerProps) {
   return (
     <div className={`flex items-center justify-center gap-3 py-4 ${className}`}>
       <div className="flex-1 h-px" style={{ backgroundColor: color, opacity: 0.25 }} />

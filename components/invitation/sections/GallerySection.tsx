@@ -156,11 +156,8 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
 
   const images = data.galleryImages || [];
 
-  // Calculate mobile display limit (even numbers only, max 10)
-  const mobileDisplayLimit = Math.min(
-    Math.floor(mergedData.galleryImages?.length / 2) * 2,
-    10
-  );
+  // Mobile shows max 6 images, rest via "Open Gallery" button
+  const mobileDisplayLimit = 6;
 
   const defaultImageUrls = [
     "https://images.pexels.com/photos/4280819/pexels-photo-4280819.jpeg",
@@ -320,13 +317,6 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
     }
   }, [mergedData.galleryBackgroundType, data.mainColor1, data.neutralColor2, predefinedImages, predefinedVideos]);
 
-  // Ensure at least 1 image exists
-  useEffect(() => {
-    if (!data.galleryImages || data.galleryImages.length === 0) {
-      onChange && onChange("galleryImages", [""]);
-    }
-  }, []);
-
   // Slideshow effect for image background
   useEffect(() => {
     if (mergedData.galleryBackgroundType === "image" && mergedData.galleryImage?.urls && mergedData.galleryImage.urls.length > 1) {
@@ -360,15 +350,14 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
                 : mergedData.galleryBackgroundType === "video"
                   ? undefined
                   : (mergedData.galleryBackgroundColor || "transparent"),
-          background: mergedData.galleryUseMainColor !== false
-            ? (data.mainColor1 || "transparent")
+          backgroundImage: mergedData.galleryUseMainColor !== false
+            ? undefined
             : mergedData.galleryBackgroundType === "gradient" && mergedData.galleryGradient
               ? `linear-gradient(135deg, ${mergedData.galleryGradient.firstColor || "#ffffff"}, ${mergedData.galleryGradient.secondColor || "#ffffff"})`
               : undefined,
           ...(mergedData.galleryBackgroundType === "image" && mergedData.galleryImage?.urls && mergedData.galleryImage.urls.length > 0 ? {
             backgroundImage: `url(${mergedData.galleryImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
             backgroundPosition: 'center center',
-            backgroundAttachment: 'fixed',
             backgroundRepeat: 'no-repeat',
             backgroundSize: 'cover'
           } : {}),
@@ -377,11 +366,18 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
       >
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.galleryBackgroundType === "image" || mergedData.galleryBackgroundType === "video") && mergedData.galleryGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.galleryGradient.firstColor || "#ffffff", (mergedData.galleryGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.galleryGradient.secondColor || "#ffffff", (mergedData.galleryGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.galleryGradient.firstColor || "#ffffff", (mergedData.galleryGradient.firstOpacity !== undefined ? mergedData.galleryGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.galleryGradient.secondColor || "#ffffff", (mergedData.galleryGradient.secondOpacity !== undefined ? mergedData.galleryGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -412,17 +408,26 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={galleryUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.galleryDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={galleryUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.galleryDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={galleryUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.galleryDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={galleryUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.galleryDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={galleryUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.galleryDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(galleryUseDefaultDivider ? data.universalDivider : data.galleryDivider) === "divider-1" ? predefinedDividerImagesCentered : (galleryUseDefaultDivider ? data.universalDivider : data.galleryDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = galleryUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.galleryDivider || "divider-1");
           if (galleryUseDefaultDivider) {
             onChange?.("galleryDividerUseDefault", false);
+            onChange?.("galleryDivider", currentType);
           }
-          onChange?.("galleryDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("galleryDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("galleryDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("galleryDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -472,7 +477,7 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
         />
       )}
       <h2
-        className="text-2xl mb-1 md:mb-8 text-center font-bold uppercase scale-[0.55] md:scale-100"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.galleryUseMainColor !== false ? data.mainColor2 : (mergedData.galleryHeadingColor || data.mainColor2),
           fontFamily: mergedData.galleryUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.galleryHeadingTypography || data.headingFont, "heading"),
@@ -497,7 +502,7 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
       {mergedData.galleryMessage && (
         <div className="max-w-2xl mx-auto">
           <p
-            className="text-center mb-10 leading-relaxed scale-[0.7] md:scale-100"
+            className="text-center text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
             style={{
               color: mergedData.galleryUseMainColor !== false ? data.neutralColor1 : (mergedData.galleryMessageColor || data.neutralColor1),
               fontFamily: mergedData.galleryUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.galleryMessageTypography || data.bodyFont, "body"),
@@ -533,7 +538,7 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
               {displayImages.map((imgId, idx) => (
             <div
               key={idx}
-              className="rounded-lg overflow-hidden cursor-pointer shrink-0 w-[150px] h-[150px] md:w-[180px] md:h-[180px] relative group"
+              className="rounded-lg overflow-hidden cursor-pointer shrink-0 w-[clamp(120px,calc((100vw-80px)/2),150px)] h-[clamp(120px,calc((100vw-80px)/2),150px)] md:w-[180px] md:h-[180px] relative group"
               onClick={() => {
                 if (editMode) {
                   setShowGallerySettingsPanel(true);

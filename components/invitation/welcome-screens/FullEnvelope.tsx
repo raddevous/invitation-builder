@@ -1,141 +1,282 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, Fragment } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
-import { getElement, getScreenDef } from "@/lib/welcome-screens";
 
 interface Props {
   data: InvitationData;
   onOpen: () => void;
 }
 
+const FLAP_DURATION_MS = 4000;
+
 export default function FullEnvelope({ data, onOpen }: Props) {
   const [flapOpen, setFlapOpen] = useState(false);
-  const [sliding, setSliding] = useState(false);
-  const displayName = data.nameType === "couple" 
-    ? `${data.hisName || ""} ${data.andText || "&"} ${data.herName || ""}`.trim()
-    : data.coupleName;
+  const [exiting, setExiting] = useState(false);
+  const [showStdImage, setShowStdImage] = useState(false);
+  const [showTopMessage, setShowTopMessage] = useState(true);
+  const [messageReady, setMessageReady] = useState(false);
 
-  const def = getScreenDef("full-envelope");
-  const tapEl = def.elements.find((e) => e.id === "tapText")!;
-  const tapSettings = getElement("full-envelope", "tapText", data.welcomeElements, tapEl);
+  const envelopeColor = data.welcomeEnvelopeColor || data.mainColor1;
+  const envTexture = data.welcomeEnvelopeTexture || "envA";
+  const stdIndex = Math.max(1, Math.min(6, data.welcomeFullEnvelopeStdImage ?? 1));
+
+  // Letter fade-in effect for top message
+  const message = data.welcomeTopMessage || "";
+  const letters = Array.from(message);
+  const letterDelay = 120;
+  const totalDuration = letters.length * letterDelay;
+
+  useEffect(() => {
+    if (!data.welcomeTopMessage) {
+      setMessageReady(true);
+      return;
+    }
+    const timer = setTimeout(() => setMessageReady(true), totalDuration + 300 + 1000);
+    return () => clearTimeout(timer);
+  }, [data.welcomeTopMessage, totalDuration]);
+
+  const hisInitial = data.hisName?.charAt(0).toUpperCase() || "";
+  const herInitial = data.herName?.charAt(0).toUpperCase() || "";
+  const stampText =
+    data.nameType === "couple"
+      ? hisInitial && herInitial
+        ? `${hisInitial}&${herInitial}`
+        : hisInitial || herInitial
+      : data.coupleName?.charAt(0).toUpperCase() || hisInitial;
 
   const handleTap = useCallback(() => {
-    if (flapOpen) return;
-    setFlapOpen(true);
-    setTimeout(() => setSliding(true), 800);
-    setTimeout(() => onOpen(), 1700);
-  }, [flapOpen, onOpen]);
+    if (flapOpen || !messageReady) return;
+    setShowTopMessage(false);
+    setTimeout(() => {
+      setFlapOpen(true);
+      setTimeout(() => setShowStdImage(true), 800);
+      setTimeout(() => setExiting(true), Math.round(FLAP_DURATION_MS * 0.5) + 1000);
+      setTimeout(() => onOpen(), FLAP_DURATION_MS + 800);
+    }, 300);
+  }, [flapOpen, onOpen, messageReady]);
 
   return (
     <div
-      className="fixed inset-0 z-40 flex flex-col items-end justify-center cursor-pointer select-none overflow-hidden"
-      style={{ backgroundColor: data.mainColor1 }}
+      className="fixed top-0 left-0 right-0 bottom-0 z-40 flex flex-col items-center justify-center select-none overflow-hidden"
+      style={{
+        height: '100dvh',
+        backgroundColor: envelopeColor || data.mainColor1 || '#5c4a3a',
+        opacity: exiting ? 0 : 1,
+        transition: `opacity ${Math.round(FLAP_DURATION_MS * 0.5 + 800)}ms ease`,
+      }}
       onClick={handleTap}
     >
-      {/* Envelope container — fades out to reveal */}
-      <div
-        className="w-full"
-        style={{
-          opacity: sliding ? 0 : 1,
-          transition: "opacity 0.7s ease",
-          height: "100vh",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* Envelope body */}
+      {/* Background */}
+      <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
         <div
-          className="absolute inset-0"
-          style={{ backgroundColor: "white" }}
-        />
-
-        {/* Envelope side triangles */}
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M0 45 L0 100 L50 70 Z" fill={data.accentColor} opacity="0.35" />
-          <path d="M100 45 L100 100 L50 70 Z" fill={data.accentColor} opacity="0.25" />
-        </svg>
-
-        {/* Decorative lines */}
-        <div className="absolute bottom-20 left-0 right-0 flex flex-col items-center gap-3 opacity-20">
-          <div className="w-4/5 h-px" style={{ backgroundColor: data.mainColor2 }} />
-          <div className="w-3/5 h-px" style={{ backgroundColor: data.mainColor2 }} />
-        </div>
-
-        {/* Center content on envelope */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-10">
-          {/* Wax seal */}
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg mb-2"
-            style={{ backgroundColor: data.mainColor2 }}
-          >
-            <span className="text-white text-2xl">♥</span>
-          </div>
-
-          <p className="text-xs tracking-[0.4em] uppercase" style={{ color: data.neutralColor2, fontFamily: `${data.bodyFont}, serif`, opacity: 0.6 }}>
-            Together with their families
-          </p>
-          <h1
-            className="text-center leading-tight"
-            style={{ fontSize: "2.4rem", color: data.mainColor2, fontFamily: `${data.headingFont}, serif` }}
-          >
-            {displayName}
-          </h1>
-          <p className="text-center italic opacity-70" style={{ color: data.neutralColor1, fontFamily: `${data.bodyFont}, serif` }}>
-            {data.subtitle}
-          </p>
-          <p className="text-sm tracking-[0.2em]" style={{ color: data.neutralColor1, fontFamily: `${data.bodyFont}, serif`, opacity: 0.5 }}>
-            {data.date}
-          </p>
-        </div>
-
-        {/* FLAP — top of envelope, hinged at top */}
-        <div
-          className="absolute top-0 left-0 right-0"
+          className="absolute top-0 left-0 right-0 bottom-0"
           style={{
-            height: "45%",
-            transformOrigin: "top center",
-            transition: "transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)",
-            transform: flapOpen ? "perspective(800px) rotateX(-185deg)" : "perspective(800px) rotateX(0deg)",
-            zIndex: 5,
+            backgroundImage: `url(/assets/${data.welcomeBackgroundImage?.urls?.[0] || "texturebg1"}.jpg)`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+        <div
+          className="absolute top-0 left-0 right-0 bottom-0"
+          style={{ backgroundColor: envelopeColor, mixBlendMode: "color" }}
+        />
+      </div>
+
+      {/* Envelope + content */}
+      <div className="relative z-10 flex flex-col items-center">
+        <div
+          className="relative h-[100dvh] lg:h-auto lg:w-screen max-h-[100dvh] aspect-[7/5]"
+          style={{
+            filter: "drop-shadow(0 12px 24px rgba(0, 0, 0, 0.18))",
+            animation: flapOpen ? "none" : "float 3s ease-in-out infinite",
           }}
         >
-          {/* Main flap surface */}
-          <div className="absolute inset-0" style={{ backgroundColor: data.accentColor }} />
-          {/* V-shape cutout bottom */}
-          <svg
-            className="absolute bottom-0 left-0 right-0 w-full"
-            height="60"
-            viewBox="0 0 100 60"
-            preserveAspectRatio="none"
+          {/* STD image (letter behind envelope) */}
+          <div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden"
+            style={{ zIndex: 2 }}
           >
-            <polygon points="0,0 100,0 50,60" fill={data.mainColor1} />
-          </svg>
-          {/* Subtle shimmer on flap */}
-          <div
-            className="absolute inset-0 opacity-20"
-            style={{ background: "linear-gradient(135deg, white 0%, transparent 60%)" }}
-          />
-        </div>
+            <div
+              className={`relative select-none w-[40%] h-[40%] sm:w-[50%] sm:h-[50%] md:w-[60%] md:h-[60%] lg:w-[70%] lg:h-[70%] ${showStdImage ? "std-image-fade-in" : ""}`}
+              style={{ opacity: showStdImage ? undefined : 0 }}
+            >
+              <img
+                src={`/assets/std/std-${stdIndex}.png`}
+                alt=""
+                className="absolute inset-0 w-full h-full object-contain"
+              />
+              {envelopeColor && (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundColor: envelopeColor,
+                    mixBlendMode: "hue",
+                    WebkitMaskImage: `url(/assets/std/std-${stdIndex}.png)`,
+                    WebkitMaskSize: "contain",
+                    WebkitMaskRepeat: "no-repeat",
+                    WebkitMaskPosition: "center",
+                    maskImage: `url(/assets/std/std-${stdIndex}.png)`,
+                    maskSize: "contain",
+                    maskRepeat: "no-repeat",
+                    maskPosition: "center",
+                  }}
+                />
+              )}
+            </div>
+          </div>
 
-        {/* Tap prompt at bottom */}
-        {tapSettings.visible && (
+          {/* Layer 1: envelope mid */}
           <div
-            className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-2"
+            className={`absolute inset-0 pointer-events-none ${
+              flapOpen ? "slide-envf-2" : ""
+            }`}
+            style={{ zIndex: 3 }}
+          >
+            <img
+              src={`/assets/${envTexture}/envf-2.png`}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundColor: envelopeColor,
+                mixBlendMode: "color",
+                WebkitMaskImage: `url(/assets/${envTexture}/envf-2.png)`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(/assets/${envTexture}/envf-2.png)`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+          </div>
+
+          {/* Layer 4: flap top + wax seal */}
+          <div
+            className={`absolute left-1 right-1 bottom-1 pointer-events-none select-none ${
+              flapOpen ? "flap-full-env4" : ""
+            }`}
             style={{
-              color: data.neutralColor2,
-              opacity: flapOpen ? 0 : 0.55,
-              transition: "opacity 0.3s",
+              top: '-5%',
+              zIndex: 5,
+              transformOrigin: "top center",
+              filter: "drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))",
             }}
           >
-            <p className="text-sm tracking-[0.25em] uppercase" style={{ fontFamily: `${data.bodyFont}, serif` }}>
-              {tapSettings.text}
-            </p>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
+            <img
+              src={`/assets/${envTexture}/envf-3.png`}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundColor: envelopeColor,
+                mixBlendMode: "color",
+                WebkitMaskImage: `url(/assets/${envTexture}/envf-3.png)`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(/assets/${envTexture}/envf-3.png)`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+
+            {/* Wax seal stamp — lifts with the flap */}
+            <div
+              className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[17%] aspect-square flex items-center justify-center cursor-pointer"
+              style={{
+                containerType: "inline-size",
+              }}
+              onClick={handleTap}
+            >
+              <div
+                className="absolute inset-0"
+                style={{ filter: "drop-shadow(0 6px 8px rgba(0, 0, 0, 0.3))" }}
+              >
+                <img
+                  src="/assets/weddir-env-stamp.png"
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-contain select-none"
+                />
+                <div
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    backgroundColor: envelopeColor || "#897843",
+                    mixBlendMode: "color",
+                    WebkitMaskImage: "url(/assets/weddir-env-stamp.png)",
+                    WebkitMaskSize: "contain",
+                    WebkitMaskRepeat: "no-repeat",
+                    WebkitMaskPosition: "center",
+                    maskImage: "url(/assets/weddir-env-stamp.png)",
+                    maskSize: "contain",
+                    maskRepeat: "no-repeat",
+                    maskPosition: "center",
+                  }}
+                />
+              </div>
+              <span
+                className="absolute inset-0 flex items-center justify-center font-bold select-none"
+                style={{
+                  fontSize: "clamp(12px, 26cqw, 56px)",
+                  color: `color-mix(in srgb, ${envelopeColor || "#897843"} 80%, transparent)`,
+                  mixBlendMode: "luminosity",
+                  textShadow: "-0.6px -0.6px 0 rgba(255, 255, 255, 0.5), 1px 1px 3px rgba(0, 0, 0, 0.55)",
+                  fontFamily: "Cinzel, serif",
+                }}
+              >
+                {stampText.split("&").map((part, index, arr) => (
+                  <Fragment key={index}>
+                    {part}
+                    {index < arr.length - 1 && (
+                      <span style={{ fontSize: "0.6em" }}>&</span>
+                    )}
+                  </Fragment>
+                ))}
+              </span>
+            </div>
+
           </div>
-        )}
+
+          {/* Top message below wax seal */}
+          {data.welcomeTopMessage && (
+            <div
+              className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none select-none"
+              style={{
+                top: "calc(55% + 16%)",
+                width: "80%",
+                color: data.welcomeTopMessageColor || envelopeColor || data.mainColor1 || "#5c4a3a",
+                fontFamily: data.welcomeTopMessageFont || "Playfair Display, serif",
+                fontSize: "clamp(28px, 8vmin, 60px)",
+                textShadow: "-0.5px -0.5px 0 rgba(255, 255, 255, 0.4), 0.5px 0.5px 0 rgba(0, 0, 0, 0.5)",
+                letterSpacing: "0.05em",
+                opacity: showTopMessage ? 1 : 0,
+                transition: "opacity 1000ms ease",
+                zIndex: 6,
+              }}
+            >
+              {letters.map((char, i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-block",
+                    opacity: 0,
+                    animation: `letterFadeIn 0.8s ease-out forwards`,
+                    animationDelay: `${i * letterDelay + 1000}ms`,
+                  }}
+                >
+                  {char === " " ? "\u00A0" : char}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

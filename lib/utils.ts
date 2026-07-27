@@ -40,7 +40,42 @@ export function resolveAssetUrl(
 
 export function buildInviteUrl(slug: string): string {
   if (typeof window !== "undefined") {
-    return `${window.location.origin}/invite/${slug}`;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    
+    // If on localhost, keep it as localhost
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      const port = window.location.port ? `:${window.location.port}` : "";
+      return `${protocol}//${slug}.localhost${port}`;
+    }
+    
+    // For other domains, use the current apex domain
+    const parts = hostname.split(".");
+    const apex = parts.length > 2 ? parts.slice(1).join(".") : hostname;
+    return `${protocol}//${slug}.${apex}`;
   }
   return `/invite/${slug}`;
+}
+
+const FAVICON_URL_PATTERN = /^(\/|https?:\/\/|data:image)/i;
+
+export function updateFavicon(url?: string | null) {
+  if (typeof document === "undefined") return;
+
+  let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+
+  if (!url || !FAVICON_URL_PATTERN.test(url)) {
+    if (link) {
+      document.head.removeChild(link);
+    }
+    return;
+  }
+
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+
+  link.href = url;
 }

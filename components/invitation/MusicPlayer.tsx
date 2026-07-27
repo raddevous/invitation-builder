@@ -68,7 +68,8 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
     }
 
     // Resume playback when the track changes while music was already playing
-    if (wasPlayingRef.current && isPlaying) {
+    // Skip if audio is already playing (handleTrackEnd handles next-track playback directly)
+    if (wasPlayingRef.current && isPlaying && audioRef.current.paused) {
       audioRef.current.play().catch(() => {});
     } else if (autoPlay && data.musicEnabled && !autoPlayedRef.current) {
       // Attempt a one-shot auto-play when the invitation is opened
@@ -89,6 +90,14 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
     // Move to next track, or loop back to first
     const nextIndex = (currentTrackIndex + 1) % trackUrls.length;
     setCurrentTrackIndex(nextIndex);
+
+    // Play next track directly — don't rely on useEffect which checks isPlaying,
+    // because some browsers fire 'pause' when audio ends, setting isPlaying to false
+    if (audioRef.current && trackUrls[nextIndex]) {
+      audioRef.current.src = trackUrls[nextIndex];
+      audioRef.current.load();
+      audioRef.current.play().catch(() => {});
+    }
   };
 
   if (!data.musicEnabled || trackUrls.length === 0) return null;

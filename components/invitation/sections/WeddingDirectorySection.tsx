@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
 import type { InvitationData, WeddingDirectoryItem } from "@/lib/types/invitation";
 import Divider from "./Divider";
@@ -10,6 +10,7 @@ import HybridDropdown from "@/components/shared/HybridDropdown";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
+import PhotoGalleryPicker from "@/components/shared/PhotoGalleryPicker";
 import { useTheme } from "../ThemeContext";
 import { useMusic } from "../MusicContext";
 import { HOST_LINE_MESSAGES, CLOSING_SENTIMENT_MESSAGES, CUSTOM_CARD_MESSAGES, resolveCustomCardMessage, getNextMessage } from "@/lib/constants/heroMessages";
@@ -33,7 +34,7 @@ const STAMP_TEXT_BLEND_MODES = [
 
 const BUILDER_INSTRUCTIONS = [
   "Tap the feather to add, browse designs, and assign a navigation target.",
-  "Press and hold any design to delete it.",
+  "Press and hold any design, then drag to move it.",
   "You can also tap the feather icon below to remove items.",
   "Tap different parts of a design to customize them.",
   "For example: Tap the flowers to change",
@@ -75,7 +76,33 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const [pendingChanges, setPendingChanges] = useState<Partial<InvitationData>>({});
   const [showDividerSettingsPanel, setShowDividerSettingsPanel] = useState(false);
   const [isDividerSettingsClosing, setIsDividerSettingsClosing] = useState(false);
-  const [directoryItems, setDirectoryItems] = useState<WeddingDirectoryItem[]>(data.weddingDirectoryItems || []);
+  const [directoryItems, setDirectoryItems] = useState<WeddingDirectoryItem[]>(() => {
+    const items = data.weddingDirectoryItems || [];
+    return items
+      .filter(item => item.draftDesignType !== "itinerary" && item.draftDesignType !== "details")
+      .map(item =>
+        item.draftDesignType === "now-playing" && item.targetSection !== "no-target"
+          ? { ...item, targetSection: "no-target" }
+          : item.draftDesignType === "rsvp" && item.targetSection !== "rsvp"
+          ? { ...item, targetSection: "rsvp" }
+          : item.draftDesignType === "photo-papers" && item.targetSection !== "gallery"
+          ? { ...item, targetSection: "gallery" }
+          : item.draftDesignType === "event-details-card" && item.targetSection !== "event-details"
+          ? { ...item, targetSection: "event-details" }
+          : item.draftDesignType === "dress-code-card" && item.targetSection !== "dresscode"
+          ? { ...item, targetSection: "dresscode" }
+          : item.draftDesignType === "gift-guide-card" && item.targetSection !== "gift-guide"
+          ? { ...item, targetSection: "gift-guide" }
+          : item.draftDesignType === "date-time-card" && item.targetSection !== "countdown"
+          ? { ...item, targetSection: "countdown" }
+          : item.draftDesignType === "story-card" && item.targetSection !== "timeline"
+          ? { ...item, targetSection: "timeline" }
+          : item
+      );
+  });
+  const directoryItemsRef = useRef(directoryItems);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [holdingItemId, setHoldingItemId] = useState<string | null>(null);
   const [visibleImageIds, setVisibleImageIds] = useState<Set<string>>(new Set());
   const imageObserverRef = useRef<IntersectionObserver | null>(null);
   const observedImagesRef = useRef<Set<Element>>(new Set());
@@ -84,9 +111,11 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isEditingMobileScale, setIsEditingMobileScale] = useState(true);
   const [flowerVariantCount, setFlowerVariantCount] = useState<number>(1);
-  const [outlineVariantCount, setOutlineVariantCount] = useState<number>(1);
   const [cardVariantCount, setCardVariantCount] = useState<number>(1);
   const [squareCardVariantCount, setSquareCardVariantCount] = useState<number>(1);
+  const [dressCardVariantCount, setDressCardVariantCount] = useState<number>(1);
+  const [giftCardVariantCount, setGiftCardVariantCount] = useState<number>(1);
+  const [dateTimeCardVariantCount, setDateTimeCardVariantCount] = useState<number>(1);
   const [photoPickerItemId, setPhotoPickerItemId] = useState<string | null>(null);
   const [isPhotoPickerClosing, setIsPhotoPickerClosing] = useState(false);
   const [builderInstructionIndex, setBuilderInstructionIndex] = useState(0);
@@ -106,6 +135,17 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     window.addEventListener('storage', loadHideInstructions);
     return () => window.removeEventListener('storage', loadHideInstructions);
   }, []);
+
+  // Prevent page scroll only when drag is active on mobile
+  useEffect(() => {
+    if (!isDragActive) return;
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => document.removeEventListener('touchmove', handleTouchMove);
+  }, [isDragActive]);
+
   const [itemAnimStates, setItemAnimStates] = useState<Record<string, {
     nameBlur: number;
     nameGlow: number;
@@ -126,7 +166,6 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const prevShowItemSettingsPanelRef = useRef(false);
   const prevDataRef = useRef(data);
   const prevDirectoryItemsRef = useRef(directoryItems);
-  const longPressRef = useRef<Record<string, { timer: ReturnType<typeof setTimeout> | null; triggered: boolean }>>({});
   const DEFAULT_ANIM_STATE = {
     nameBlur: 20,
     nameGlow: 30,
@@ -200,12 +239,14 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   useEffect(() => {
     let cancelled = false;
     const detect = async () => {
-      const [flowerCount, outlineCount, cardCount, squareCardCount] = await Promise.all([detectFlowerVariantCount(), detectOutlineVariantCount(), detectCardVariantCount(), detectSquareCardVariantCount()]);
+      const [flowerCount, cardCount, squareCardCount, dressCount, giftCount, dateTimeCount] = await Promise.all([detectFlowerVariantCount(), detectCardVariantCount(), detectSquareCardVariantCount(), detectDressCardVariantCount(), detectGiftCardVariantCount(), detectDateTimeCardVariantCount()]);
       if (!cancelled) {
         setFlowerVariantCount(flowerCount);
-        setOutlineVariantCount(outlineCount);
         setCardVariantCount(cardCount);
         setSquareCardVariantCount(squareCardCount);
+        setDressCardVariantCount(dressCount);
+        setGiftCardVariantCount(giftCount);
+        setDateTimeCardVariantCount(dateTimeCount);
       }
     };
     detect();
@@ -230,7 +271,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       prevVisibleImageIdsRef.current = new Set();
     }
 
-    const invitationItems = directoryItems.filter(item => item.draftDesignType === "envelope" || item.draftDesignType === "invitation" || item.draftDesignType === "invitation-landscape" || item.draftDesignType === "custom-card" || item.draftDesignType === "custom-card-portrait" || item.draftDesignType === "custom-card-square" || item.draftDesignType === "photo-papers" || item.draftDesignType === "now-playing");
+    const invitationItems = directoryItems.filter(item => item.draftDesignType === "envelope" || item.draftDesignType === "invitation" || item.draftDesignType === "invitation-landscape" || item.draftDesignType === "custom-card" || item.draftDesignType === "custom-card-portrait" || item.draftDesignType === "custom-card-square" || item.draftDesignType === "photo-papers" || item.draftDesignType === "now-playing" || item.draftDesignType === "rsvp" || item.draftDesignType === "event-details-card" || item.draftDesignType === "dress-code-card" || item.draftDesignType === "gift-guide-card" || item.draftDesignType === "date-time-card" || item.draftDesignType === "story-card");
 
     invitationItems.forEach((item) => {
       const itemId = item.id;
@@ -251,7 +292,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
         }
       };
 
-      if (!isVisible) {
+      if (!isVisible && !showItemSettingsPanel && !showDraftDesignPanel && !expandedDraftItemId) {
         cancelExisting();
         updateAnim({ ...DEFAULT_ANIM_STATE });
         return;
@@ -420,8 +461,88 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     prevVisibleImageIdsRef.current = new Set(visibleImageIds);
     prevDataRef.current = data;
     prevDirectoryItemsRef.current = directoryItems;
+    directoryItemsRef.current = directoryItems;
     prevShowItemSettingsPanelRef.current = showItemSettingsPanel;
   }, [directoryItems, visibleImageIds, data, showItemSettingsPanel]);
+
+  // Position each arrow base at the visible content side midpoint of the design visual
+  useLayoutEffect(() => {
+    if (!holdingItemId) return;
+    const outer = document.querySelector(`[data-item-id="${holdingItemId}"]`) as HTMLDivElement | null;
+    if (!outer) return;
+    const visual = outer.querySelector('.wd-design-visual') as HTMLDivElement | null;
+    if (!visual) return;
+    const outerRect = outer.getBoundingClientRect();
+    const ARROW_HALF = 20;
+    const contentRect = (() => {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      Array.from(visual.children).forEach((child) => {
+        if (!(child instanceof HTMLElement)) return;
+        const rect = child.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const left = rect.left - outerRect.left;
+        const top = rect.top - outerRect.top;
+        const right = rect.right - outerRect.left;
+        const bottom = rect.bottom - outerRect.top;
+        minX = Math.min(minX, left);
+        minY = Math.min(minY, top);
+        maxX = Math.max(maxX, right);
+        maxY = Math.max(maxY, bottom);
+      });
+      if (minX === Infinity) {
+        const w = visual.offsetWidth;
+        const h = visual.offsetHeight;
+        return { left: 0, top: 0, width: w, height: h };
+      }
+      return { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+    })();
+    const cx = contentRect.left + contentRect.width / 2;
+    const cy = contentRect.top + contentRect.height / 2;
+    const positions = {
+      up: { x: cx, y: cy - contentRect.height / 2 },
+      right: { x: cx + contentRect.width / 2, y: cy },
+      down: { x: cx, y: cy + contentRect.height / 2 },
+      left: { x: cx - contentRect.width / 2, y: cy },
+    };
+    const setPos = (selector: string, pos: { x: number; y: number }) => {
+      const el = outer.querySelector(selector) as HTMLElement | null;
+      if (el) {
+        el.style.left = `${pos.x - ARROW_HALF}px`;
+        el.style.top = `${pos.y - ARROW_HALF}px`;
+      }
+    };
+    setPos('.wd-arrow-up-wrapper', positions.up);
+    setPos('.wd-arrow-right-wrapper', positions.right);
+    setPos('.wd-arrow-down-wrapper', positions.down);
+    setPos('.wd-arrow-left-wrapper', positions.left);
+  }, [holdingItemId, directoryItems]);
+
+  // Rotate the held design with the mouse wheel while in edit mode
+  useEffect(() => {
+    if (!editMode || !holdingItemId) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY * 0.1;
+      setDirectoryItems((prev) => {
+        const updated = prev.map((item) =>
+          item.id === holdingItemId ? { ...item, rotate: (item.rotate || 0) + delta } : item
+        );
+        directoryItemsRef.current = updated;
+        return updated;
+      });
+      if (rotationChangeTimerRef.current) clearTimeout(rotationChangeTimerRef.current);
+      rotationChangeTimerRef.current = setTimeout(() => {
+        isUpdatingFromExternalRef.current = true;
+        onChange?.("weddingDirectoryItems", directoryItemsRef.current);
+      }, 300);
+    };
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [editMode, holdingItemId, onChange]);
 
   useEffect(() => {
     return () => {
@@ -475,74 +596,57 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const isUpdatingFromExternalRef = useRef(false);
   useEffect(() => {
     const externalItems = data.weddingDirectoryItems;
-    if (externalItems !== lastExternalItemsRef.current && !isUpdatingFromExternalRef.current) {
+    if (externalItems !== lastExternalItemsRef.current) {
       lastExternalItemsRef.current = externalItems;
-      // Only update if the external items are actually different (deep comparison)
-      const currentItems = directoryItems;
-      const external = externalItems || [];
-      
-      // Check if arrays have different lengths or different IDs
-      if (currentItems.length !== external.length) {
-        setDirectoryItems(external);
+      if (isUpdatingFromExternalRef.current) {
+        isUpdatingFromExternalRef.current = false;
         return;
       }
-      
-      // Check if any item has different ID or key properties
-      // When Draft Design panel is open, exclude transform/position/scale from comparison
-      // to prevent external data from overriding user's slider changes
-      const itemsChanged = currentItems.some((item, index) => {
-        const extItem = external[index];
-        if (!extItem || item.id !== extItem.id) return true;
-        
-        // If Draft Design panel is open, only compare structural properties
-        if (showDraftDesignPanel) {
-          return (
-            item.draftDesignType !== extItem.draftDesignType ||
-            item.targetSection !== extItem.targetSection ||
-            item.pattern !== extItem.pattern ||
-            item.flowerVariant !== extItem.flowerVariant ||
-            item.cardVariant !== extItem.cardVariant ||
-            item.imageUrl !== extItem.imageUrl ||
-            item.coloredTextEnabled !== extItem.coloredTextEnabled ||
-            item.coloredTextColor !== extItem.coloredTextColor
-          );
-        }
-        
-        // Otherwise, compare all properties including transform/position
-        return (
-          item.positionXMobile !== extItem.positionXMobile ||
-          item.positionXDesktop !== extItem.positionXDesktop ||
-          item.positionYMobile !== extItem.positionYMobile ||
-          item.positionYDesktop !== extItem.positionYDesktop ||
-          item.scaleMobile !== extItem.scaleMobile ||
-          item.scaleDesktop !== extItem.scaleDesktop ||
-          item.rotate !== extItem.rotate ||
-          item.zIndex !== extItem.zIndex ||
-          item.draftDesignType !== extItem.draftDesignType ||
-          item.targetSection !== extItem.targetSection ||
-          item.pattern !== extItem.pattern ||
-          item.flowerVariant !== extItem.flowerVariant ||
-          item.cardVariant !== extItem.cardVariant ||
-          item.imageUrl !== extItem.imageUrl ||
-          item.coloredTextEnabled !== extItem.coloredTextEnabled ||
-          item.coloredTextColor !== extItem.coloredTextColor
-        );
-      });
-      
-      if (itemsChanged) {
-        setDirectoryItems(external);
-      }
+      const forced = (externalItems || []).map(item =>
+        item.draftDesignType === "now-playing" && item.targetSection !== "no-target"
+          ? { ...item, targetSection: "no-target" }
+          : item.draftDesignType === "rsvp" && item.targetSection !== "rsvp"
+          ? { ...item, targetSection: "rsvp" }
+          : item.draftDesignType === "photo-papers" && item.targetSection !== "gallery"
+          ? { ...item, targetSection: "gallery" }
+          : item.draftDesignType === "event-details-card" && item.targetSection !== "event-details"
+          ? { ...item, targetSection: "event-details" }
+          : item.draftDesignType === "dress-code-card" && item.targetSection !== "dresscode"
+          ? { ...item, targetSection: "dresscode" }
+          : item.draftDesignType === "gift-guide-card" && item.targetSection !== "gift-guide"
+          ? { ...item, targetSection: "gift-guide" }
+          : item.draftDesignType === "date-time-card" && item.targetSection !== "countdown"
+          ? { ...item, targetSection: "countdown" }
+          : item.draftDesignType === "story-card" && item.targetSection !== "timeline"
+          ? { ...item, targetSection: "timeline" }
+          : item
+      );
+      setDirectoryItems(forced);
     }
-  }, [data.weddingDirectoryItems, directoryItems, showDraftDesignPanel]);
+  }, [data.weddingDirectoryItems]);
 
   const handleAddDirectoryItem = () => {
     const currentItems = directoryItems;
-    if (currentItems.length >= 7) return;
+    if (currentItems.length >= 9) return;
+
+    const columnIndex = currentItems.length;
+    const defaultDesigns = [
+      { type: "envelope", targetSection: "event-details" },
+      { type: "invitation", targetSection: "event-details" },
+      { type: "date-time-card", targetSection: "countdown" },
+      { type: "rsvp", targetSection: "rsvp" },
+      { type: "event-details-card", targetSection: "event-details" },
+      { type: "photo-papers", targetSection: "gallery" },
+      { type: "now-playing", targetSection: "no-target" },
+      { type: "dress-code-card", targetSection: "dresscode" },
+      { type: "story-card", targetSection: "timeline" },
+    ];
+    const defaultDesign = defaultDesigns[columnIndex] || defaultDesigns[0];
 
     const newItem: WeddingDirectoryItem = {
       id: `weddir-item-${Date.now()}`,
-      draftDesignType: "envelope",
-      targetSection: "event-details",
+      draftDesignType: defaultDesign.type,
+      targetSection: defaultDesign.targetSection,
       imageUrl: "",
       zIndex: currentItems.length + 1,
       rotate: 0,
@@ -590,6 +694,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       },
     };
 
+    isUpdatingFromExternalRef.current = true;
     const updatedItems = [...currentItems, newItem];
     setDirectoryItems(updatedItems);
     onChange?.("weddingDirectoryItems", updatedItems);
@@ -606,6 +711,31 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const handleOpenItemSettings = (itemId: string) => {
     setSelectedItemId(itemId);
     setShowItemSettingsPanel(true);
+    const item = directoryItemsRef.current.find(i => i.id === itemId);
+    if (item?.draftDesignType === "now-playing" && item.targetSection !== "no-target") {
+      handleItemChange(itemId, "targetSection", "no-target");
+    }
+    if (item?.draftDesignType === "rsvp" && item.targetSection !== "rsvp") {
+      handleItemChange(itemId, "targetSection", "rsvp");
+    }
+    if (item?.draftDesignType === "photo-papers" && item.targetSection !== "gallery") {
+      handleItemChange(itemId, "targetSection", "gallery");
+    }
+    if (item?.draftDesignType === "event-details-card" && item.targetSection !== "event-details") {
+      handleItemChange(itemId, "targetSection", "event-details");
+    }
+    if (item?.draftDesignType === "dress-code-card" && item.targetSection !== "dresscode") {
+      handleItemChange(itemId, "targetSection", "dresscode");
+    }
+    if (item?.draftDesignType === "gift-guide-card" && item.targetSection !== "gift-guide") {
+      handleItemChange(itemId, "targetSection", "gift-guide");
+    }
+    if (item?.draftDesignType === "date-time-card" && item.targetSection !== "countdown") {
+      handleItemChange(itemId, "targetSection", "countdown");
+    }
+    if (item?.draftDesignType === "story-card" && item.targetSection !== "timeline") {
+      handleItemChange(itemId, "targetSection", "timeline");
+    }
     const itemElement = document.querySelector(`[data-item-id="${itemId}"]`);
     if (itemElement) {
       itemElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -629,10 +759,6 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     );
     setDirectoryItems(updatedItems);
     onChange?.("weddingDirectoryItems", updatedItems);
-    // Reset flag after a short delay to allow onChange to propagate
-    setTimeout(() => {
-      isUpdatingFromExternalRef.current = false;
-    }, 100);
   };
 
   const handleDraftDesignTypeChange = (itemId: string, value: string | number) => {
@@ -646,6 +772,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       if (isCustomCard && !wasCustomCard) updates.excludeTexts = false;
       return { ...item, ...updates };
     });
+    isUpdatingFromExternalRef.current = true;
     setDirectoryItems(updatedItems);
     onChange?.("weddingDirectoryItems", updatedItems);
   };
@@ -658,6 +785,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       updatedLayers[0] = { ...updatedLayers[0], tint: color };
       return { ...item, layers: updatedLayers, stampTint: color, stampTextColor: color };
     });
+    isUpdatingFromExternalRef.current = true;
     setDirectoryItems(updatedItems);
     onChange?.("weddingDirectoryItems", updatedItems);
   };
@@ -673,10 +801,474 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
 
   const handleDeleteItem = (itemId: string) => {
     const currentItems = directoryItems;
+    isUpdatingFromExternalRef.current = true;
     const updatedItems = currentItems.filter(item => item.id !== itemId);
     setDirectoryItems(updatedItems);
     onChange?.("weddingDirectoryItems", updatedItems);
     handleCloseItemSettingsPanel();
+  };
+
+  // Hold-to-drag state
+  type HoldData = {
+    timer: ReturnType<typeof setTimeout> | null;
+    triggered: boolean;
+    pointerId: number;
+    element: HTMLDivElement | null;
+    startX: number;
+    startY: number;
+    startPosX: number;
+    startPosY: number;
+    posXKey: keyof WeddingDirectoryItem;
+    posYKey: keyof WeddingDirectoryItem;
+    didMove: boolean;
+  };
+  const holdDataRef = useRef<Record<string, HoldData | undefined>>({});
+
+  type PhotoDragData = {
+    timer: ReturnType<typeof setTimeout> | null;
+    triggered: boolean;
+    pointerId: number;
+    element: HTMLImageElement | null;
+    startX: number;
+    startY: number;
+    startPosX: number;
+    startPosY: number;
+    didMove: boolean;
+  };
+  const photoDragDataRef = useRef<Record<string, PhotoDragData | undefined>>({});
+  const rotationChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imageDataCacheRef = useRef<Map<string, ImageData | null>>(new Map());
+
+  const getImageData = (img: HTMLImageElement): ImageData | null => {
+    const src = img.src;
+    if (imageDataCacheRef.current.has(src)) {
+      return imageDataCacheRef.current.get(src) ?? null;
+    }
+    if (!img.complete || img.naturalWidth === 0) {
+      imageDataCacheRef.current.set(src, null);
+      return null;
+    }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        imageDataCacheRef.current.set(src, null);
+        return null;
+      }
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      imageDataCacheRef.current.set(src, imageData);
+      return imageData;
+    } catch {
+      imageDataCacheRef.current.set(src, null);
+      return null;
+    }
+  };
+
+  const isPointOnVisibleImagePixel = (clientX: number, clientY: number, img: HTMLImageElement): boolean => {
+    const rect = img.getBoundingClientRect();
+    if (clientX < rect.left || clientY < rect.top || clientX > rect.right || clientY > rect.bottom) return false;
+
+    const naturalW = img.naturalWidth;
+    const naturalH = img.naturalHeight;
+    if (naturalW === 0 || naturalH === 0) return true;
+
+    // Circular hit test for roughly square elements (e.g., now-playing disc)
+    // Uses rendered rect dimensions — the container is square even if the image file isn't
+    // CSS transforms like animate-spin rotate the image, making pixel coordinate mapping unreliable
+    const isRenderedSquare = Math.abs(rect.width - rect.height) <= 2;
+    if (isRenderedSquare) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+      const radius = Math.min(rect.width, rect.height) / 2;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) return true;
+    }
+
+    const objectFit = window.getComputedStyle(img).objectFit;
+    let scale: number, offsetX: number, offsetY: number;
+
+    if (objectFit === 'contain') {
+      scale = Math.min(rect.width / naturalW, rect.height / naturalH);
+      offsetX = (rect.width - naturalW * scale) / 2;
+      offsetY = (rect.height - naturalH * scale) / 2;
+    } else if (objectFit === 'cover') {
+      scale = Math.max(rect.width / naturalW, rect.height / naturalH);
+      offsetX = (rect.width - naturalW * scale) / 2;
+      offsetY = (rect.height - naturalH * scale) / 2;
+    } else {
+      scale = rect.width / naturalW;
+      offsetX = 0;
+      offsetY = 0;
+    }
+
+    const imgX = clientX - rect.left - offsetX;
+    const imgY = clientY - rect.top - offsetY;
+
+    if (imgX < 0 || imgY < 0 || imgX > naturalW * scale || imgY > naturalH * scale) {
+      // Fallback: if rendered square, circular hit test already handled it above
+      // If not square and outside image bounds, check inscribed circle as last resort
+      if (isRenderedSquare) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        const radius = Math.min(rect.width, rect.height) / 2;
+        if (Math.sqrt(dx * dx + dy * dy) <= radius) return true;
+      }
+      return false;
+    }
+
+    const px = Math.floor(imgX / scale);
+    const py = Math.floor(imgY / scale);
+    if (px < 0 || py < 0 || px >= naturalW || py >= naturalH) return false;
+
+    const imageData = getImageData(img);
+    if (!imageData) return true;
+
+    const idx = (py * naturalW + px) * 4 + 3;
+    if (imageData.data[idx] > 10) return true;
+
+    // Pixel check failed (possibly due to CSS rotation) — fallback to circular hit test
+    if (isRenderedSquare) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+      const radius = Math.min(rect.width, rect.height) / 2;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) return true;
+    }
+
+    return false;
+  };
+
+  const isPointOnVisiblePixel = (clientX: number, clientY: number, container: HTMLElement): boolean => {
+    // Check images first (pixel-perfect alpha check)
+    const imgs = container.querySelectorAll('img');
+    for (const img of Array.from(imgs)) {
+      if (isPointOnVisibleImagePixel(clientX, clientY, img)) return true;
+    }
+    // Check SVG text and path elements (e.g., now-playing disc arc text)
+    const svgElements = container.querySelectorAll('svg text, svg path, svg circle, svg ellipse, svg rect');
+    for (const el of Array.from(svgElements)) {
+      const rect = el.getBoundingClientRect();
+      if (clientX < rect.left || clientY < rect.top || clientX > rect.right || clientY > rect.bottom) continue;
+      const style = window.getComputedStyle(el);
+      const fill = style.fill;
+      const stroke = style.stroke;
+      if (fill && fill !== 'none' && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent') return true;
+      if (stroke && stroke !== 'none' && stroke !== 'rgba(0, 0, 0, 0)' && stroke !== 'transparent') {
+        const strokeWidth = parseFloat(style.strokeWidth) || 0;
+        if (strokeWidth > 0) return true;
+      }
+    }
+    // Check SVG bounding boxes (catches SVG with visible content even if individual elements have pointer-events:none)
+    const svgs = container.querySelectorAll('svg');
+    for (const svg of Array.from(svgs)) {
+      const rect = svg.getBoundingClientRect();
+      if (clientX < rect.left || clientY < rect.top || clientX > rect.right || clientY > rect.bottom) continue;
+      // Check if SVG has any visible children
+      const hasVisibleContent = svg.querySelector('text, path, circle, ellipse, rect, image');
+      if (hasVisibleContent) {
+        const svgRect = svg.getBoundingClientRect();
+        // For the now-playing disc, the SVG covers the full disc area
+        // Check if the point is within the SVG's visible content area
+        const svgWidth = svgRect.width;
+        const svgHeight = svgRect.height;
+        const cx = svgRect.left + svgWidth / 2;
+        const cy = svgRect.top + svgHeight / 2;
+        // Check if within the disc circle (the SVG viewBox is 300x300, disc fills it)
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const radius = Math.min(svgWidth, svgHeight) / 2;
+        if (dist <= radius) return true;
+      }
+    }
+    // Fallback: check divs and text elements with visible content
+    const allElements = container.querySelectorAll('div, span, p, h3, h2, button');
+    for (const el of Array.from(allElements)) {
+      const rect = el.getBoundingClientRect();
+      if (clientX < rect.left || clientY < rect.top || clientX > rect.right || clientY > rect.bottom) continue;
+      const style = window.getComputedStyle(el);
+      // Check for non-transparent background color
+      const bg = style.backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        const alphaMatch = bg.match(/rgba?\([^)]*\)/);
+        if (alphaMatch) {
+          const parts = bg.match(/[\d.]+/g);
+          if (parts) {
+            const alpha = parts.length === 4 ? parseFloat(parts[3]) : 1;
+            if (alpha > 0.05) return true;
+          }
+        }
+      }
+      // Check for background image (gradient or url)
+      if (style.backgroundImage && style.backgroundImage !== 'none') return true;
+      // Check for border
+      const borderWidth = parseFloat(style.borderTopWidth) || 0;
+      if (borderWidth > 0) {
+        const borderColor = style.borderTopColor;
+        if (borderColor && borderColor !== 'rgba(0, 0, 0, 0)' && borderColor !== 'transparent') return true;
+      }
+      // Check for box-shadow
+      if (style.boxShadow && style.boxShadow !== 'none') return true;
+      // Check for text content (elements with actual text)
+      if (el.textContent && el.textContent.trim().length > 0) {
+        const color = style.color;
+        if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
+          const colorParts = color.match(/[\d.]+/g);
+          if (colorParts) {
+            const alpha = colorParts.length === 4 ? parseFloat(colorParts[3]) : 1;
+            if (alpha > 0.05) return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  const getPositionKeys = () => {
+    const posXKey: keyof WeddingDirectoryItem = desktopMode ? "positionXDesktop" : "positionXMobile";
+    const posYKey: keyof WeddingDirectoryItem = desktopMode ? "positionYDesktop" : "positionYMobile";
+    return { posXKey, posYKey };
+  };
+
+  const getRowYRange = (rowIndex: number): { min: number; max: number } => {
+    const ranges: { min: number; max: number }[] = [
+      { min: -10, max: 50 },
+      { min: -65, max: 30 },
+      { min: -95, max: 20 },
+      { min: -180, max: 20 },
+      { min: -220, max: 20 },
+    ];
+    return ranges[rowIndex] ?? { min: -100, max: 100 };
+  };
+
+  const updateHeldItemPosition = (itemId: string, valueX: number, valueY: number) => {
+    const data = holdDataRef.current[itemId];
+    if (!data) return;
+    const { posXKey, posYKey } = data;
+    setDirectoryItems((prev) => {
+      const updated = prev.map((item) =>
+        item.id === itemId ? { ...item, [posXKey]: valueX, [posYKey]: valueY } : item
+      );
+      directoryItemsRef.current = updated;
+      return updated;
+    });
+  };
+
+  const finishItemDrag = (itemId: string, keepRefForClick = false) => {
+    const data = holdDataRef.current[itemId];
+    if (data?.didMove) {
+      isUpdatingFromExternalRef.current = true;
+      onChange?.("weddingDirectoryItems", directoryItemsRef.current);
+    }
+    if (data?.timer) clearTimeout(data.timer);
+    setIsDragActive(false);
+    if (!keepRefForClick) {
+      holdDataRef.current[itemId] = undefined;
+    }
+    setHoldingItemId((prev) => (prev === itemId ? null : prev));
+  };
+
+  const handleItemPointerDown = (e: React.PointerEvent<HTMLDivElement>, itemId: string) => {
+    const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+    if (!editMode || (!isTouchLike && e.button !== 0)) return;
+    const element = e.currentTarget as HTMLDivElement;
+    if (!isPointOnVisiblePixel(e.clientX, e.clientY, element)) return;
+    const item = directoryItemsRef.current.find((i) => i.id === itemId);
+    if (!item) return;
+    const { posXKey, posYKey } = getPositionKeys();
+    holdDataRef.current[itemId] = {
+      timer: setTimeout(() => {
+        const data = holdDataRef.current[itemId];
+        if (!data) return;
+        data.timer = null;
+        data.triggered = true;
+        setIsDragActive(true);
+        try {
+          data.element?.setPointerCapture(data.pointerId);
+        } catch {}
+        setHoldingItemId(itemId);
+      }, 350),
+      triggered: false,
+      pointerId: e.pointerId,
+      element,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: (item[posXKey] as number) || 0,
+      startPosY: (item[posYKey] as number) || 0,
+      posXKey,
+      posYKey,
+      didMove: false,
+    };
+  };
+
+  const handleItemPointerMove = (e: React.PointerEvent<HTMLDivElement>, itemId: string) => {
+    const data = holdDataRef.current[itemId];
+    if (!data || e.pointerId !== data.pointerId) return;
+    if (!data.triggered) {
+      const dx = e.clientX - data.startX;
+      const dy = e.clientY - data.startY;
+      if (Math.hypot(dx, dy) > 10) {
+        if (data.timer) clearTimeout(data.timer);
+        holdDataRef.current[itemId] = undefined;
+      }
+      return;
+    }
+    e.preventDefault();
+    data.didMove = true;
+    const element = e.currentTarget as HTMLDivElement;
+    const width = element.offsetWidth || 1;
+    const height = element.offsetHeight || 1;
+    const deltaX = e.clientX - data.startX;
+    const deltaY = e.clientY - data.startY;
+    let newX = data.startPosX + (deltaX / width) * 100;
+    let newY = data.startPosY + (deltaY / height) * 100;
+    const itemIndex = directoryItemsRef.current.findIndex((i) => i.id === itemId);
+    const rowIndex = itemIndex === 0 ? 0 : itemIndex > 0 ? Math.ceil(itemIndex / 2) : 0;
+    const yRange = getRowYRange(rowIndex);
+    newX = Math.max(-100, Math.min(100, newX));
+    newY = Math.max(yRange.min, Math.min(yRange.max, newY));
+    updateHeldItemPosition(itemId, newX, newY);
+  };
+
+  const handleItemPointerUp = (e: React.PointerEvent<HTMLDivElement>, itemId: string) => {
+    const data = holdDataRef.current[itemId];
+    if (!data || e.pointerId !== data.pointerId) return;
+    try {
+      data.element?.releasePointerCapture(data.pointerId);
+    } catch {}
+    finishItemDrag(itemId, true);
+  };
+
+  const handleItemPointerCancel = (e: React.PointerEvent<HTMLDivElement>, itemId: string) => {
+    const data = holdDataRef.current[itemId];
+    if (!data || e.pointerId !== data.pointerId) return;
+    finishItemDrag(itemId, false);
+  };
+
+  const updatePhotoPosition = (itemId: string, paper: 'photoPapersImage1' | 'photoPapersImage2', x: number, y: number) => {
+    setDirectoryItems((prev) => {
+      const updated = prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              [`${paper}PositionX`]: Math.max(0, Math.min(100, x)),
+              [`${paper}PositionY`]: Math.max(0, Math.min(100, y)),
+            }
+          : item
+      );
+      directoryItemsRef.current = updated;
+      return updated;
+    });
+  };
+
+  const handlePhotoPointerDown = (e: React.PointerEvent<HTMLImageElement>, item: WeddingDirectoryItem, paper: 'photoPapersImage1' | 'photoPapersImage2') => {
+    if (!editMode) return;
+    e.stopPropagation();
+    const element = e.currentTarget as HTMLImageElement;
+    if (!isPointOnVisibleImagePixel(e.clientX, e.clientY, element)) return;
+    const posXKey = `${paper}PositionX` as keyof WeddingDirectoryItem;
+    const posYKey = `${paper}PositionY` as keyof WeddingDirectoryItem;
+    const key = `${item.id}-${paper}`;
+    photoDragDataRef.current[key] = {
+      timer: setTimeout(() => {
+        const data = photoDragDataRef.current[key];
+        if (!data) return;
+        data.timer = null;
+        data.triggered = true;
+        setIsDragActive(true);
+        try {
+          data.element?.setPointerCapture(data.pointerId);
+        } catch {}
+      }, 350),
+      triggered: false,
+      pointerId: e.pointerId,
+      element,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: (item[posXKey] as number) ?? 50,
+      startPosY: (item[posYKey] as number) ?? 50,
+      didMove: false,
+    };
+  };
+
+  const handlePhotoPointerMove = (e: React.PointerEvent<HTMLImageElement>, item: WeddingDirectoryItem, paper: 'photoPapersImage1' | 'photoPapersImage2') => {
+    const key = `${item.id}-${paper}`;
+    const data = photoDragDataRef.current[key];
+    if (!data || e.pointerId !== data.pointerId) return;
+    if (!data.triggered) {
+      const dx = e.clientX - data.startX;
+      const dy = e.clientY - data.startY;
+      if (Math.hypot(dx, dy) > 10) {
+        if (data.timer) clearTimeout(data.timer);
+        photoDragDataRef.current[key] = undefined;
+      }
+      return;
+    }
+    e.preventDefault();
+    data.didMove = true;
+    const img = data.element || e.currentTarget;
+    const boxW = img.offsetWidth || 1;
+    const boxH = img.offsetHeight || 1;
+    const naturalW = img.naturalWidth || boxW;
+    const naturalH = img.naturalHeight || boxH;
+    if (naturalW === 0 || naturalH === 0) return;
+    const scale = Math.max(boxW / naturalW, boxH / naturalH);
+    const renderedW = naturalW * scale;
+    const renderedH = naturalH * scale;
+    const overflowX = Math.max(0, renderedW - boxW);
+    const overflowY = Math.max(0, renderedH - boxH);
+    const dx = e.clientX - data.startX;
+    const dy = e.clientY - data.startY;
+    let newX = data.startPosX;
+    let newY = data.startPosY;
+    if (overflowX > 0) {
+      newX = data.startPosX - (dx / overflowX) * 100;
+    }
+    if (overflowY > 0) {
+      newY = data.startPosY - (dy / overflowY) * 100;
+    }
+    updatePhotoPosition(item.id, paper, newX, newY);
+  };
+
+  const handlePhotoPointerUp = (e: React.PointerEvent<HTMLImageElement>, item: WeddingDirectoryItem, paper: 'photoPapersImage1' | 'photoPapersImage2') => {
+    const key = `${item.id}-${paper}`;
+    const data = photoDragDataRef.current[key];
+    if (!data || e.pointerId !== data.pointerId) return;
+    try {
+      data.element?.releasePointerCapture(data.pointerId);
+    } catch {}
+    if (data.timer) clearTimeout(data.timer);
+    setIsDragActive(false);
+    if (data.triggered && data.didMove) {
+      isUpdatingFromExternalRef.current = true;
+      onChange?.("weddingDirectoryItems", directoryItemsRef.current);
+    }
+    if (!data.triggered) {
+      photoDragDataRef.current[key] = undefined;
+    }
+  };
+
+  const handlePhotoClick = (e: React.MouseEvent<HTMLImageElement>, item: WeddingDirectoryItem, paperKey: 'photoPapersImage1' | 'photoPapersImage2') => {
+    const key = `${item.id}-${paperKey}`;
+    const data = photoDragDataRef.current[key];
+    if (data?.triggered || data?.didMove) {
+      e.stopPropagation();
+      photoDragDataRef.current[key] = undefined;
+      return;
+    }
+    e.stopPropagation();
+    if (editMode) {
+      setPhotoPickerItemId(item.id + (paperKey === 'photoPapersImage1' ? '-paper1' : '-paper2'));
+    } else if (item.targetSection !== 'no-target') {
+      scrollToTargetSection(item);
+    }
   };
 
   const { options: predefinedHeadingFonts } = usePredefinedOptions('heading_fonts');
@@ -711,13 +1303,21 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     return variant === 0 ? "/assets/weddir-env-flowrs.png" : `/assets/weddir-env-flowrs${variant + 1}.png`;
   };
 
-  const getOutlineSrc = (variant: number) => {
-    return variant === 1 ? "/assets/weddir-env-outline.png" : `/assets/weddir-env-outline-${variant}.png`;
-  };
-
   const getCardSrc = (variant: number, draftDesignType: string = "custom-card") => {
-    if (draftDesignType === "custom-card-square") {
+    if (draftDesignType === "custom-card-square" || draftDesignType === "event-details-card" || draftDesignType === "story-card") {
       return `/assets/weddir-card-sq-${variant + 1}.png`;
+    }
+    if (draftDesignType === "dress-code-card") {
+      return `/assets/weddir-dress-${variant + 1}.png`;
+    }
+    if (draftDesignType === "gift-guide-card") {
+      return `/assets/weddir-gift-${variant + 1}.png`;
+    }
+    if (draftDesignType === "date-time-card") {
+      return `/assets/weddir-card-${variant + 1}.png`;
+    }
+    if (draftDesignType === "invitation" || draftDesignType === "invitation-landscape") {
+      return `/assets/weddir-card-${variant + 2}.png`;
     }
     return variant === 0 ? "/assets/weddir-card-1.png" : `/assets/weddir-card-${variant + 1}.png`;
   };
@@ -726,6 +1326,45 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     let count = 0;
     for (let i = 0; i < 20; i++) {
       const exists = await imageExists(getCardSrc(i, "custom-card"));
+      if (exists) {
+        count = i + 1;
+      } else {
+        break;
+      }
+    }
+    return Math.max(count, 1);
+  };
+
+  const detectDateTimeCardVariantCount = async (): Promise<number> => {
+    let count = 0;
+    for (let i = 0; i < 20; i++) {
+      const exists = await imageExists(getCardSrc(i, "date-time-card"));
+      if (exists) {
+        count = i + 1;
+      } else {
+        break;
+      }
+    }
+    return Math.max(count, 1);
+  };
+
+  const detectGiftCardVariantCount = async (): Promise<number> => {
+    let count = 0;
+    for (let i = 0; i < 20; i++) {
+      const exists = await imageExists(getCardSrc(i, "gift-guide-card"));
+      if (exists) {
+        count = i + 1;
+      } else {
+        break;
+      }
+    }
+    return Math.max(count, 1);
+  };
+
+  const detectDressCardVariantCount = async (): Promise<number> => {
+    let count = 0;
+    for (let i = 0; i < 20; i++) {
+      const exists = await imageExists(getCardSrc(i, "dress-code-card"));
       if (exists) {
         count = i + 1;
       } else {
@@ -748,20 +1387,13 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     return Math.max(count, 1);
   };
 
-  const getCardVariantCount = (draftDesignType: string) => draftDesignType === "custom-card-square" ? squareCardVariantCount : cardVariantCount;
-
-  const detectOutlineVariantCount = async (): Promise<number> => {
-    let count = 0;
-    for (let i = 1; i <= 20; i++) {
-      const exists = await imageExists(getOutlineSrc(i));
-      if (exists) {
-        count = i;
-      } else {
-        break;
-      }
-    }
-    // Fallback to at least 2 so weddir-env-outline and weddir-env-outline-2 always cycle
-    return Math.max(count, 2);
+  const getCardVariantCount = (draftDesignType: string) => {
+    if (draftDesignType === "custom-card-square" || draftDesignType === "event-details-card" || draftDesignType === "story-card") return squareCardVariantCount;
+    if (draftDesignType === "dress-code-card") return dressCardVariantCount;
+    if (draftDesignType === "gift-guide-card") return giftCardVariantCount;
+    if (draftDesignType === "date-time-card") return dateTimeCardVariantCount;
+    if (draftDesignType === "invitation" || draftDesignType === "invitation-landscape") return Math.max(cardVariantCount - 1, 1);
+    return cardVariantCount;
   };
 
   const imageExists = (src: string): Promise<boolean> => {
@@ -885,6 +1517,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   return (
     <>
       <section
+        data-edit-mode={editMode}
         className="pt-0 pb-8 px-8 text-center relative min-h-[200px]"
         style={{
           backgroundColor: mergedData.weddingDirectoryUseMainColor !== false
@@ -896,15 +1529,14 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 : mergedData.weddingDirectoryBackgroundType === "video"
                   ? undefined
                   : (mergedData.weddingDirectoryBackgroundColor || "transparent"),
-          background: mergedData.weddingDirectoryUseMainColor !== false
-            ? (data.mainColor1 || "transparent")
+          backgroundImage: mergedData.weddingDirectoryUseMainColor !== false
+            ? undefined
             : mergedData.weddingDirectoryBackgroundType === "gradient" && mergedData.weddingDirectoryGradient
               ? `linear-gradient(135deg, ${mergedData.weddingDirectoryGradient.firstColor || "#ffffff"}, ${mergedData.weddingDirectoryGradient.secondColor || "#ffffff"})`
               : undefined,
           ...(mergedData.weddingDirectoryBackgroundType === "image" && mergedData.weddingDirectoryImage?.urls && mergedData.weddingDirectoryImage.urls.length > 0 ? {
             backgroundImage: `url(${mergedData.weddingDirectoryImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
             backgroundPosition: 'center center',
-            backgroundAttachment: 'fixed',
             backgroundRepeat: 'no-repeat',
             backgroundSize: 'cover'
           } : {}),
@@ -912,11 +1544,18 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
         }}
       >
       {(mergedData.weddingDirectoryBackgroundType === "image" || mergedData.weddingDirectoryBackgroundType === "video") && mergedData.weddingDirectoryGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.weddingDirectoryGradient.firstColor || "#ffffff", (mergedData.weddingDirectoryGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.weddingDirectoryGradient.secondColor || "#ffffff", (mergedData.weddingDirectoryGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.weddingDirectoryGradient.firstColor || "#ffffff", (mergedData.weddingDirectoryGradient.firstOpacity !== undefined ? mergedData.weddingDirectoryGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.weddingDirectoryGradient.secondColor || "#ffffff", (mergedData.weddingDirectoryGradient.secondOpacity !== undefined ? mergedData.weddingDirectoryGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {mergedData.weddingDirectoryBackgroundType === "video" && mergedData.weddingDirectoryVideo?.url && (
@@ -945,17 +1584,26 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={weddingDirectoryUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.weddingDirectoryDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={weddingDirectoryUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.weddingDirectoryDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={weddingDirectoryUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.weddingDirectoryDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={weddingDirectoryUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.weddingDirectoryDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={weddingDirectoryUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.weddingDirectoryDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(weddingDirectoryUseDefaultDivider ? data.universalDivider : data.weddingDirectoryDivider) === "divider-1" ? predefinedDividerImagesCentered : (weddingDirectoryUseDefaultDivider ? data.universalDivider : data.weddingDirectoryDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = weddingDirectoryUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.weddingDirectoryDivider || "divider-1");
           if (weddingDirectoryUseDefaultDivider) {
             onChange?.("weddingDirectoryDividerUseDefault", false);
+            onChange?.("weddingDirectoryDivider", currentType);
           }
-          onChange?.("weddingDirectoryDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("weddingDirectoryDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("weddingDirectoryDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("weddingDirectoryDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -1027,13 +1675,18 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 <h3 className={`font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                   Directory Item Settings
                 </h3>
-                <button
+  
+
+              <button
                   type="button"
-                  onClick={() => handleResetItemTransform(selectedItemId)}
+                  onClick={() => {
+                    handleCloseItemSettingsPanel();
+                    setTimeout(() => handleOpenDraftDesignPanel(), 350);
+                  }}
                   className="p-1.5 rounded-md transition-colors hover:opacity-80"
-                  title="Reset Transform"
+                  title="Configuration"
                 >
-                  <img src="/assets/ico-mapping-default.PNG" alt="Reset Transform" className="w-5 h-5 object-contain" />
+                  <img src="/assets/ico-feather.png" alt="Configuration" className="w-5 h-5 object-contain" />
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6">
@@ -1050,28 +1703,68 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                         if (item.id !== selectedItemId) return item;
                         const updates: Partial<WeddingDirectoryItem> = { draftDesignType: newType, cardVariant: 0 };
                         if (isCustomCard && !wasCustomCard) updates.excludeTexts = false;
+                        if (newType === "now-playing") updates.targetSection = "no-target";
+                        if (newType === "rsvp") updates.targetSection = "rsvp";
+                        if (newType === "photo-papers") updates.targetSection = "gallery";
+                        if (newType === "event-details-card") updates.targetSection = "event-details";
+                        if (newType === "dress-code-card") updates.targetSection = "dresscode";
+                        if (newType === "gift-guide-card") updates.targetSection = "gift-guide";
+                        if (newType === "date-time-card") updates.targetSection = "countdown";
+                        if (newType === "story-card") updates.targetSection = "timeline";
                         return { ...item, ...updates };
                       });
+                      isUpdatingFromExternalRef.current = true;
                       setDirectoryItems(updatedItems);
                       onChange?.("weddingDirectoryItems", updatedItems);
                     }}
                     options={[
                       { name: "Envelope", value: "envelope" },
-                      { name: "Itinerary Cards", value: "itinerary" },
-                      { name: "Invitation (Portrait)", value: "invitation" },
-                      { name: "Invitation (Landscape)", value: "invitation-landscape" },
-                      { name: "Custom Card(Landscape)", value: "custom-card" },
-                      { name: "Custom Card(Portrait)", value: "custom-card-portrait" },
-                      { name: "Custom Card(Square)", value: "custom-card-square" },
+                      { name: "Now Playing Disc", value: "now-playing" },
+                      { name: "Photo Paper", value: "photo-papers" },
                       { name: "RSVP", value: "rsvp" },
-                      { name: "Details on Paper", value: "details" },
-                      { name: "Photo Papers", value: "photo-papers" },
-                      { name: "Now Playing", value: "now-playing" },
+                      { name: "Event Details", value: "event-details-card" },
+                      { name: "Dress Code", value: "dress-code-card" },
+                      { name: "Gift Guide", value: "gift-guide-card" },
+                      { name: "Date & Time", value: "date-time-card" },
+                      { name: "Story", value: "story-card" },
+                      { name: "──────────", value: "divider-1", divider: true },
+                      { name: "Landscape Invitation", value: "invitation-landscape" },
+                      { name: "Portrait Invitation", value: "invitation" },
+                      { name: "──────────", value: "divider-2", divider: true },
+                      { name: "Landscape Card", value: "custom-card" },
+                      { name: "Portrait Card", value: "custom-card-portrait" },
+                      { name: "Square Card", value: "custom-card-square" },
                     ]}
                     isDarkMode={isDarkMode}
                     accentColor={accentColor}
                   />
-                  {selectedItem.draftDesignType !== "envelope" && selectedItem.draftDesignType !== "photo-papers" && selectedItem.draftDesignType !== "invitation" && selectedItem.draftDesignType !== "invitation-landscape" && selectedItem.draftDesignType !== "custom-card" && selectedItem.draftDesignType !== "custom-card-portrait" && selectedItem.draftDesignType !== "custom-card-square" && selectedItem.draftDesignType !== "now-playing" && (
+                  {selectedItem.draftDesignType !== "now-playing" && selectedItem.draftDesignType !== "rsvp" && selectedItem.draftDesignType !== "event-details-card" && selectedItem.draftDesignType !== "dress-code-card" && selectedItem.draftDesignType !== "gift-guide-card" && selectedItem.draftDesignType !== "date-time-card" && selectedItem.draftDesignType !== "story-card" && selectedItem.draftDesignType !== "photo-papers" && (
+                  <div className="space-y-2 pt-4">
+                    <h5 className={`text-xs font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>NAVIGATION</h5>
+                    <HybridDropdown
+                      value={selectedItem.targetSection}
+                      onChange={(value) => handleItemChange(selectedItemId, "targetSection", String(value))}
+                      options={[
+                        { name: "No Target", value: "no-target" },
+                        { name: "Countdown", value: "countdown" },
+                        { name: "Dress Code", value: "dresscode" },
+                        { name: "Entourage", value: "entourage" },
+                        { name: "Event Details", value: "event-details" },
+                        { name: "Event Location", value: "map" },
+                        { name: "Gift Guide", value: "giftguide" },
+                        { name: "Our Story", value: "timeline" },
+                        { name: "Photo Gallery", value: "gallery" },
+                        { name: "RSVP", value: "rsvp" },
+                      ]}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                    />
+                  </div>
+                  )}
+                  <div className={`space-y-6 pt-4 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>DESIGN OPTION</h4>
+                  </div>
+                  {selectedItem.draftDesignType !== "envelope" && selectedItem.draftDesignType !== "photo-papers" && selectedItem.draftDesignType !== "invitation" && selectedItem.draftDesignType !== "invitation-landscape" && selectedItem.draftDesignType !== "custom-card" && selectedItem.draftDesignType !== "custom-card-portrait" && selectedItem.draftDesignType !== "custom-card-square" && selectedItem.draftDesignType !== "now-playing" && selectedItem.draftDesignType !== "rsvp" && selectedItem.draftDesignType !== "event-details-card" && selectedItem.draftDesignType !== "dress-code-card" && selectedItem.draftDesignType !== "gift-guide-card" && selectedItem.draftDesignType !== "date-time-card" && selectedItem.draftDesignType !== "story-card" && (
                     <div className="space-y-2 pt-4">
                       <div className="flex items-center justify-between">
                         <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>COLORED TEXT</label>
@@ -1211,6 +1904,25 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                         }}
                       />
                     </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Other Text Size</label>
+                        <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((selectedItem.othersTextSize ?? 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="100"
+                        step="1"
+                        value={(selectedItem.othersTextSize ?? 1) * 100}
+                        onChange={(e) => handleItemChange(selectedItemId, "othersTextSize", parseFloat(e.target.value) / 100)}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.othersTextSize ?? 1) * 100 - 50) / 50 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.othersTextSize ?? 1) * 100 - 50) / 50 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
                 {(selectedItem.draftDesignType === "invitation" || selectedItem.draftDesignType === "invitation-landscape") && (
@@ -1267,6 +1979,30 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                         </div>
                       )}
                     </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                     <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>ANIMATION</h4>
                     <div className="space-y-2">
                       <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Animation</label>
@@ -1310,6 +2046,46 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 )}
                 {(selectedItem.draftDesignType === "custom-card" || selectedItem.draftDesignType === "custom-card-portrait" || selectedItem.draftDesignType === "custom-card-square") && (
                   <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>MESSAGE</h4>
+                    <div className="space-y-1">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Message</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={resolveCustomCardMessage(selectedItem.customCardMessage ?? "", data.rsvpDeadline)}
+                          onChange={(e) => handleItemChange(selectedItemId, "customCardMessage", e.target.value)}
+                          className={`w-full px-3 py-2.5 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={{ fontFamily: "Inter, sans-serif", ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) }}
+                          placeholder="Enter your message..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentIndex = CUSTOM_CARD_MESSAGES.findIndex(m => m === (selectedItem.customCardMessage || ""));
+                            const { message } = getNextMessage(CUSTOM_CARD_MESSAGES, currentIndex);
+                            handleItemChange(selectedItemId, "customCardMessage", message);
+                          }}
+                          className={`absolute right-2 top-2 transition-colors ${isDarkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
+                          title="Next message"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Custom Text</label>
+                      <textarea
+                        value={selectedItem.customText || ""}
+                        onChange={(e) => handleItemChange(selectedItemId, "customText", e.target.value)}
+                        className={`w-full px-3 py-2 rounded-md text-sm resize-none ${isDarkMode ? "bg-gray-700 text-gray-200 border-gray-600" : "bg-white text-gray-800 border-gray-300"} border`}
+                        style={{ fontFamily: "Inter, sans-serif", minHeight: "80px" }}
+                        placeholder="Enter your custom text..."
+                      />
+                    </div>
                     <div className="space-y-2 pt-4">
                       <div className="flex items-center justify-between">
                         <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>COLORED TEXT</label>
@@ -1361,46 +2137,6 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                           </div>
                         </div>
                       )}
-                    </div>
-                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>MESSAGE</h4>
-                    <div className="space-y-1">
-                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Message</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={resolveCustomCardMessage(selectedItem.customCardMessage ?? "", data.rsvpDeadline)}
-                          onChange={(e) => handleItemChange(selectedItemId, "customCardMessage", e.target.value)}
-                          className={`w-full px-3 py-2.5 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={{ fontFamily: "Inter, sans-serif", ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) }}
-                          placeholder="Enter your message..."
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const currentIndex = CUSTOM_CARD_MESSAGES.findIndex(m => m === (selectedItem.customCardMessage || ""));
-                            const { message } = getNextMessage(CUSTOM_CARD_MESSAGES, currentIndex);
-                            handleItemChange(selectedItemId, "customCardMessage", message);
-                          }}
-                          className={`absolute right-2 top-2 transition-colors ${isDarkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
-                          title="Next message"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M23 4v6h-6"></path>
-                            <path d="M1 20v-6h6"></path>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Custom Text</label>
-                      <textarea
-                        value={selectedItem.customText || ""}
-                        onChange={(e) => handleItemChange(selectedItemId, "customText", e.target.value)}
-                        className={`w-full px-3 py-2 rounded-md text-sm resize-none ${isDarkMode ? "bg-gray-700 text-gray-200 border-gray-600" : "bg-white text-gray-800 border-gray-300"} border`}
-                        style={{ fontFamily: "Inter, sans-serif", minHeight: "80px" }}
-                        placeholder="Enter your custom text..."
-                      />
                     </div>
                   </div>
                 )}
@@ -1531,6 +2267,627 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     </div>
                   </div>
                 )}
+                {selectedItem.draftDesignType === "rsvp" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>COLOR</h4>
+                    <div className="space-y-1">
+                      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        UNIVERSAL COLOR
+                      </label>
+                      <ColorControl
+                        label=""
+                        value={selectedItem.stampTint || data.mainColor1}
+                        onChange={(value) => handleUniversalColorChange(selectedItemId, value)}
+                        predefinedColors={predefinedSectionColors.map(c => c.value)}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "event-details-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Size</label>
+                        <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((selectedItem.nameTextSize ?? 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        step="1"
+                        value={(selectedItem.nameTextSize ?? 1) * 100}
+                        onChange={(e) => handleItemChange(selectedItemId, "nameTextSize", parseFloat(e.target.value) / 100)}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "event-details-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>EVENT DETAILS TEXT</h4>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`flex-1 px-3 py-2.5 border rounded-lg text-sm ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif", ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) }}>
+                          {selectedItem.eventDetailsText || "Event Details"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const EVENT_DETAILS_TEXTS = [
+                              "Event Details",
+                              "Wedding Details",
+                              "The Schedule",
+                              "When & Where",
+                              "Celebration Details",
+                              "Wedding Particulars",
+                              "Guest Information",
+                              "The Details",
+                              "Kindly Note",
+                              "For Your Convenience",
+                              "Accommodations & Events",
+                              "The Grand Itinerary",
+                              "A Guide to Our Celebration",
+                            ];
+                            const currentIndex = EVENT_DETAILS_TEXTS.findIndex(t => t === (selectedItem.eventDetailsText || "Event Details"));
+                            const nextIndex = (currentIndex + 1) % EVENT_DETAILS_TEXTS.length;
+                            handleItemChange(selectedItemId, "eventDetailsText", EVENT_DETAILS_TEXTS[nextIndex]);
+                          }}
+                          className={`p-2 rounded-lg transition-colors ${isDarkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
+                          title="Cycle text"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>FONT TYPE</label>
+                      <HybridFontControl
+                        label=""
+                        value={selectedItem.eventDetailsFont || data.headingFont || "Playfair Display"}
+                        onChange={(value) => handleItemChange(selectedItemId, "eventDetailsFont", value)}
+                        type="heading"
+                        showPreview={false}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        useInterFont={true}
+                        predefinedFonts={headingFonts}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT COLOR</label>
+                      <ColorControl
+                        label=""
+                        value={selectedItem.coloredTextColor || data.mainColor1}
+                        onChange={(value) => {
+                          handleItemChange(selectedItemId, "coloredTextColor", value);
+                        }}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                      />
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "event-details-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>CARD COLOR</h4>
+                    <ColorControl
+                      label="Card Tint"
+                      value={selectedItem.layers[0]?.tint || data.mainColor1}
+                      onChange={(value) => {
+                        const updatedLayers = [...(selectedItem.layers || [])];
+                        if (updatedLayers.length === 0) {
+                          updatedLayers.push({ id: "card", designId: "default", tint: value, zIndex: 1 });
+                        } else {
+                          updatedLayers[0] = { ...updatedLayers[0], tint: value };
+                        }
+                        handleItemChange(selectedItemId, "layers", updatedLayers);
+                      }}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                    />
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "dress-code-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Size</label>
+                        <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((selectedItem.nameTextSize ?? 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        step="1"
+                        value={(selectedItem.nameTextSize ?? 1) * 100}
+                        onChange={(e) => handleItemChange(selectedItemId, "nameTextSize", parseFloat(e.target.value) / 100)}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`flex-1 px-3 py-2.5 border rounded-lg text-sm ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif", ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) }}>
+                          {selectedItem.dressCodeText || "Woven Together"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const DRESS_CODE_TEXTS = [
+                              "Woven Together",
+                              "Our Wedding Palette",
+                              "The Aesthetic",
+                              "Requested Attire",
+                              "Sartorial Guidance",
+                              "Guest Attire",
+                              "Festive Attire",
+                              "Sartorial Notes",
+                              "The Style Edit",
+                            ];
+                            const currentIndex = DRESS_CODE_TEXTS.findIndex(t => t === (selectedItem.dressCodeText || "Woven Together"));
+                            const nextIndex = (currentIndex + 1) % DRESS_CODE_TEXTS.length;
+                            handleItemChange(selectedItemId, "dressCodeText", DRESS_CODE_TEXTS[nextIndex]);
+                          }}
+                          className={`p-2 rounded-lg transition-colors ${isDarkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
+                          title="Cycle text"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>FONT TYPE</label>
+                      <HybridFontControl
+                        label=""
+                        value={selectedItem.dressCodeFont || data.headingFont || "Playfair Display"}
+                        onChange={(value) => handleItemChange(selectedItemId, "dressCodeFont", value)}
+                        type="heading"
+                        showPreview={false}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        useInterFont={true}
+                        predefinedFonts={headingFonts}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT COLOR</label>
+                      <ColorControl
+                        label=""
+                        value={selectedItem.coloredTextColor || data.mainColor1}
+                        onChange={(value) => {
+                          handleItemChange(selectedItemId, "coloredTextColor", value);
+                        }}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "dress-code-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>CARD COLOR</h4>
+                    <ColorControl
+                      label="Card Tint"
+                      value={selectedItem.layers[0]?.tint || data.mainColor1}
+                      onChange={(value) => {
+                        const updatedLayers = [...(selectedItem.layers || [])];
+                        if (updatedLayers.length === 0) {
+                          updatedLayers.push({ id: "card", designId: "default", tint: value, zIndex: 1 });
+                        } else {
+                          updatedLayers[0] = { ...updatedLayers[0], tint: value };
+                        }
+                        handleItemChange(selectedItemId, "layers", updatedLayers);
+                      }}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                    />
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "gift-guide-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Size</label>
+                        <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((selectedItem.nameTextSize ?? 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        step="1"
+                        value={(selectedItem.nameTextSize ?? 1) * 100}
+                        onChange={(e) => handleItemChange(selectedItemId, "nameTextSize", parseFloat(e.target.value) / 100)}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`flex-1 px-3 py-2.5 border rounded-lg text-sm ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif", ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) }}>
+                          {selectedItem.giftGuideText || "The Registry"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const GIFT_GUIDE_TEXTS = [
+                              "The Registry",
+                              "Gift Registry",
+                              "Our Registry",
+                              "Registry & Gifting",
+                              "Gifting",
+                              "Registry Notes",
+                              "Our Next Chapter",
+                            ];
+                            const currentIndex = GIFT_GUIDE_TEXTS.findIndex(t => t === (selectedItem.giftGuideText || "The Registry"));
+                            const nextIndex = (currentIndex + 1) % GIFT_GUIDE_TEXTS.length;
+                            handleItemChange(selectedItemId, "giftGuideText", GIFT_GUIDE_TEXTS[nextIndex]);
+                          }}
+                          className={`p-2 rounded-lg transition-colors ${isDarkMode ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
+                          title="Cycle text"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>FONT TYPE</label>
+                      <HybridFontControl
+                        label=""
+                        value={selectedItem.giftGuideFont || data.headingFont || "Playfair Display"}
+                        onChange={(value) => handleItemChange(selectedItemId, "giftGuideFont", value)}
+                        type="heading"
+                        showPreview={false}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        useInterFont={true}
+                        predefinedFonts={headingFonts}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT COLOR</label>
+                      <ColorControl
+                        label=""
+                        value={selectedItem.coloredTextColor || data.mainColor1}
+                        onChange={(value) => {
+                          handleItemChange(selectedItemId, "coloredTextColor", value);
+                        }}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "gift-guide-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>CARD COLOR</h4>
+                    <ColorControl
+                      label="Card Tint"
+                      value={selectedItem.layers[0]?.tint || data.mainColor1}
+                      onChange={(value) => {
+                        const updatedLayers = [...(selectedItem.layers || [])];
+                        if (updatedLayers.length === 0) {
+                          updatedLayers.push({ id: "card", designId: "default", tint: value, zIndex: 1 });
+                        } else {
+                          updatedLayers[0] = { ...updatedLayers[0], tint: value };
+                        }
+                        handleItemChange(selectedItemId, "layers", updatedLayers);
+                      }}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                    />
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "date-time-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Size</label>
+                        <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((selectedItem.nameTextSize ?? 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        step="1"
+                        value={(selectedItem.nameTextSize ?? 1) * 100}
+                        onChange={(e) => handleItemChange(selectedItemId, "nameTextSize", parseFloat(e.target.value) / 100)}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>FONT TYPE</label>
+                      <HybridFontControl
+                        label=""
+                        value={selectedItem.dateTimeFont || data.headingFont || "Playfair Display"}
+                        onChange={(value) => handleItemChange(selectedItemId, "dateTimeFont", value)}
+                        type="heading"
+                        showPreview={false}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        useInterFont={true}
+                        predefinedFonts={headingFonts}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT COLOR</label>
+                      <ColorControl
+                        label=""
+                        value={selectedItem.coloredTextColor || data.mainColor1}
+                        onChange={(value) => {
+                          handleItemChange(selectedItemId, "coloredTextColor", value);
+                        }}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "date-time-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>CARD COLOR</h4>
+                    <ColorControl
+                      label="Card Tint"
+                      value={selectedItem.layers[0]?.tint || data.mainColor1}
+                      onChange={(value) => {
+                        const updatedLayers = [...(selectedItem.layers || [])];
+                        if (updatedLayers.length === 0) {
+                          updatedLayers.push({ id: "card", designId: "default", tint: value, zIndex: 1 });
+                        } else {
+                          updatedLayers[0] = { ...updatedLayers[0], tint: value };
+                        }
+                        handleItemChange(selectedItemId, "layers", updatedLayers);
+                      }}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                    />
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "story-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Size</label>
+                        <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((selectedItem.nameTextSize ?? 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        step="1"
+                        value={(selectedItem.nameTextSize ?? 1) * 100}
+                        onChange={(e) => handleItemChange(selectedItemId, "nameTextSize", parseFloat(e.target.value) / 100)}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.nameTextSize ?? 1) * 100 - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>FONT TYPE</label>
+                      <HybridFontControl
+                        label=""
+                        value={selectedItem.storyFont || data.headingFont || "Playfair Display"}
+                        onChange={(value) => handleItemChange(selectedItemId, "storyFont", value)}
+                        type="heading"
+                        showPreview={false}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        useInterFont={true}
+                        predefinedFonts={headingFonts}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT COLOR</label>
+                      <ColorControl
+                        label=""
+                        value={selectedItem.coloredTextColor || data.mainColor1}
+                        onChange={(value) => {
+                          handleItemChange(selectedItemId, "coloredTextColor", value);
+                        }}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                      />
+                    </div>
+                    <div className="space-y-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>TEXT SHADOW</label>
+                        <div
+                          className="relative inline-block w-11 h-6 cursor-pointer"
+                          onClick={() => handleItemChange(selectedItemId, "textShadowEnabled", !selectedItem.textShadowEnabled)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedItem.textShadowEnabled}
+                            onChange={() => {}}
+                            className="sr-only"
+                          />
+                          <div
+                            className="absolute inset-0 rounded-full transition-colors"
+                            style={{ backgroundColor: selectedItem.textShadowEnabled ? accentColor : (isDarkMode ? "#4B5563" : "#E5E7EB") }}
+                          />
+                          <div
+                            className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                            style={{ transform: selectedItem.textShadowEnabled ? 'translateX(20px)' : 'translateX(0)' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {selectedItem.draftDesignType === "story-card" && (
+                  <div className="space-y-6">
+                    <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>CARD COLOR</h4>
+                    <ColorControl
+                      label="Card Tint"
+                      value={selectedItem.layers[0]?.tint || data.mainColor1}
+                      onChange={(value) => {
+                        const updatedLayers = [...(selectedItem.layers || [])];
+                        if (updatedLayers.length === 0) {
+                          updatedLayers.push({ id: "card", designId: "default", tint: value, zIndex: 1 });
+                        } else {
+                          updatedLayers[0] = { ...updatedLayers[0], tint: value };
+                        }
+                        handleItemChange(selectedItemId, "layers", updatedLayers);
+                      }}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                    />
+                  </div>
+                )}
                 {selectedItem.draftDesignType === "now-playing" && (
                   <div className="space-y-6">
                     <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>NOW PLAYING</h4>
@@ -1644,6 +3001,77 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     </div>
                   </div>
                 )}
+                <div className={`space-y-6 pt-4 border-t ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
+                  <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>GENERAL OPTION</h4>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>STACKING ORDER</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        value={selectedItem.zIndex || 0}
+                        onChange={(e) => handleItemChange(selectedItemId, "zIndex", parseInt(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(selectedItem.zIndex || 0) / 10 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${(selectedItem.zIndex || 0) / 10 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>SCALE</label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setScaleMode("mobile")}
+                            className={`p-1.5 rounded-lg transition-colors ${scaleMode === "mobile" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
+                            title="Mobile scale"
+                          >
+                            <img src="/assets/ico-mobile.png" alt="Mobile" width="16" height="16" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setScaleMode("desktop")}
+                            className={`p-1.5 rounded-lg transition-colors ${scaleMode === "desktop" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
+                            title="Desktop scale"
+                          >
+                            <img src="/assets/ico-desktop.png" alt="Desktop" width="16" height="16" />
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2"
+                        step="0.1"
+                        value={scaleMode === "mobile" ? (selectedItem.scaleMobile || 1) : (selectedItem.scaleDesktop || 1)}
+                        onChange={(e) => handleItemChange(selectedItemId, scaleMode === "mobile" ? "scaleMobile" : "scaleDesktop", parseFloat(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((scaleMode === "mobile" ? (selectedItem.scaleMobile || 1) : (selectedItem.scaleDesktop || 1)) - 0.5) / 1.5 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((scaleMode === "mobile" ? (selectedItem.scaleMobile || 1) : (selectedItem.scaleDesktop || 1)) - 0.5) / 1.5 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>ROTATE</label>
+                      <input
+                        type="range"
+                        min="-180"
+                        max="180"
+                        value={selectedItem.rotate || 0}
+                        onChange={(e) => handleItemChange(selectedItemId, "rotate", parseInt(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((selectedItem.rotate || 0) + 180) / 360 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((selectedItem.rotate || 0) + 180) / 360 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </>,
@@ -1659,9 +3087,15 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
           transition: none !important;
           animation: none !important;
         }
+        [data-edit-mode="true"] [data-item-id],
+        [data-edit-mode="true"] [data-item-id] * {
+          -webkit-touch-callout: none !important;
+          -webkit-user-select: none !important;
+          user-select: none !important;
+        }
       `}</style>
       <h2
-        className="text-2xl font-bold uppercase mb-1 md:mb-8 scale-[0.55] md:scale-100"
+        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.weddingDirectoryUseMainColor !== false ? data.mainColor2 : (mergedData.weddingDirectoryHeadingColor || data.mainColor2),
           fontFamily: mergedData.weddingDirectoryUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.weddingDirectoryHeadingTypography || data.headingFont, "heading"),
@@ -1686,7 +3120,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
 
       {mergedData.weddingDirectoryMessage && (
         <p
-          className="text-center mb-2 md:mb-8 leading-relaxed scale-[0.7] md:scale-100"
+          className="text-center text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
           style={{
             color: mergedData.weddingDirectoryUseMainColor !== false ? data.neutralColor1 : (mergedData.weddingDirectoryMessageColor || data.neutralColor1),
             fontFamily: mergedData.weddingDirectoryUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.weddingDirectoryMessageTypography || data.bodyFont, "body"),
@@ -1698,77 +3132,97 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
         </p>
       )}
 
+      <style>{`
+        @keyframes wd-arrow-up-anim {
+          0% { transform: translateY(0); opacity: 0; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
+          100% { transform: translateY(-18px); opacity: 0; }
+        }
+        @keyframes wd-arrow-down-anim {
+          0% { transform: translateY(0); opacity: 0; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
+          100% { transform: translateY(18px); opacity: 0; }
+        }
+        @keyframes wd-arrow-left-anim {
+          0% { transform: translateX(0); opacity: 0; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
+          100% { transform: translateX(-18px); opacity: 0; }
+        }
+        @keyframes wd-arrow-right-anim {
+          0% { transform: translateX(0); opacity: 0; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
+          100% { transform: translateX(18px); opacity: 0; }
+        }
+        .wd-arrow-up { animation: wd-arrow-up-anim 1.2s ease-in-out infinite; }
+        .wd-arrow-down { animation: wd-arrow-down-anim 1.2s ease-in-out infinite; }
+        .wd-arrow-left { animation: wd-arrow-left-anim 1.2s ease-in-out infinite; }
+        .wd-arrow-right { animation: wd-arrow-right-anim 1.2s ease-in-out infinite; }
+        .wd-design-visual img { -webkit-user-drag: none; }
+      `}</style>
+
       {/* Directory Items Container */}
-      <div className={`grid grid-cols-2 gap-2 md:gap-4 ${showItemSettingsPanel || showDraftDesignPanel ? 'wd-no-anim' : ''}`}>
+      <div className={`grid grid-cols-2 max-[344px]:grid-cols-1 gap-2 md:gap-4 ${showItemSettingsPanel || showDraftDesignPanel ? 'wd-no-anim' : ''}`}>
+        {directoryItems.length === 0 && editMode && (
+          <div className="col-span-2 flex justify-center py-8">
+            <button
+              type="button"
+              onClick={handleOpenDraftDesignPanel}
+              className="w-32 h-32 rounded-2xl border-2 border-dashed flex items-center justify-center transition-all hover:scale-105 hover:opacity-80 focus:outline-none"
+              style={{ borderColor: accentColor }}
+              aria-label="Add directory item"
+            >
+              <img
+                src="/assets/ico-feather.png"
+                alt=""
+                className="w-12 h-12 object-contain pointer-events-none"
+              />
+            </button>
+          </div>
+        )}
         {directoryItems.map((item, index) => (
           <div
             key={item.id}
             data-item-id={item.id}
-            className={`relative ${index === 0 ? "col-span-2 justify-self-center" : index % 2 === 1 ? "justify-self-end" : "justify-self-start"}`}
+            className={`relative ${index === 0 ? "col-span-2 justify-self-center" : index % 2 === 1 ? "justify-self-end max-[344px]:justify-self-center" : "justify-self-start max-[344px]:justify-self-center"} ${editMode ? 'select-none' : ''}`}
             style={{
               zIndex: item.zIndex,
-              transform: `translate(${item.positionXMobile}%, ${item.positionYMobile}%) rotate(${item.rotate}deg) scale(${item.scaleMobile})`,
-              filter: draftShadowEnabled
-                ? `drop-shadow(${draftShadowOffsetX}px ${draftShadowOffsetY}px ${draftShadowBlur}px rgba(0, 0, 0, ${draftShadowVisibility / 100}))`
-                : ((showItemSettingsPanel && selectedItemId === item.id) || expandedDraftItemId === item.id ? 'drop-shadow(0 0 12px rgba(255, 255, 255, 0.9))' : undefined),
+              transform: `translate(${desktopMode ? item.positionXDesktop : item.positionXMobile}%, ${desktopMode ? item.positionYDesktop : item.positionYMobile}%)`,
+              touchAction: editMode ? 'pan-y' : 'auto',
+              WebkitTouchCallout: 'none',
             } as React.CSSProperties}
-            onMouseDown={() => {
-              if (!editMode) return;
-              const lp = longPressRef.current[item.id] || (longPressRef.current[item.id] = { timer: null, triggered: false });
-              if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; }
-              lp.triggered = false;
-              lp.timer = setTimeout(() => {
-                lp.timer = null;
-                lp.triggered = true;
-                handleDeleteItem(item.id);
-              }, 700);
-            }}
-            onMouseUp={() => {
-              const lp = longPressRef.current[item.id];
-              if (!lp) return;
-              if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; lp.triggered = false; }
-            }}
-            onMouseLeave={() => {
-              const lp = longPressRef.current[item.id];
-              if (!lp) return;
-              if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; lp.triggered = false; }
-            }}
-            onTouchStart={() => {
-              if (!editMode) return;
-              const lp = longPressRef.current[item.id] || (longPressRef.current[item.id] = { timer: null, triggered: false });
-              if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; }
-              lp.triggered = false;
-              lp.timer = setTimeout(() => {
-                lp.timer = null;
-                lp.triggered = true;
-                handleDeleteItem(item.id);
-              }, 700);
-            }}
-            onTouchEnd={() => {
-              const lp = longPressRef.current[item.id];
-              if (!lp) return;
-              if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; lp.triggered = false; }
-            }}
-            onTouchCancel={() => {
-              const lp = longPressRef.current[item.id];
-              if (!lp) return;
-              if (lp.timer) { clearTimeout(lp.timer); lp.timer = null; lp.triggered = false; }
-            }}
-            onClickCapture={(e) => {
-              const lp = longPressRef.current[item.id];
-              if (lp?.triggered) {
+            onPointerDown={editMode ? (e) => handleItemPointerDown(e, item.id) : undefined}
+            onPointerMove={editMode ? (e) => handleItemPointerMove(e, item.id) : undefined}
+            onPointerUp={editMode ? (e) => handleItemPointerUp(e, item.id) : undefined}
+            onPointerCancel={editMode ? (e) => handleItemPointerCancel(e, item.id) : undefined}
+            onContextMenu={editMode ? (e) => { e.preventDefault(); } : undefined}
+            onClickCapture={editMode ? (e) => {
+              const data = holdDataRef.current[item.id];
+              if (data?.triggered) {
                 e.stopPropagation();
-                lp.triggered = false;
+                holdDataRef.current[item.id] = undefined;
               }
-            }}
+            } : undefined}
           >
             <style>{`
               @media (min-width: 768px) {
-                [data-item-id="${item.id}"] {
-                  transform: translate(${item.positionXDesktop}%, ${item.positionYDesktop}%) rotate(${item.rotate}deg) scale(${item.scaleDesktop}) !important;
+                [data-item-id="${item.id}"] .wd-design-visual {
+                  transform: rotate(${item.rotate}deg) scale(${item.scaleDesktop}) !important;
                 }
               }
             `}</style>
+            <div
+              className="wd-design-visual relative inline-block"
+              style={{
+                transform: `rotate(${item.rotate}deg) scale(${desktopMode ? item.scaleDesktop : item.scaleMobile})`,
+                filter: (draftShadowEnabled && !showItemSettingsPanel)
+                  ? `drop-shadow(${draftShadowOffsetX}px ${draftShadowOffsetY}px ${draftShadowBlur}px rgba(0, 0, 0, ${draftShadowVisibility / 100}))`
+                  : ((showItemSettingsPanel && selectedItemId === item.id) || expandedDraftItemId === item.id ? 'drop-shadow(0 0 12px rgba(255, 255, 255, 0.9))' : undefined),
+              } as React.CSSProperties}
+            >
             {item.draftDesignType === "envelope" && (
               <div
                 className={`relative overflow-visible w-[150px] h-[180px] md:w-[280px] md:h-[336px] lg:w-[350px] lg:h-[420px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
@@ -1779,12 +3233,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                   transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
                 }}
                 onClick={(e) => {
-                  if (editMode && outlineVariantCount > 1) {
-                    e.stopPropagation();
-                    const currentPattern = parseInt(item.pattern || "1", 10);
-                    const nextPattern = (currentPattern % outlineVariantCount) + 1;
-                    handleItemChange(item.id, "pattern", String(nextPattern));
-                  } else if (!editMode && item.targetSection !== "no-target") {
+                  if (!editMode && item.targetSection !== "no-target") {
                     e.stopPropagation();
                     scrollToTargetSection(item);
                   }
@@ -1818,7 +3267,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 {/* Layer 3: Body top */}
                 <div className="absolute inset-0 pointer-events-none" style={{ zIndex: item.layers[2]?.zIndex || 3 }}>
                   <img
-                    src="/assets/weddir-env-body-2.png"
+                    src={`/assets/${data.welcomeEnvelopeTexture || "envA"}/weddir-env-body-2.png`}
                     alt="Envelope body top"
                     className="absolute inset-0 w-full h-full object-contain"
                   />
@@ -1828,11 +3277,11 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                       style={{
                         backgroundColor: item.layers[0].tint,
                         mixBlendMode: 'color',
-                        WebkitMaskImage: 'url(/assets/weddir-env-body-2.png)',
+                        WebkitMaskImage: `url(/assets/${data.welcomeEnvelopeTexture || "envA"}/weddir-env-body-2.png)`,
                         WebkitMaskSize: 'contain',
                         WebkitMaskRepeat: 'no-repeat',
                         WebkitMaskPosition: 'center',
-                        maskImage: 'url(/assets/weddir-env-body-2.png)',
+                        maskImage: `url(/assets/${data.welcomeEnvelopeTexture || "envA"}/weddir-env-body-2.png)`,
                         maskSize: 'contain',
                         maskRepeat: 'no-repeat',
                         maskPosition: 'center',
@@ -1840,15 +3289,6 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     />
                   )}
                 </div>
-                {/* Layer 4: Top outline */}
-                <img
-                  src={getOutlineSrc(parseInt(item.pattern || "1", 10))}
-                  alt="Envelope outline"
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-                  style={{
-                    zIndex: item.layers[3]?.zIndex || 4,
-                  }}
-                />
                 {/* Stamp */}
                 <div
                   className={`absolute top-[75%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 md:w-14 md:h-14 lg:w-16 lg:h-16 flex items-center justify-center ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : "cursor-default"}`}
@@ -2011,7 +3451,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                   />
                 )}
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center px-4 py-4 text-center pointer-events-none"
+                  className="absolute inset-0 flex flex-col items-center justify-center px-[18px] py-[18px] text-center pointer-events-none"
                   style={{ maxWidth: '75%', margin: '0 auto' }}
                   onClick={(e) => {
                     if (!editMode) return;
@@ -2024,7 +3464,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     style={{
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
                       fontFamily: getFontFamily(data.heroOthersTypography || data.bodyFont, "body"),
-                      fontSize: `${(desktopMode ? 0.6 : 0.3) * (data.heroOthersTextSize ?? 1) * 100}%`,
+                      fontSize: `${(desktopMode ? 0.6 : 0.3) * (data.heroOthersTextSize ?? 1) * (item.othersTextSize ?? 1) * 100}%`,
                       pointerEvents: 'none',
                       cursor: 'default'
                     }}
@@ -2037,7 +3477,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                       fontFamily: getFontFamily(data.heroDisplayNameTypography || data.headingFont, "heading"),
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
                       whiteSpace: data.heroAmpersandPosition === "default" ? "nowrap" : "pre-line",
-                      textShadow: item.textAnimation === "blur-glow" ? `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1)}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})` : `0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : (item.textAnimation === "blur-glow" ? `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1)}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})` : `0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`),
                       transform: `scale(${(data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)})${item.textAnimation === "fade-slide" ? ` translateY(${getAnimState(item.id).fadeSlideTranslateY}px)` : ''}`,
                       filter: item.textAnimation === "blur-glow" ? `blur(${getAnimState(item.id).nameBlur}px)` : 'none',
                       opacity: item.textAnimation === "fade-slide" ? getAnimState(item.id).fadeSlideOpacity : 1,
@@ -2099,7 +3539,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     style={{
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
                       fontFamily: getFontFamily(data.heroOthersTypography || data.bodyFont, "body"),
-                      fontSize: `${(desktopMode ? 0.6 : 0.3) * (data.heroOthersTextSize ?? 1) * 100}%`,
+                      fontSize: `${(desktopMode ? 0.6 : 0.3) * (data.heroOthersTextSize ?? 1) * (item.othersTextSize ?? 1) * 100}%`,
                       pointerEvents: 'none',
                       cursor: 'default'
                     }}
@@ -2160,7 +3600,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                   />
                 )}
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center px-4 py-4 text-center pointer-events-none"
+                  className="absolute inset-0 flex flex-col items-center justify-center px-[18px] py-[18px] text-center pointer-events-none"
                   style={{ maxWidth: '75%', margin: '0 auto' }}
                   onClick={(e) => {
                     if (!editMode) return;
@@ -2173,7 +3613,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     style={{
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
                       fontFamily: getFontFamily(data.heroOthersTypography || data.bodyFont, "body"),
-                      fontSize: `${(desktopMode ? 0.5 : 0.2) * (data.heroOthersTextSize ?? 1) * 100}%`,
+                      fontSize: `${(desktopMode ? 0.5 : 0.2) * (data.heroOthersTextSize ?? 1) * (item.othersTextSize ?? 1) * 100}%`,
                       pointerEvents: 'none',
                       cursor: 'default'
                     }}
@@ -2186,7 +3626,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                       fontFamily: getFontFamily(data.heroDisplayNameTypography || data.headingFont, "heading"),
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
                       whiteSpace: data.heroAmpersandPosition === "default" ? "nowrap" : "pre-line",
-                      textShadow: item.textAnimation === "blur-glow" ? `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1)}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})` : `0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : (item.textAnimation === "blur-glow" ? `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1)}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})` : `0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`),
                       transform: `scale(${(data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)})${item.textAnimation === "fade-slide" ? ` translateY(${getAnimState(item.id).fadeSlideTranslateY}px)` : ''}`,
                       filter: item.textAnimation === "blur-glow" ? `blur(${getAnimState(item.id).nameBlur}px)` : 'none',
                       opacity: item.textAnimation === "fade-slide" ? getAnimState(item.id).fadeSlideOpacity : 1,
@@ -2248,7 +3688,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     style={{
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
                       fontFamily: getFontFamily(data.heroOthersTypography || data.bodyFont, "body"),
-                      fontSize: `${(desktopMode ? 0.5 : 0.2) * (data.heroOthersTextSize ?? 1) * 100}%`,
+                      fontSize: `${(desktopMode ? 0.5 : 0.2) * (data.heroOthersTextSize ?? 1) * (item.othersTextSize ?? 1) * 100}%`,
                       pointerEvents: 'none',
                       cursor: 'default'
                     }}
@@ -2309,7 +3749,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                   />
                 )}
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center px-4 py-4 text-center pointer-events-none"
+                  className="absolute inset-0 flex flex-col items-center justify-center px-[18px] py-[18px] text-center pointer-events-none"
                   style={{ maxWidth: '65%', margin: '0 auto', transform: item.excludeTexts ? `rotate(-${item.rotate}deg)` : undefined, transition: 'transform 0.1s ease-out' }}
                   onClick={(e) => {
                     if (!editMode) return;
@@ -2336,7 +3776,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                     style={{
                       fontFamily: getFontFamily(data.heroDisplayNameTypography || data.headingFont, "heading"),
                       color: item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1),
-                      textShadow: item.textAnimation === "blur-glow" ? `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1)}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})` : `0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : (item.textAnimation === "blur-glow" ? `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextEnabled ? (item.coloredTextColor || data.mainColor1) : (data.heroIconTextColor || data.mainColor1)}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})` : `0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`),
                       transform: `scale(${(data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)})${item.textAnimation === "fade-slide" ? ` translateY(${getAnimState(item.id).fadeSlideTranslateY}px)` : ''}`,
                       filter: item.textAnimation === "blur-glow" ? `blur(${getAnimState(item.id).nameBlur}px)` : 'none',
                       opacity: item.textAnimation === "fade-slide" ? getAnimState(item.id).fadeSlideOpacity : 1,
@@ -2367,25 +3807,25 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
             {item.draftDesignType === "photo-papers" && (
               <div
                 data-wedding-dir-image={item.id}
-                className={`relative w-[200px] h-[240px] md:w-[320px] md:h-[384px] lg:w-[400px] lg:h-[480px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
-                onClick={(e) => {
-                  if (editMode) {
-                    e.stopPropagation();
-                    handleOpenItemSettings(item.id);
-                  } else if (item.targetSection !== "no-target") {
-                    e.stopPropagation();
-                    scrollToTargetSection(item);
-                  }
-                }}
+                className="relative w-[200px] h-[180px] md:w-[320px] md:h-[288px] lg:w-[400px] lg:h-[360px]"
               >
                 {/* Photo Paper 2 (Right, behind) */}
                 <div
-                  className="absolute top-[10%] right-[25%] w-[45%] bg-white pt-2 px-2 pb-4 md:pt-3 md:px-3 md:pb-6 shadow-lg overflow-hidden flex flex-col justify-center"
+                  className={`absolute top-[10%] right-[25%] w-[45%] bg-white pt-2 px-2 pb-4 md:pt-3 md:px-3 md:pb-6 shadow-lg overflow-hidden flex flex-col justify-center ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
                   style={{
                     transform: `rotate(-5deg) translateY(${getAnimState(item.id).paper2TranslateY}px)`,
                     opacity: getAnimState(item.id).paper2Opacity,
                     zIndex: 1,
                     transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
                   }}
                 >
                   {(() => {
@@ -2396,14 +3836,11 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                           src={photoUrl}
                           alt="Photo paper 2"
                           className="w-full h-auto aspect-[3/4] object-cover cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (editMode) {
-                              setPhotoPickerItemId(item.id + "-paper2");
-                            } else if (item.targetSection !== "no-target") {
-                              scrollToTargetSection(item);
-                            }
-                          }}
+                          style={{ objectPosition: `${item.photoPapersImage2PositionX ?? 50}% ${item.photoPapersImage2PositionY ?? 50}%` }}
+                          onPointerDown={editMode ? (e) => handlePhotoPointerDown(e, item, 'photoPapersImage2') : undefined}
+                          onPointerMove={editMode ? (e) => handlePhotoPointerMove(e, item, 'photoPapersImage2') : undefined}
+                          onPointerUp={editMode ? (e) => handlePhotoPointerUp(e, item, 'photoPapersImage2') : undefined}
+                          onClick={(e) => handlePhotoClick(e, item, 'photoPapersImage2')}
                         />
                       );
                     }
@@ -2423,12 +3860,21 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 </div>
                 {/* Photo Paper 1 (Left, overlapping) */}
                 <div
-                  className="absolute top-0 left-0 w-[45%] bg-white pt-2 px-2 pb-4 md:pt-3 md:px-3 md:pb-6 shadow-lg overflow-hidden flex flex-col justify-center"
+                  className={`absolute top-0 left-0 w-[45%] bg-white pt-2 px-2 pb-4 md:pt-3 md:px-3 md:pb-6 shadow-lg overflow-hidden flex flex-col justify-center ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
                   style={{
                     transform: `rotate(5deg) translateY(${getAnimState(item.id).paper1TranslateY}px)`,
                     opacity: getAnimState(item.id).paper1Opacity,
                     zIndex: 2,
                     transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
                   }}
                 >
                   {(() => {
@@ -2439,14 +3885,11 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                           src={photoUrl}
                           alt="Photo paper 1"
                           className="w-full h-auto aspect-[3/4] object-cover cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (editMode) {
-                              setPhotoPickerItemId(item.id + "-paper1");
-                            } else if (item.targetSection !== "no-target") {
-                              scrollToTargetSection(item);
-                            }
-                          }}
+                          style={{ objectPosition: `${item.photoPapersImage1PositionX ?? 50}% ${item.photoPapersImage1PositionY ?? 50}%` }}
+                          onPointerDown={editMode ? (e) => handlePhotoPointerDown(e, item, 'photoPapersImage1') : undefined}
+                          onPointerMove={editMode ? (e) => handlePhotoPointerMove(e, item, 'photoPapersImage1') : undefined}
+                          onPointerUp={editMode ? (e) => handlePhotoPointerUp(e, item, 'photoPapersImage1') : undefined}
+                          onClick={(e) => handlePhotoClick(e, item, 'photoPapersImage1')}
                         />
                       );
                     }
@@ -2484,8 +3927,11 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 }}
               >
                 <div
-                  className={`w-full h-full ${isPlaying ? "animate-spin" : ""}`}
-                  style={isPlaying ? { animationDuration: '6s' } : undefined}
+                  className="w-full h-full animate-spin"
+                  style={{
+                    animationDuration: '6s',
+                    animationPlayState: isPlaying ? 'running' : 'paused',
+                  }}
                 >
                   <img
                     src="/assets/weddir-nplay.png"
@@ -2571,31 +4017,630 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 </div>
               </div>
             )}
+            {item.draftDesignType === "rsvp" && (
+              <div
+                data-wedding-dir-image={item.id}
+                className={`relative overflow-visible w-[150px] h-[180px] md:w-[280px] md:h-[336px] lg:w-[350px] lg:h-[420px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
+                style={{
+                  clipPath: 'polygon(-20% -20%, 120% -20%, 120% 100%, -20% 100%)',
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transform: `translateY(${getAnimState(item.id).cardTranslateY}px)`,
+                  transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    handleOpenItemSettings(item.id);
+                  } else if (item.targetSection !== "no-target") {
+                    e.stopPropagation();
+                    scrollToTargetSection(item);
+                  }
+                }}
+              >
+                {/* RSVP envelope image synced with welcome screen envelope texture */}
+                <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+                  <img
+                    src={`/assets/${data.welcomeEnvelopeTexture || "envA"}/envrsvp.png`}
+                    alt="RSVP envelope"
+                    className="absolute inset-0 w-full h-full object-contain"
+                  />
+                  {item.layers[0]?.tint && (
+                    <div
+                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      style={{
+                        backgroundColor: item.layers[0].tint,
+                        mixBlendMode: 'color',
+                        WebkitMaskImage: `url(/assets/${data.welcomeEnvelopeTexture || "envA"}/envrsvp.png)`,
+                        WebkitMaskSize: 'contain',
+                        WebkitMaskRepeat: 'no-repeat',
+                        WebkitMaskPosition: 'center',
+                        maskImage: `url(/assets/${data.welcomeEnvelopeTexture || "envA"}/envrsvp.png)`,
+                        maskSize: 'contain',
+                        maskRepeat: 'no-repeat',
+                        maskPosition: 'center',
+                      }}
+                    />
+                  )}
+                </div>
+                {/* R.S.V.P. text overlay */}
+                <div
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{ zIndex: 2 }}
+                >
+                  <span
+                    className={`text-[14px] md:text-2xl lg:text-3xl ${editMode ? "cursor-pointer" : ""}`}
+                    style={{
+                      fontFamily: getFontFamily(item.rsvpFont || data.headingFont || "Playfair Display", "heading"),
+                      color: item.stampTint || data.mainColor2,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.15)',
+                      letterSpacing: '0.1em',
+                      pointerEvents: editMode ? 'auto' : 'none',
+                    }}
+                    onClick={(e) => {
+                      if (!editMode) return;
+                      e.stopPropagation();
+                      const currentFont = item.rsvpFont || data.headingFont || "Playfair Display";
+                      const fontOptions = predefinedHeadingFonts.length > 0
+                        ? predefinedHeadingFonts.map(f => f.value)
+                        : ["Playfair Display", "Cormorant Garamond", "Great Vibes", "Cinzel", "Libre Baskerville", "EB Garamond"];
+                      const currentIndex = fontOptions.indexOf(currentFont);
+                      const nextIndex = (currentIndex + 1) % fontOptions.length;
+                      handleItemChange(item.id, "rsvpFont", fontOptions[nextIndex]);
+                    }}
+                  >
+                    R.S.V.P.
+                  </span>
+                </div>
+              </div>
+            )}
+            {item.draftDesignType === "event-details-card" && (
+              <div
+                data-wedding-dir-image={item.id}
+                className={`relative w-[180px] h-[180px] md:w-[280px] md:h-[280px] lg:w-[350px] lg:h-[350px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
+                style={{
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transform: `translateY(${getAnimState(item.id).cardTranslateY}px)`,
+                  transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    if (getCardVariantCount("event-details-card") > 1) {
+                      const currentVariant = item.cardVariant || 0;
+                      const nextVariant = (currentVariant + 1) % getCardVariantCount("event-details-card");
+                      handleItemChange(item.id, "cardVariant", nextVariant);
+                    } else {
+                      handleOpenItemSettings(item.id);
+                    }
+                  } else if (item.targetSection !== "no-target") {
+                    e.stopPropagation();
+                    scrollToTargetSection(item);
+                  }
+                }}
+              >
+                {/* Card image with tint */}
+                <img
+                  src={getCardSrc(item.cardVariant || 0, "custom-card-square")}
+                  alt="Event Details card"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+                {item.layers[0]?.tint && (
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{
+                      backgroundColor: item.layers[0].tint,
+                      mixBlendMode: 'color',
+                      WebkitMaskImage: `url(${getCardSrc(item.cardVariant || 0, "custom-card-square")})`,
+                      WebkitMaskSize: 'contain',
+                      WebkitMaskRepeat: 'no-repeat',
+                      WebkitMaskPosition: 'center',
+                      maskImage: `url(${getCardSrc(item.cardVariant || 0, "custom-card-square")})`,
+                      maskSize: 'contain',
+                      maskRepeat: 'no-repeat',
+                      maskPosition: 'center',
+                    }}
+                  />
+                )}
+                {/* Text container inside the card */}
+                <div
+                  className="absolute flex items-center justify-center text-center overflow-hidden"
+                  style={{
+                    top: '28%',
+                    bottom: '28%',
+                    left: '15%',
+                    right: '15%',
+                    zIndex: 2,
+                    pointerEvents: editMode ? 'auto' : 'none',
+                    cursor: editMode ? 'pointer' : 'default',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
+                  }}
+                >
+                  <h3
+                    className="w-full leading-tight break-words whitespace-normal"
+                    style={{
+                      fontFamily: getFontFamily(item.eventDetailsFont || data.heroDisplayNameTypography || data.headingFont, "heading"),
+                      color: item.coloredTextColor || data.mainColor1,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextColor || data.mainColor1}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      fontSize: `${(desktopMode ? 20 : 10) * (data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)}px`,
+                      filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                      pointerEvents: 'none',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                      transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                    }}
+                  >
+                    {item.eventDetailsText || "Event Details"}
+                  </h3>
+                </div>
+              </div>
+            )}
+            {item.draftDesignType === "dress-code-card" && (
+              <div
+                data-wedding-dir-image={item.id}
+                className={`relative w-[180px] h-[180px] md:w-[280px] md:h-[280px] lg:w-[350px] lg:h-[350px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
+                style={{
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transform: `translateY(${getAnimState(item.id).cardTranslateY}px)`,
+                  transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    if (getCardVariantCount("dress-code-card") > 1) {
+                      const currentVariant = item.cardVariant || 0;
+                      const nextVariant = (currentVariant + 1) % getCardVariantCount("dress-code-card");
+                      handleItemChange(item.id, "cardVariant", nextVariant);
+                    } else {
+                      handleOpenItemSettings(item.id);
+                    }
+                  } else if (item.targetSection !== "no-target") {
+                    e.stopPropagation();
+                    scrollToTargetSection(item);
+                  }
+                }}
+              >
+                <img
+                  src={getCardSrc(item.cardVariant || 0, "dress-code-card")}
+                  alt="Dress Code card"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+                {item.layers[0]?.tint && (
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{
+                      backgroundColor: item.layers[0].tint,
+                      mixBlendMode: 'color',
+                      WebkitMaskImage: `url(${getCardSrc(item.cardVariant || 0, "dress-code-card")})`,
+                      WebkitMaskSize: 'contain',
+                      WebkitMaskRepeat: 'no-repeat',
+                      WebkitMaskPosition: 'center',
+                      maskImage: `url(${getCardSrc(item.cardVariant || 0, "dress-code-card")})`,
+                      maskSize: 'contain',
+                      maskRepeat: 'no-repeat',
+                      maskPosition: 'center',
+                    }}
+                  />
+                )}
+                <div
+                  className="absolute flex items-center justify-center text-center overflow-hidden"
+                  style={{
+                    top: '28%',
+                    bottom: '28%',
+                    left: '15%',
+                    right: '15%',
+                    zIndex: 2,
+                    pointerEvents: editMode ? 'auto' : 'none',
+                    cursor: editMode ? 'pointer' : 'default',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
+                  }}
+                >
+                  <h3
+                    className="w-full leading-tight break-words whitespace-normal"
+                    style={{
+                      fontFamily: getFontFamily(item.dressCodeFont || data.heroDisplayNameTypography || data.headingFont, "heading"),
+                      color: item.coloredTextColor || data.mainColor1,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextColor || data.mainColor1}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      fontSize: `${(desktopMode ? 20 : 10) * (data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)}px`,
+                      filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                      pointerEvents: 'none',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                      transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                    }}
+                  >
+                    {item.dressCodeText || "Woven Together"}
+                  </h3>
+                </div>
+              </div>
+            )}
+            {item.draftDesignType === "gift-guide-card" && (
+              <div
+                data-wedding-dir-image={item.id}
+                className={`relative w-[180px] h-[180px] md:w-[280px] md:h-[280px] lg:w-[350px] lg:h-[350px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
+                style={{
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transform: `translateY(${getAnimState(item.id).cardTranslateY}px)`,
+                  transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    if (getCardVariantCount("gift-guide-card") > 1) {
+                      const currentVariant = item.cardVariant || 0;
+                      const nextVariant = (currentVariant + 1) % getCardVariantCount("gift-guide-card");
+                      handleItemChange(item.id, "cardVariant", nextVariant);
+                    } else {
+                      handleOpenItemSettings(item.id);
+                    }
+                  } else if (item.targetSection !== "no-target") {
+                    e.stopPropagation();
+                    scrollToTargetSection(item);
+                  }
+                }}
+              >
+                <img
+                  src={getCardSrc(item.cardVariant || 0, "gift-guide-card")}
+                  alt="Gift Guide card"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+                {item.layers[0]?.tint && (
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{
+                      backgroundColor: item.layers[0].tint,
+                      mixBlendMode: 'color',
+                      WebkitMaskImage: `url(${getCardSrc(item.cardVariant || 0, "gift-guide-card")})`,
+                      WebkitMaskSize: 'contain',
+                      WebkitMaskRepeat: 'no-repeat',
+                      WebkitMaskPosition: 'center',
+                      maskImage: `url(${getCardSrc(item.cardVariant || 0, "gift-guide-card")})`,
+                      maskSize: 'contain',
+                      maskRepeat: 'no-repeat',
+                      maskPosition: 'center',
+                    }}
+                  />
+                )}
+                <div
+                  className="absolute flex items-center justify-center text-center overflow-hidden"
+                  style={{
+                    top: '28%',
+                    bottom: '28%',
+                    left: '15%',
+                    right: '15%',
+                    zIndex: 2,
+                    pointerEvents: editMode ? 'auto' : 'none',
+                    cursor: editMode ? 'pointer' : 'default',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
+                  }}
+                >
+                  <h3
+                    className="w-full leading-tight break-words whitespace-normal"
+                    style={{
+                      fontFamily: getFontFamily(item.giftGuideFont || data.heroDisplayNameTypography || data.headingFont, "heading"),
+                      color: item.coloredTextColor || data.mainColor1,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextColor || data.mainColor1}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      fontSize: `${(desktopMode ? 20 : 10) * (data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)}px`,
+                      filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                      pointerEvents: 'none',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                      transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                    }}
+                  >
+                    {item.giftGuideText || "The Registry"}
+                  </h3>
+                </div>
+              </div>
+            )}
+            {item.draftDesignType === "date-time-card" && (() => {
+              const dateStr = data.date || "";
+              let dateComponents: { month: string; date: number; year: number; day: string } | null = null;
+              if (dateStr) {
+                try {
+                  const parsed = new Date(dateStr);
+                  if (!isNaN(parsed.getTime())) {
+                    dateComponents = {
+                      month: parsed.toLocaleString('en-US', { month: 'long' }),
+                      date: parsed.getDate(),
+                      year: parsed.getFullYear(),
+                      day: parsed.toLocaleString('en-US', { weekday: 'long' }),
+                    };
+                  }
+                } catch {}
+              }
+              const timeStr = data.time || "";
+              const venueStr = data.venueName || "";
+              const textColor = item.coloredTextColor || data.mainColor1;
+              const fontFamily = getFontFamily(item.dateTimeFont || data.heroDisplayNameTypography || data.headingFont, "heading");
+              const baseFontSize = (desktopMode ? 20 : 10) * (data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1);
+              return (
+              <div
+                data-wedding-dir-image={item.id}
+                className={`relative w-[180px] h-[180px] md:w-[280px] md:h-[280px] lg:w-[350px] lg:h-[350px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
+                style={{
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transform: `translateY(${getAnimState(item.id).cardTranslateY}px)`,
+                  transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    if (getCardVariantCount("date-time-card") > 1) {
+                      const currentVariant = item.cardVariant || 0;
+                      const nextVariant = (currentVariant + 1) % getCardVariantCount("date-time-card");
+                      handleItemChange(item.id, "cardVariant", nextVariant);
+                    } else {
+                      handleOpenItemSettings(item.id);
+                    }
+                  } else if (item.targetSection !== "no-target") {
+                    e.stopPropagation();
+                    scrollToTargetSection(item);
+                  }
+                }}
+              >
+                <img
+                  src={getCardSrc(item.cardVariant || 0, "date-time-card")}
+                  alt="Date & Time card"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+                {item.layers[0]?.tint && (
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{
+                      backgroundColor: item.layers[0].tint,
+                      mixBlendMode: 'color',
+                      WebkitMaskImage: `url(${getCardSrc(item.cardVariant || 0, "date-time-card")})`,
+                      WebkitMaskSize: 'contain',
+                      WebkitMaskRepeat: 'no-repeat',
+                      WebkitMaskPosition: 'center',
+                      maskImage: `url(${getCardSrc(item.cardVariant || 0, "date-time-card")})`,
+                      maskSize: 'contain',
+                      maskRepeat: 'no-repeat',
+                      maskPosition: 'center',
+                    }}
+                  />
+                )}
+                <div
+                  className="absolute flex flex-col items-center justify-center text-center overflow-hidden"
+                  style={{
+                    top: '15%',
+                    bottom: '15%',
+                    left: '15%',
+                    right: '15%',
+                    zIndex: 2,
+                    pointerEvents: editMode ? 'auto' : 'none',
+                    cursor: editMode ? 'pointer' : 'default',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily,
+                      color: textColor,
+                      fontSize: `${baseFontSize * 0.7}px`,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${textColor}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                      lineHeight: 1.4,
+                      transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                    }}
+                  >
+                    {dateComponents?.day || "Wedding Day"}
+                  </span>
+                  {dateComponents && (
+                    <span
+                      style={{
+                        fontFamily,
+                        color: textColor,
+                        fontSize: `${baseFontSize * 2.5}px`,
+                        textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${textColor}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                        filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                        lineHeight: 1.1,
+                        margin: '0.1em 0',
+                        transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                      }}
+                    >
+                      {dateComponents.date}
+                    </span>
+                  )}
+                  {dateComponents && (
+                    <span
+                      style={{
+                        fontFamily,
+                        color: textColor,
+                        fontSize: `${baseFontSize * 0.5}px`,
+                        textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${textColor}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                        filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                        lineHeight: 1.4,
+                        transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                      }}
+                    >
+                      {dateComponents.month} {dateComponents.year}{timeStr ? `, at ${timeStr}` : ""}
+                    </span>
+                  )}
+                  <div
+                    style={{
+                      width: '30%',
+                      height: '1px',
+                      backgroundColor: textColor,
+                      opacity: 0.5,
+                      marginTop: '1em',
+                      marginBottom: '1em',
+                    }}
+                  />
+                  {venueStr && (
+                    <span
+                      style={{
+                        fontFamily,
+                        color: textColor,
+                        fontSize: `${baseFontSize * 0.5}px`,
+                        textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${textColor}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                        filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                        lineHeight: 1.4,
+                        transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                      }}
+                    >
+                      {venueStr}
+                    </span>
+                  )}
+                </div>
+              </div>
+              );
+            })()}
+            {item.draftDesignType === "story-card" && (
+              <div
+                data-wedding-dir-image={item.id}
+                className={`relative w-[180px] h-[180px] md:w-[280px] md:h-[280px] lg:w-[350px] lg:h-[350px] ${editMode || item.targetSection !== "no-target" ? "cursor-pointer" : ""}`}
+                style={{
+                  opacity: getAnimState(item.id).cardOpacity,
+                  transform: `translateY(${getAnimState(item.id).cardTranslateY}px)`,
+                  transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                }}
+                onClick={(e) => {
+                  if (editMode) {
+                    e.stopPropagation();
+                    if (getCardVariantCount("story-card") > 1) {
+                      const currentVariant = item.cardVariant || 0;
+                      const nextVariant = (currentVariant + 1) % getCardVariantCount("story-card");
+                      handleItemChange(item.id, "cardVariant", nextVariant);
+                    } else {
+                      handleOpenItemSettings(item.id);
+                    }
+                  } else if (item.targetSection !== "no-target") {
+                    e.stopPropagation();
+                    scrollToTargetSection(item);
+                  }
+                }}
+              >
+                <img
+                  src={getCardSrc(item.cardVariant || 0, "story-card")}
+                  alt="Story card"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+                {item.layers[0]?.tint && (
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{
+                      backgroundColor: item.layers[0].tint,
+                      mixBlendMode: 'color',
+                      WebkitMaskImage: `url(${getCardSrc(item.cardVariant || 0, "story-card")})`,
+                      WebkitMaskSize: 'contain',
+                      WebkitMaskRepeat: 'no-repeat',
+                      WebkitMaskPosition: 'center',
+                      maskImage: `url(${getCardSrc(item.cardVariant || 0, "story-card")})`,
+                      maskSize: 'contain',
+                      maskRepeat: 'no-repeat',
+                      maskPosition: 'center',
+                    }}
+                  />
+                )}
+                <div
+                  className="absolute flex flex-col items-center justify-center text-center overflow-hidden"
+                  style={{
+                    top: '28%',
+                    bottom: '28%',
+                    left: '10%',
+                    right: '10%',
+                    zIndex: 2,
+                    pointerEvents: editMode ? 'auto' : 'none',
+                    cursor: editMode ? 'pointer' : 'default',
+                  }}
+                  onClick={(e) => {
+                    if (editMode) {
+                      e.stopPropagation();
+                      handleOpenItemSettings(item.id);
+                    } else if (item.targetSection !== "no-target") {
+                      e.stopPropagation();
+                      scrollToTargetSection(item);
+                    }
+                  }}
+                >
+                  <h3
+                    className="w-full leading-tight break-words whitespace-normal"
+                    style={{
+                      fontFamily: getFontFamily(item.storyFont || data.heroDisplayNameTypography || data.headingFont, "heading"),
+                      color: item.coloredTextColor || data.mainColor1,
+                      textShadow: item.textShadowEnabled !== true ? 'none' : `0 0 ${getAnimState(item.id).nameGlow}px ${item.coloredTextColor || data.mainColor1}, 0 2px 4px rgba(0, 0, 0, ${data.heroTextShadowOpacity ?? 0.1})`,
+                      fontSize: `${(desktopMode ? 20 : 10) * (data.heroNameSize || 100) / 100 * 1.1 * (item.nameTextSize || 1)}px`,
+                      filter: `blur(${getAnimState(item.id).nameBlur}px)`,
+                      pointerEvents: 'none',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                      transition: 'filter 0.1s ease-out, text-shadow 0.1s ease-out, font-size 0.1s ease-out',
+                    }}
+                  >
+                    {item.storyText || "Our Story"}
+                  </h3>
+                </div>
+              </div>
+            )}
+            </div>
+          {holdingItemId === item.id && (() => {
+            const { posXKey, posYKey } = getPositionKeys();
+            const itemIndex = directoryItems.findIndex((i) => i.id === item.id);
+            const rowIndex = itemIndex === 0 ? 0 : itemIndex > 0 ? Math.ceil(itemIndex / 2) : 0;
+            const yRange = getRowYRange(rowIndex);
+            const currentX = (item[posXKey] as number) || 0;
+            const currentY = (item[posYKey] as number) || 0;
+            return (
+            <div className="wd-hold-overlay absolute inset-0 z-20 pointer-events-none">
+              {currentY > yRange.min && (
+                <div className="absolute wd-arrow-up wd-arrow-up-wrapper" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+                </div>
+              )}
+              {currentY < yRange.max && (
+                <div className="absolute wd-arrow-down wd-arrow-down-wrapper" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+                </div>
+              )}
+              {currentX > -100 && (
+                <div className="absolute wd-arrow-left wd-arrow-left-wrapper" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M4 12l8-8v16z" /></svg>
+                </div>
+              )}
+              {currentX < 100 && (
+                <div className="absolute wd-arrow-right wd-arrow-right-wrapper" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M20 12l-8-8v16z" /></svg>
+                </div>
+              )}
+            </div>
+            );
+          })()}
           </div>
         ))}
       </div>
-      {editMode && (
-        <div className="flex flex-col items-center" style={{ marginTop: 100, marginBottom: 100 }}>
-          {!hideInstructions && (
-            <div className={`text-center text-xs px-4 mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
-              {BUILDER_INSTRUCTIONS[builderInstructionIndex]}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={handleOpenDraftDesignPanel}
-            className="mx-auto w-20 h-20 rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110 focus:outline-none"
-            aria-label="Add directory item"
-            style={{ backgroundColor: accentColor }}
-          >
-            <img
-              src="/assets/ico-feather.png"
-              alt=""
-              className="w-12 h-12 object-contain pointer-events-none"
-            />
-          </button>
-        </div>
-      )}
       </div>
     </section>
 
@@ -3179,7 +5224,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
 
     {showDraftDesignPanel && (
       <>
-        {!isDraftDesignPanelClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={handleCloseDraftDesignPanel} onWheel={handleCloseDraftDesignPanel} />}
+        {!isDraftDesignPanelClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={handleCloseDraftDesignPanel} />}
 
         <div
           className={`fixed z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"} ${
@@ -3204,7 +5249,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
             </h3>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6">
+          <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6 min-h-0" style={{ overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>
             <div className="space-y-6">
               <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>SECTION HEADING</h4>
 
@@ -3254,283 +5299,48 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-2"
+                    className={`flex items-center justify-between px-4 py-3 rounded-lg border ${isDarkMode ? "border-gray-700 bg-gray-700/30" : "border-gray-200 bg-gray-50"}`}
                   >
-                    <div
-                      className={`flex-1 flex flex-col px-4 py-3 rounded-lg border ${expandedDraftItemId === item.id ? "ring-2" : ""} ${isDarkMode ? "border-gray-700 bg-gray-700/30" : "border-gray-200 bg-gray-50"} ${expandedDraftItemId === item.id ? "gap-4" : ""}`}
-                      style={expandedDraftItemId === item.id ? { borderColor: accentColor, boxShadow: `0 0 0 2px ${accentColor}20` } : undefined}
+                    <span
+                      className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-800"}`}
+                      style={{ fontFamily: "Inter, sans-serif" }}
                     >
-                      <div
-                        className="flex items-center justify-between cursor-pointer"
-                        onClick={() => {
-                          const isExpanding = expandedDraftItemId !== item.id;
-                          setExpandedDraftItemId(isExpanding ? item.id : null);
-                          if (isExpanding) {
-                            const element = document.querySelector(`[data-item-id="${item.id}"]`);
-                            if (element) {
-                              element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                          }
-                        }}
-                      >
-                        <span
-                          className={`py-2 text-sm ${isDarkMode ? "text-gray-200" : "text-gray-800"}`}
-                          style={{ fontFamily: "Inter, sans-serif" }}
-                        >
-                          {(() => {
-                            const designNames: Record<string, string> = {
-                              "envelope": "Envelope",
-                              "itinerary": "Itinerary Cards",
-                              "invitation": "Invitation (Portrait)",
-                              "invitation-landscape": "Invitation (Landscape)",
-                              "custom-card": "Custom Card (Landscape)",
-                              "custom-card-portrait": "Custom Card (Portrait)",
-                              "custom-card-square": "Custom Card (Square)",
-                              "rsvp": "RSVP",
-                              "details": "Details on Paper",
-                              "photo-papers": "Photo Papers",
-                              "now-playing": "Now Playing",
-                            };
-                            return designNames[item.draftDesignType] || item.draftDesignType;
-                          })()}
-                        </span>
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={`${isDarkMode ? "text-gray-400" : "text-gray-500"}`}
-                          style={{ transform: expandedDraftItemId === item.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
-                        >
-                          <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                      </div>
-                      <div
-                        className="overflow-hidden transition-all duration-300 ease-in-out"
-                        style={{
-                          maxHeight: expandedDraftItemId === item.id ? '2000px' : '0px',
-                          opacity: expandedDraftItemId === item.id ? '1' : '0'
-                        }}
-                      >
-                        <div className="space-y-4 py-2">
-                          <div className="space-y-2">
-                            <h5 className={`text-xs font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>NAVIGATION</h5>
-                            <div className="space-y-1">
-                              <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Target Section</label>
-                              <select
-                                value={item.targetSection}
-                                onChange={(e) => handleItemChange(item.id, "targetSection", e.target.value)}
-                                className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none appearance-none ${isDarkMode ? "border-gray-700 bg-gray-800 text-gray-200" : "border-gray-200 bg-white text-gray-800"}`}
-                                style={{ fontFamily: "Inter, sans-serif" }}
-                              >
-                                <option value="no-target">No Target</option>
-                                <option value="countdown">Countdown</option>
-                                <option value="dresscode">Dress Code</option>
-                                <option value="entourage">Entourage</option>
-                                <option value="event-details">Event Details</option>
-                                <option value="map">Event Location</option>
-                                <option value="giftguide">Gift Guide</option>
-                                <option value="timeline">Our Story</option>
-                                <option value="gallery">Photo Gallery</option>
-                                <option value="rsvp">RSVP</option>
-                              </select>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <h5 className={`text-xs font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>POSITION</h5>
-                            <div className="space-y-3">
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>MOVE LEFT - RIGHT</label>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setPositionMode("mobile")}
-                                      className={`p-1.5 rounded-lg transition-colors ${positionMode === "mobile" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
-                                      title="Mobile position"
-                                    >
-                                      <img src="/assets/ico-mobile.png" alt="Mobile" width="16" height="16" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setPositionMode("desktop")}
-                                      className={`p-1.5 rounded-lg transition-colors ${positionMode === "desktop" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
-                                      title="Desktop position"
-                                    >
-                                      <img src="/assets/ico-desktop.png" alt="Desktop" width="16" height="16" />
-                                    </button>
-                                  </div>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="-100"
-                                  max="100"
-                                  value={positionMode === "mobile" ? (item.positionXMobile || 0) : (item.positionXDesktop || 0)}
-                                  onChange={(e) => handleItemChange(item.id, positionMode === "mobile" ? "positionXMobile" : "positionXDesktop", parseInt(e.target.value))}
-                                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                                  style={{
-                                    accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((positionMode === "mobile" ? (item.positionXMobile || 0) : (item.positionXDesktop || 0)) + 100) / 200 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((positionMode === "mobile" ? (item.positionXMobile || 0) : (item.positionXDesktop || 0)) + 100) / 200 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                                  }}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>MOVE UP - DOWN</label>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setPositionMode("mobile")}
-                                      className={`p-1.5 rounded-lg transition-colors ${positionMode === "mobile" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
-                                      title="Mobile position"
-                                    >
-                                      <img src="/assets/ico-mobile.png" alt="Mobile" width="16" height="16" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setPositionMode("desktop")}
-                                      className={`p-1.5 rounded-lg transition-colors ${positionMode === "desktop" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
-                                      title="Desktop position"
-                                    >
-                                      <img src="/assets/ico-desktop.png" alt="Desktop" width="16" height="16" />
-                                    </button>
-                                  </div>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="-100"
-                                  max="100"
-                                  value={positionMode === "mobile" ? (item.positionYMobile || 0) : (item.positionYDesktop || 0)}
-                                  onChange={(e) => handleItemChange(item.id, positionMode === "mobile" ? "positionYMobile" : "positionYDesktop", parseInt(e.target.value))}
-                                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                                  style={{
-                                    accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((positionMode === "mobile" ? (item.positionYMobile || 0) : (item.positionYDesktop || 0)) + 100) / 200 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((positionMode === "mobile" ? (item.positionYMobile || 0) : (item.positionYDesktop || 0)) + 100) / 200 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                                  }}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>STACKING ORDER</label>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="10"
-                                  value={item.zIndex || 0}
-                                  onChange={(e) => handleItemChange(item.id, "zIndex", parseInt(e.target.value))}
-                                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                                  style={{
-                                    accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(item.zIndex || 0) / 10 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${(item.zIndex || 0) / 10 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <h5 className={`text-xs font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TRANSFORM</h5>
-                            <div className="space-y-3">
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>SCALE</label>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setScaleMode("mobile")}
-                                      className={`p-1.5 rounded-lg transition-colors ${scaleMode === "mobile" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
-                                      title="Mobile scale"
-                                    >
-                                      <img src="/assets/ico-mobile.png" alt="Mobile" width="16" height="16" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setScaleMode("desktop")}
-                                      className={`p-1.5 rounded-lg transition-colors ${scaleMode === "desktop" ? "bg-gray-200 dark:bg-gray-600" : "opacity-50 hover:opacity-75"}`}
-                                      title="Desktop scale"
-                                    >
-                                      <img src="/assets/ico-desktop.png" alt="Desktop" width="16" height="16" />
-                                    </button>
-                                  </div>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="0.5"
-                                  max="2"
-                                  step="0.1"
-                                  value={scaleMode === "mobile" ? (item.scaleMobile || 1) : (item.scaleDesktop || 1)}
-                                  onChange={(e) => handleItemChange(item.id, scaleMode === "mobile" ? "scaleMobile" : "scaleDesktop", parseFloat(e.target.value))}
-                                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                                  style={{
-                                    accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((scaleMode === "mobile" ? (item.scaleMobile || 1) : (item.scaleDesktop || 1)) - 0.5) / 1.5 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((scaleMode === "mobile" ? (item.scaleMobile || 1) : (item.scaleDesktop || 1)) - 0.5) / 1.5 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                                  }}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className={`block text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>ROTATE (DEGREES)</label>
-                                <input
-                                  type="range"
-                                  min="-180"
-                                  max="180"
-                                  value={item.rotate || 0}
-                                  onChange={(e) => handleItemChange(item.id, "rotate", parseInt(e.target.value))}
-                                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                                  style={{
-                                    accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((item.rotate || 0) + 180) / 360 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((item.rotate || 0) + 180) / 360 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteItem(item.id)}
-                              className="w-full py-2 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
-                              style={{ fontFamily: "Inter, sans-serif", backgroundColor: "#ef4444" }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = "#dc2626"
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = "#ef4444"
-                              }}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                              </svg>
-                              DELETE DESIGN
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      {(() => {
+                        const designNames: Record<string, string> = {
+                          "envelope": "Envelope",
+                          "now-playing": "Now Playing Disc",
+                          "photo-papers": "Photo Paper",
+                          "rsvp": "RSVP",
+                          "event-details-card": "Event Details",
+                          "dress-code-card": "Dress Code",
+                          "gift-guide-card": "Gift Guide",
+                          "date-time-card": "Date & Time",
+                          "story-card": "Story",
+                          "invitation": "Portrait Invitation",
+                          "invitation-landscape": "Landscape Invitation",
+                          "custom-card": "Landscape Card",
+                          "custom-card-portrait": "Portrait Card",
+                          "custom-card-square": "Square Card",
+                        };
+                        return designNames[item.draftDesignType] || item.draftDesignType;
+                      })()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteItem(item.id)}
+                      className={`p-2 rounded-lg transition-colors ${isDarkMode ? "text-gray-400 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
+                      title="Delete design"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                      </svg>
+                    </button>
                   </div>
                 );
               })}
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleAddDirectoryItem();
-                  if (directoryItems.length >= 6) {
-                    handleCloseDraftDesignPanel();
-                  }
-                }}
-                disabled={directoryItems.length >= 7}
-                className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${
-                  directoryItems.length >= 7
-                    ? "opacity-50 cursor-not-allowed bg-gray-300"
-                    : "text-white hover:brightness-90"
-                }`}
-                style={{ fontFamily: "Inter, sans-serif", backgroundColor: directoryItems.length >= 7 ? undefined : accentColor }}
-              >
-                + ADD DESIGN
-              </button>
 
               <div className="flex items-center gap-2">
                 <div
@@ -3676,6 +5486,25 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
                   </div>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleAddDirectoryItem();
+                  if (directoryItems.length >= 8) {
+                    handleCloseDraftDesignPanel();
+                  }
+                }}
+                disabled={directoryItems.length >= 9}
+                className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${
+                  directoryItems.length >= 9
+                    ? "opacity-50 cursor-not-allowed bg-gray-300"
+                    : "text-white hover:brightness-90"
+                }`}
+                style={{ fontFamily: "Inter, sans-serif", backgroundColor: directoryItems.length >= 9 ? undefined : accentColor }}
+              >
+                + ADD DESIGN
+              </button>
             </div>
           </div>
 
@@ -3737,110 +5566,3 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   );
 }
 
-function PhotoGalleryPicker({
-  galleryImages,
-  selectedUrl,
-  isDarkMode,
-  accentColor,
-  desktopMode,
-  panelPosition,
-  isClosing,
-  onSelect,
-  onClose,
-}: {
-  galleryImages: string[];
-  selectedUrl: string;
-  isDarkMode: boolean;
-  accentColor: string;
-  desktopMode: boolean;
-  panelPosition: "left" | "right";
-  isClosing: boolean;
-  onSelect: (url: string) => void;
-  onClose: () => void;
-}) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const selectedRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (selectedRef.current && scrollContainerRef.current) {
-      selectedRef.current.scrollIntoView({ block: "start", behavior: "auto" });
-    }
-  }, []);
-
-  const resolvedImages = galleryImages.map((url) => {
-    if (!url) return "";
-    if (url.startsWith("http") || url.startsWith("/")) return url;
-    return `/stock/gallery/${url}`;
-  }).filter(Boolean);
-
-  return (
-    <>
-      {!isClosing && (
-        <div
-          className="fixed inset-0 bg-transparent z-40"
-          onMouseDown={onClose}
-          onWheel={onClose}
-        />
-      )}
-      <div
-        className={`fixed z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"} ${
-          desktopMode
-            ? `top-0 bottom-0 ${panelPosition === "left" ? "left-0 border-r" : "right-0 border-l"} ${isClosing ? (panelPosition === "left" ? "animate-slide-out-side" : "animate-slide-out-side-right") : (panelPosition === "left" ? "animate-slide-in-side" : "animate-slide-in-side-right")}`
-            : `bottom-0 left-0 right-0 rounded-t-3xl ${isClosing ? "animate-slide-down" : "animate-slide-up"}`
-        }`}
-        style={desktopMode ? { width: "400px" } : { maxWidth: 480, margin: "0 auto", maxHeight: "50vh" }}
-      >
-        {!desktopMode && (
-          <div className="flex justify-center pt-3 pb-1 shrink-0">
-            <div className={`w-10 h-1 rounded-full ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`} />
-          </div>
-        )}
-        <div className={`flex items-center px-5 py-2 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
-          <h3
-            className={`font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`}
-            style={{ fontFamily: "Inter, sans-serif" }}
-          >
-            Choose Photo
-          </h3>
-        </div>
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 pt-4 pb-10">
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => onSelect("")}
-              className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 ${
-                !selectedUrl
-                  ? "border-[#b88a78] bg-[#fff0e8]"
-                  : `${isDarkMode ? "border-gray-600 bg-gray-700 hover:border-gray-500" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`
-              }`}
-              style={!selectedUrl ? { borderColor: accentColor, backgroundColor: `${accentColor}15` } : undefined}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDarkMode ? "#9ca3af" : "#aaa"} strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-              <span className={`text-[10px] ${isDarkMode ? "text-gray-400" : "text-gray-400"}`}>Auto</span>
-            </button>
-            {resolvedImages.map((url, idx) => (
-              <button
-                key={idx}
-                ref={selectedUrl === galleryImages[idx] ? selectedRef : undefined}
-                onClick={() => onSelect(galleryImages[idx])}
-                className={`aspect-square rounded-2xl border-2 overflow-hidden transition-all active:scale-95 ${
-                  selectedUrl === galleryImages[idx]
-                    ? "ring-2 ring-[#b88a78]/30"
-                    : `${isDarkMode ? "border-transparent hover:border-gray-600" : "border-transparent hover:border-gray-200"}`
-                }`}
-              >
-                <img src={url} alt={`Gallery ${idx + 1}`} className="w-full h-full object-cover" />
-              </button>
-            ))}
-            {resolvedImages.length === 0 && (
-              <div className={`col-span-3 text-center py-8 text-sm ${isDarkMode ? "text-gray-400" : "text-gray-400"}`}>
-                No gallery images. Add photos in Tools &gt; Media &gt; Photo Gallery.
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}

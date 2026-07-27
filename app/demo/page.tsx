@@ -19,7 +19,7 @@ export default function DemoPage() {
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     isDarkMode: false,
-    accentColor: "#b88a78",
+    accentColor: "#6998EE",
     hideSaveConfirmationDialog: false,
     hideInstructions: false,
     showScreenDimensions: false,
@@ -69,7 +69,7 @@ export default function DemoPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#fff8f3" }}>
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#e8cfc3", borderTopColor: "#b88a78" }} />
+          <div className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#e8cfc3", borderTopColor: "#6998EE" }} />
         </div>
       </div>
     );
@@ -78,7 +78,7 @@ export default function DemoPage() {
   if (showEditorPanel) {
     return (
       <>
-        <div className="fixed top-0 left-0 right-0 z-[60] bg-yellow-500 text-black text-center text-xs py-1 font-medium">
+        <div className="fixed top-0 left-0 right-0 z-[60] text-center text-xs py-1 font-medium" style={{ backgroundColor: "#F5315F", color: "#F6FFFD", fontFamily: "Inter, sans-serif" }}>
           DEMO MODE - Changes are saved locally only. Sign up to publish your invitation.
         </div>
         <div className="pt-6">
@@ -96,7 +96,7 @@ export default function DemoPage() {
   return (
     <div className="min-h-screen flex items-center justify-center relative" style={{ backgroundColor: settings.isDarkMode ? "#1f2937" : "#fff8f3" }}>
       {/* Demo banner */}
-      <div className="fixed top-0 left-0 right-0 z-[60] bg-yellow-500 text-black text-center text-xs py-1 font-medium">
+      <div className="fixed top-0 left-0 right-0 z-[60] text-center text-xs py-1 font-medium" style={{ backgroundColor: "#F5315F", color: "#F6FFFD", fontFamily: "Inter, sans-serif" }}>
         DEMO MODE - Changes are saved locally only. Sign up to publish your invitation.
       </div>
 

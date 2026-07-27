@@ -1,8 +1,10 @@
 import type { InvitationData } from "@/lib/types/invitation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import BackupWarningDialog from "@/components/shared/BackupWarningDialog";
 import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
 import LoginDialog from "@/components/editor/LoginDialog";
+import QRCode from "qrcode";
+import { buildInviteUrl } from "@/lib/utils";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -24,9 +26,11 @@ interface SettingsEditorProps {
   showScreenDimensions?: boolean;
   invitationId?: string;
   isDemoMode?: boolean;
+  slug?: string;
 }
 
 const ACCENT_COLORS = [
+  "#6998EE", // Default Blue
   "#4F46E5", // Slate Blue
   "#2563EB", // Steel Blue
   "#6366F1", // Muted Indigo
@@ -38,24 +42,60 @@ const ACCENT_COLORS = [
   "#D946EF", // Orchid Purple
 ];
 
-export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#2563EB", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, invitationId, isDemoMode = false }: SettingsEditorProps) {
+export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#6998EE", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, invitationId, isDemoMode = false, slug }: SettingsEditorProps) {
   const [backupExists, setBackupExists] = useState(false);
   const [backupDate, setBackupDate] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [colorPickerExpanded, setColorPickerExpanded] = useState(false);
-  const [backupImportExpanded, setBackupImportExpanded] = useState(false);
-  const [expirationExpanded, setExpirationExpanded] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [showBackupWarning, setShowBackupWarning] = useState(false);
   const [showImportWarning, setShowImportWarning] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Check for existing backup on mount
   useEffect(() => {
     checkBackup();
     fetchExpiration();
   }, []);
+
+  const generateQrCode = useCallback(async () => {
+    if (!slug) return;
+    setQrLoading(true);
+    try {
+      const url = buildInviteUrl(slug);
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: 256,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+      setQrDataUrl(dataUrl);
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+    } finally {
+      setQrLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    if (expandedSection === 'qr' && !qrDataUrl && !isDemoMode) {
+      generateQrCode();
+    }
+  }, [expandedSection, qrDataUrl, isDemoMode, generateQrCode]);
+
+  const handleSaveQrCode = () => {
+    if (!qrDataUrl) return;
+    const link = document.createElement("a");
+    link.href = qrDataUrl;
+    link.download = `qr-${slug || "invitation"}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const fetchExpiration = async () => {
     if (!invitationId) return;
@@ -235,9 +275,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ fontFamily: "Inter, sans-serif" }}>
         {/* Dark Mode Toggle */}
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('darkmode')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            borderColor: hoveredSection === 'darkmode' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
           }}
         >
           <div className="flex items-center gap-3 p-4">
@@ -267,21 +310,24 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
         {/* Accent Color - Collapsible */}
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('color')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            ...(colorPickerExpanded ? {
+            borderColor: hoveredSection === 'color' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
+            ...(expandedSection === 'color' ? {
               boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
             } : {})
           }}
         >
           {/* Header */}
           <div
-            className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
-            onClick={() => setColorPickerExpanded(!colorPickerExpanded)}
+            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
+            onClick={() => setExpandedSection(expandedSection === 'color' ? null : 'color')}
           >
             <div className="shrink-0 text-gray-400 order-2">
-              {colorPickerExpanded ? (
+              {expandedSection === 'color' ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 15l-6-6-6 6" />
                 </svg>
@@ -302,7 +348,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           </div>
 
           {/* Content */}
-          {colorPickerExpanded && (
+          {expandedSection === 'color' && (
             <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
               {/* Color picker */}
               <div className="space-y-2">
@@ -325,7 +371,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                       handleAccentColorChange(e.target.value);
                     }}
                     className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "bg-gray-600 border-gray-500 text-gray-200" : "border-gray-200"}`}
-                    placeholder="#B88A78"
+                    placeholder="#6998EE"
                   />
                 </div>
               </div>
@@ -353,9 +399,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
         {/* Screen Dimensions Toggle */}
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('screendim')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            borderColor: hoveredSection === 'screendim' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
           }}
         >
           <div className="flex items-center gap-3 p-4">
@@ -385,9 +434,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
         {/* Hide Save Confirmation Dialog Toggle */}
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('hidesavedialog')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            borderColor: hoveredSection === 'hidesavedialog' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
           }}
         >
           <div className="flex items-center gap-3 p-4">
@@ -417,9 +469,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
         {/* Hide Instructions Toggle */}
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('hideinstructions')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            borderColor: hoveredSection === 'hideinstructions' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
           }}
         >
           <div className="flex items-center gap-3 p-4">
@@ -448,22 +503,26 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
         </div>
 
         {/* Backup / Import - Collapsible */}
+        {!isDemoMode && (
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('backup')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            ...(backupImportExpanded ? {
+            borderColor: hoveredSection === 'backup' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
+            ...(expandedSection === 'backup' ? {
               boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
             } : {})
           }}
         >
           {/* Header */}
           <div
-            className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
-            onClick={() => setBackupImportExpanded(!backupImportExpanded)}
+            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
+            onClick={() => setExpandedSection(expandedSection === 'backup' ? null : 'backup')}
           >
             <div className="shrink-0 text-gray-400 order-2">
-              {backupImportExpanded ? (
+              {expandedSection === 'backup' ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 15l-6-6-6 6" />
                 </svg>
@@ -484,7 +543,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           </div>
 
           {/* Content */}
-          {backupImportExpanded && (
+          {expandedSection === 'backup' && (
             <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
               {backupExists && backupDate && (
                 <div className={`p-3 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
@@ -521,25 +580,29 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             </div>
           )}
         </div>
+        )}
 
         {/* Builder Expiration - Collapsible */}
         {!isDemoMode && (
         <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('expiration')}
+          onMouseLeave={() => setHoveredSection(null)}
           style={{
             backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            ...(expirationExpanded ? {
+            borderColor: hoveredSection === 'expiration' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
+            ...(expandedSection === 'expiration' ? {
               boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
             } : {})
           }}
         >
           {/* Header */}
           <div
-            className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
-            onClick={() => setExpirationExpanded(!expirationExpanded)}
+            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
+            onClick={() => setExpandedSection(expandedSection === 'expiration' ? null : 'expiration')}
           >
             <div className="shrink-0 text-gray-400 order-2">
-              {expirationExpanded ? (
+              {expandedSection === 'expiration' ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 15l-6-6-6 6" />
                 </svg>
@@ -560,7 +623,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           </div>
 
           {/* Content */}
-          {expirationExpanded && (
+          {expandedSection === 'expiration' && (
             <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
               {expiresAt ? (
                 <div className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
@@ -578,6 +641,84 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
               <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                 Your builder will expire 1 year from the signup date or 30 days after the wedding day, whichever is earlier.
               </p>
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* QR Code - Collapsible */}
+        {!isDemoMode && (
+        <div
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('qr')}
+          onMouseLeave={() => setHoveredSection(null)}
+          style={{
+            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            borderColor: hoveredSection === 'qr' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
+            ...(expandedSection === 'qr' ? {
+              boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
+            } : {})
+          }}
+        >
+          {/* Header */}
+          <div
+            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
+            onClick={() => setExpandedSection(expandedSection === 'qr' ? null : 'qr')}
+          >
+            <div className="shrink-0 text-gray-400 order-2">
+              {expandedSection === 'qr' ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 15l-6-6-6 6" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 order-1">
+              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                Invitation QR Code
+              </h3>
+              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                Download a QR code for your invitation link
+              </p>
+            </div>
+          </div>
+
+          {/* Content */}
+          {expandedSection === 'qr' && (
+            <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
+              {qrLoading ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="w-8 h-8 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" style={{ borderTopColor: accentColor }} />
+                </div>
+              ) : qrDataUrl ? (
+                <>
+                  <div className="flex justify-center">
+                    <img
+                      src={qrDataUrl}
+                      alt="Invitation QR Code"
+                      className="w-48 h-48 rounded-xl"
+                    />
+                  </div>
+                  <div className="flex justify-center">
+                    <button
+                      onClick={handleSaveQrCode}
+                      className="px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                      style={{ backgroundColor: accentColor, color: "white" }}
+                    >
+                      Save QR Code
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className={`p-4 rounded-lg text-center ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
+                  <p className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
+                    Unable to generate QR code
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -606,15 +747,22 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
         ) : (
           <button
             onClick={() => setShowLoginDialog(true)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-50 text-gray-900"}`}
-            style={{ border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}` }}
+            onMouseEnter={() => setHoveredSection('signin')}
+            onMouseLeave={() => setHoveredSection(null)}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-100 text-gray-900"}`}
+            style={{ border: `1px solid ${hoveredSection === 'signin' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3)}` }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
               <polyline points="10,17 15,12 10,7" />
               <line x1="15" y1="12" x2="3" y2="12" />
             </svg>
-            <span className="text-sm font-medium">Sign In</span>
+            <div className="flex flex-col text-left">
+              <span className="text-sm font-medium">Sign In</span>
+              <span className="text-xs" style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#9ca3af" : accentColor }}>
+                Log-in your account or create a new one
+              </span>
+            </div>
           </button>
         )}
       </div>

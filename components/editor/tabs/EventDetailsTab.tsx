@@ -39,7 +39,7 @@ function Field({
   );
 }
 
-export default function EventDetailsTab({ data, onChange, isDarkMode = false, accentColor = "#B88A78" }: EventDetailsTabProps) {
+export default function EventDetailsTab({ data, onChange, isDarkMode = false, accentColor = "#6998EE" }: EventDetailsTabProps) {
   const nameType = data.nameType ?? "couple";
   const [hostLineIndex, setHostLineIndex] = useState(0);
   const [closingSentimentIndex, setClosingSentimentIndex] = useState(0);

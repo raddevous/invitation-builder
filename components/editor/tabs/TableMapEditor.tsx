@@ -115,7 +115,7 @@ const getAlpha = (color: string): number => {
   return c ? c.a : 1;
 };
 
-export default function TableMapEditor({ data, onChange, onImmediateSave, isDarkMode = true, accentColor = "#2563EB", onClose }: TableMapEditorProps) {
+export default function TableMapEditor({ data, onChange, onImmediateSave, isDarkMode = true, accentColor = "#6998EE", onClose }: TableMapEditorProps) {
   const defaultOutlineColor = toRgba(data.mainColor1 || '#454545', 1);
   const initialVenueLayout = data.venueLayout ? {
     ...data.venueLayout,
@@ -2754,7 +2754,12 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
       <div className={`flex items-center justify-between p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
         <div className="flex items-center gap-3">
           <button
-            onClick={onClose}
+            onClick={() => {
+              if (hasUnsavedChanges) {
+                onChange('venueLayout', venueLayout);
+              }
+              onClose();
+            }}
             className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -3556,27 +3561,6 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
 
             <div className={`h-6 w-px ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
 
-            {hasUnsavedChanges && (
-              <button
-                onClick={() => {
-                  const updatedData = { ...data, venueLayout };
-                  onChange('venueLayout', venueLayout);
-                  if (onImmediateSave) {
-                    onImmediateSave(updatedData);
-                  }
-                }}
-                className={`p-2 rounded-lg transition-colors ${
-                  isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
-                }`}
-                title="Save"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-              </button>
-            )}
           </div>
         </div>
 

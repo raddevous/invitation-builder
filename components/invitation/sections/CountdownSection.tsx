@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { InvitationData } from "@/lib/types/invitation";
 import Divider from "./Divider";
 import FontControl from "@/components/shared/FontControl";
@@ -48,24 +49,16 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
   const { isDarkMode, accentColor } = useTheme();
   const [showTypographyPanel, setShowTypographyPanel] = useState(false);
   const [isTypographyClosing, setIsTypographyClosing] = useState(false);
-  const [showCountdownSettingsPanel, setShowCountdownSettingsPanel] = useState(false);
-  const [isCountdownSettingsClosing, setIsCountdownSettingsClosing] = useState(false);
-  const [showIconPanel, setShowIconPanel] = useState(false);
-  const [isIconPanelClosing, setIsIconPanelClosing] = useState(false);
   
   // Typography panel state
   const [hasUnsavedTypographyChanges, setHasUnsavedTypographyChanges] = useState(false);
   const [pendingTypographyChanges, setPendingTypographyChanges] = useState<Partial<InvitationData>>({});
   
-  // Countdown Settings panel state
+  // Pending changes for live preview (used by typography panel and date structure clicks)
   const [hasUnsavedCountdownChanges, setHasUnsavedCountdownChanges] = useState(false);
   const [pendingCountdownChanges, setPendingCountdownChanges] = useState<Partial<InvitationData>>({});
   
-  // Icon panel state
-  const [hasUnsavedIconChanges, setHasUnsavedIconChanges] = useState(false);
-  const [pendingIconChanges, setPendingIconChanges] = useState<Partial<InvitationData>>({});
-  
-  const [activePanel, setActivePanel] = useState<"typography" | "countdown" | "icon" | null>(null);
+  const [activePanel, setActivePanel] = useState<"typography" | null>(null);
 
   // Fetch predefined options from Supabase
   const { options: predefinedHeadingFonts } = usePredefinedOptions('heading_fonts');
@@ -81,9 +74,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
   const [predefinedVideoIndex, setPredefinedVideoIndex] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [countdownStructure, setCountdownStructure] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const [countdownCrystalColor, setCountdownCrystalColor] = useState<string>("");
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
 
   const [showDividerSettingsPanel, setShowDividerSettingsPanel] = useState(false);
   const [isDividerSettingsClosing, setIsDividerSettingsClosing] = useState(false);
@@ -103,16 +94,14 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
     return mergedData.countdownCrystalColor || data.mainColor2 || "#ffffff";
   };
 
-  // Handler for countdown changes - saves to local state for live preview and queues for global apply
+  // Handler for countdown changes
   const handleCountdownChange = (key: keyof InvitationData, value: any) => {
-    console.log('CountdownSettings: handleCountdownChange called', key, value);
     setPendingCountdownChanges(prev => ({ ...prev, [key]: value }));
     setHasUnsavedCountdownChanges(true);
     if (onHasUnsavedChangesChange) {
       onHasUnsavedChangesChange(true);
     }
     onChange?.(key, value);
-    console.log('CountdownSettings: hasUnsavedCountdownChanges set to true');
   };
 
   // Notify parent of pending changes when they change
@@ -207,90 +196,253 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
     }, 300);
   };
 
-  const handleCloseCountdownSettingsPanel = () => {
-    setPendingCountdownChanges({});
-    setHasUnsavedCountdownChanges(false);
-    setIsCountdownSettingsClosing(true);
-    setTimeout(() => {
-      setShowCountdownSettingsPanel(false);
-      setIsCountdownSettingsClosing(false);
-    }, 300);
-  };
-
-  const handleCloseIconPanel = () => {
-    setPendingIconChanges({});
-    setHasUnsavedIconChanges(false);
-    setIsIconPanelClosing(true);
-    setTimeout(() => {
-      setShowIconPanel(false);
-      setIsIconPanelClosing(false);
-    }, 300);
-  };
-
-  // Handler for icon changes - saves to local state for live preview and queues for global apply
+  // Handler for icon changes
   const handleIconChange = (key: keyof InvitationData, value: any) => {
-    setPendingIconChanges(prev => ({ ...prev, [key]: value }));
-    setHasUnsavedIconChanges(true);
-    if (onHasUnsavedChangesChange) {
-      onHasUnsavedChangesChange(true);
-    }
     onChange?.(key, value);
   };
 
-  const handleCountdownCrystalColorChange = () => {
-    // This function is no longer needed since we're using the settings panel
-    // Keeping it for backward compatibility but it won't be used
-  };
-
-  // Handle right-click for desktop and long-press for mobile
-  const handleCountdownStructureChange = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!editMode) return;
-    
-    // Prevent default context menu for right-click
-    if ('preventDefault' in e) {
-      e.preventDefault();
-    }
-    
-    setCountdownStructure((prev) => (prev + 1) % 9);
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!editMode) return;
-    
-    // Only start long-press timer for left click (button 0)
-    if (e.button === 0) {
-      const timer = setTimeout(() => {
-        setCountdownStructure((prev) => (prev + 1) % 9);
-      }, 500); // 500ms long-press
-      setLongPressTimer(timer);
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!editMode) return;
-    
-    const timer = setTimeout(() => {
-      setCountdownStructure((prev) => (prev + 1) % 9);
-    }, 500); // 500ms long-press
-    setLongPressTimer(timer);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-  };
-
   // Merge original data with pending changes for display
-  const mergedData = { ...data, ...pendingCountdownChanges, ...pendingIconChanges };
+  const mergedData = { ...data, ...pendingCountdownChanges };
+
+  // Drag-to-adjust for countdown icon
+  const isAnyDragging = useRef(false);
+
+  type GenericDragData = {
+    timer: ReturnType<typeof setTimeout> | null;
+    triggered: boolean;
+    pointerId: number;
+    element: HTMLElement | null;
+    startX: number;
+    startY: number;
+    startSize: number;
+    startSpacing: number;
+  };
+  type DragToastSegment = { label: string; value: number; atLimit: boolean };
+  const [dragToast, setDragToast] = useState<DragToastSegment[] | null>(null);
+
+  const iconDragRef = useRef<GenericDragData | null>(null);
+  const [iconDragging, setIconDragging] = useState(false);
+  const [localIconSize, setLocalIconSize] = useState<number | null>(null);
+  const effectiveIconSize = localIconSize ?? mergedData.heroIconSize ?? 100;
+
+  const iconDrag = (() => {
+    const handleDown = (e: React.PointerEvent<HTMLDivElement>) => {
+      const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+      if (!editMode || (!isTouchLike && e.button !== 0)) return;
+      const element = e.currentTarget as HTMLDivElement;
+      iconDragRef.current = {
+        timer: setTimeout(() => {
+          const d = iconDragRef.current;
+          if (!d) return;
+          d.timer = null;
+          d.triggered = true;
+          isAnyDragging.current = true;
+          setIconDragging(true);
+          try { d.element?.setPointerCapture(d.pointerId); } catch {}
+        }, 350),
+        triggered: false,
+        pointerId: e.pointerId,
+        element,
+        startX: e.clientX,
+        startY: e.clientY,
+        startSize: effectiveIconSize,
+        startSpacing: 100,
+      };
+    };
+    const handleMove = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = iconDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (!d.triggered) {
+        const dx = e.clientX - d.startX;
+        const dy = e.clientY - d.startY;
+        if (Math.hypot(dx, dy) > 10) {
+          if (d.timer) clearTimeout(d.timer);
+          iconDragRef.current = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      const deltaY = e.clientY - d.startY;
+      const newSize = Math.max(50, Math.min(200, d.startSize - deltaY * 0.5));
+      setLocalIconSize(Math.round(newSize));
+      setDragToast([
+        { label: 'Size', value: Math.round(newSize), atLimit: newSize <= 50 || newSize >= 200 },
+      ]);
+    };
+    const handleUp = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = iconDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      try { d.element?.releasePointerCapture(d.pointerId); } catch {}
+      isAnyDragging.current = false;
+      setIconDragging(false);
+      if (localIconSize != null) handleIconChange('heroIconSize', localIconSize);
+      setLocalIconSize(null);
+      setDragToast(null);
+      setTimeout(() => { iconDragRef.current = null; }, 100);
+    };
+    const handleCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = iconDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      iconDragRef.current = null;
+      isAnyDragging.current = false;
+      setIconDragging(false);
+      setLocalIconSize(null);
+      setDragToast(null);
+    };
+    return { handleDown, handleMove, handleUp, handleCancel };
+  })();
+
+  // Drag-to-adjust for countdown clock
+  const clockDragRef = useRef<GenericDragData | null>(null);
+  const [clockDragging, setClockDragging] = useState(false);
+  const [localClockSize, setLocalClockSize] = useState<number | null>(null);
+  const effectiveClockSize = localClockSize ?? (desktopMode ? (mergedData.countdownClockSizeMobile ?? mergedData.countdownClockSize ?? 100) : (mergedData.countdownClockSize ?? 100));
+
+  const clockDrag = (() => {
+    const handleDown = (e: React.PointerEvent<HTMLDivElement>) => {
+      const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+      if (!editMode || (!isTouchLike && e.button !== 0)) return;
+      const element = e.currentTarget as HTMLDivElement;
+      clockDragRef.current = {
+        timer: setTimeout(() => {
+          const d = clockDragRef.current;
+          if (!d) return;
+          d.timer = null;
+          d.triggered = true;
+          isAnyDragging.current = true;
+          setClockDragging(true);
+          try { d.element?.setPointerCapture(d.pointerId); } catch {}
+        }, 350),
+        triggered: false,
+        pointerId: e.pointerId,
+        element,
+        startX: e.clientX,
+        startY: e.clientY,
+        startSize: effectiveClockSize,
+        startSpacing: 100,
+      };
+    };
+    const handleMove = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = clockDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (!d.triggered) {
+        const dx = e.clientX - d.startX;
+        const dy = e.clientY - d.startY;
+        if (Math.hypot(dx, dy) > 10) {
+          if (d.timer) clearTimeout(d.timer);
+          clockDragRef.current = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      const deltaY = e.clientY - d.startY;
+      const newSize = Math.max(50, Math.min(200, d.startSize - deltaY * 0.5));
+      setLocalClockSize(Math.round(newSize));
+      setDragToast([
+        { label: 'Size', value: Math.round(newSize), atLimit: newSize <= 50 || newSize >= 200 },
+      ]);
+    };
+    const handleUp = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = clockDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      try { d.element?.releasePointerCapture(d.pointerId); } catch {}
+      isAnyDragging.current = false;
+      setClockDragging(false);
+      if (localClockSize != null) onChange?.(desktopMode ? 'countdownClockSizeMobile' : 'countdownClockSize', localClockSize);
+      setLocalClockSize(null);
+      setDragToast(null);
+      setTimeout(() => { clockDragRef.current = null; }, 100);
+    };
+    const handleCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = clockDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      clockDragRef.current = null;
+      isAnyDragging.current = false;
+      setClockDragging(false);
+      setLocalClockSize(null);
+      setDragToast(null);
+    };
+    return { handleDown, handleMove, handleUp, handleCancel };
+  })();
+
+  // Drag-to-adjust for countdown date
+  const dateDragRef = useRef<GenericDragData | null>(null);
+  const [dateDragging, setDateDragging] = useState(false);
+  const [localDateSize, setLocalDateSize] = useState<number | null>(null);
+  const effectiveDateSize = localDateSize ?? (desktopMode ? (mergedData.countdownDateSizeMobile ?? mergedData.countdownDateSize ?? 100) : (mergedData.countdownDateSize ?? 100));
+
+  const dateDrag = (() => {
+    const handleDown = (e: React.PointerEvent<HTMLDivElement>) => {
+      const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+      if (!editMode || (!isTouchLike && e.button !== 0)) return;
+      const element = e.currentTarget as HTMLDivElement;
+      dateDragRef.current = {
+        timer: setTimeout(() => {
+          const d = dateDragRef.current;
+          if (!d) return;
+          d.timer = null;
+          d.triggered = true;
+          isAnyDragging.current = true;
+          setDateDragging(true);
+          try { d.element?.setPointerCapture(d.pointerId); } catch {}
+        }, 350),
+        triggered: false,
+        pointerId: e.pointerId,
+        element,
+        startX: e.clientX,
+        startY: e.clientY,
+        startSize: effectiveDateSize,
+        startSpacing: 100,
+      };
+    };
+    const handleMove = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dateDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (!d.triggered) {
+        const dx = e.clientX - d.startX;
+        const dy = e.clientY - d.startY;
+        if (Math.hypot(dx, dy) > 10) {
+          if (d.timer) clearTimeout(d.timer);
+          dateDragRef.current = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      const deltaY = e.clientY - d.startY;
+      const newSize = Math.max(50, Math.min(200, d.startSize - deltaY * 0.5));
+      setLocalDateSize(Math.round(newSize));
+      setDragToast([
+        { label: 'Size', value: Math.round(newSize), atLimit: newSize <= 50 || newSize >= 200 },
+      ]);
+    };
+    const handleUp = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dateDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      try { d.element?.releasePointerCapture(d.pointerId); } catch {}
+      isAnyDragging.current = false;
+      setDateDragging(false);
+      if (localDateSize != null) onChange?.(desktopMode ? 'countdownDateSizeMobile' : 'countdownDateSize', localDateSize);
+      setLocalDateSize(null);
+      setDragToast(null);
+      setTimeout(() => { dateDragRef.current = null; }, 100);
+    };
+    const handleCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dateDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      dateDragRef.current = null;
+      isAnyDragging.current = false;
+      setDateDragging(false);
+      setLocalDateSize(null);
+      setDragToast(null);
+    };
+    return { handleDown, handleMove, handleUp, handleCancel };
+  })();
 
   // Initialize crystal color from saved data
   useEffect(() => {
@@ -353,6 +505,17 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
     seconds: 0,
   });
 
+  // Prevent page scroll during active drag (native listener with passive:false)
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isAnyDragging.current) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => document.removeEventListener('touchmove', handleTouchMove);
+  }, []);
+
   useEffect(() => {
     const parseDate = (dateStr: string, timeStr: string) => {
       // Parse YYYY-MM-DD format with time
@@ -397,63 +560,6 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
     return () => clearInterval(interval);
   }, [data.date, data.time]);
 
-  // Handle click outside and scroll outside for Countdown Settings panel
-  useEffect(() => {
-    if (!showCountdownSettingsPanel) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const panel = document.querySelector('[data-countdown-settings-panel="true"]');
-      if (panel && !panel.contains(e.target as Node)) {
-        handleCloseCountdownSettingsPanel();
-      }
-    };
-
-    const handleScrollOutside = (e: Event) => {
-      const panel = document.querySelector('[data-countdown-settings-panel="true"]');
-      if (panel) {
-        // Check if the scroll is happening outside the panel
-        const scrollTarget = e.target as Element;
-        const isScrollingInsidePanel = panel.contains(scrollTarget) || panel === scrollTarget;
-        
-        // Also check if we're scrolling the document/window (not the panel)
-        const isDocumentScroll = scrollTarget === document.documentElement || scrollTarget === document.body;
-        
-        if (!isScrollingInsidePanel || isDocumentScroll) {
-          handleCloseCountdownSettingsPanel();
-        }
-      }
-    };
-
-    const handleWheel = (e: WheelEvent) => {
-      const panel = document.querySelector('[data-countdown-settings-panel="true"]');
-      if (panel && !panel.contains(e.target as Node)) {
-        handleCloseCountdownSettingsPanel();
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      const panel = document.querySelector('[data-countdown-settings-panel="true"]');
-      if (panel && !panel.contains(e.target as Node)) {
-        handleCloseCountdownSettingsPanel();
-      }
-    };
-
-    // Add event listeners
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('scroll', handleScrollOutside, true);
-    window.addEventListener('scroll', handleScrollOutside, true);
-    document.addEventListener('wheel', handleWheel, true);
-    document.addEventListener('touchmove', handleTouchMove, true);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('scroll', handleScrollOutside, true);
-      window.removeEventListener('scroll', handleScrollOutside, true);
-      document.removeEventListener('wheel', handleWheel, true);
-      document.removeEventListener('touchmove', handleTouchMove, true);
-    };
-  }, [showCountdownSettingsPanel, hasUnsavedCountdownChanges, handleCloseCountdownSettingsPanel]);
-
   const countdownUseDefaultDivider = data.countdownDividerUseDefault ?? true;
   const effectivePullDown = countdownUseDefaultDivider ? (data.universalDividerPullDown ?? 0) : (data.countdownDividerPullDown ?? 0);
   const effectiveVerticalFlip = countdownUseDefaultDivider ? (data.universalDividerVerticalFlip ?? false) : (data.countdownDividerVerticalFlip ?? false);
@@ -461,6 +567,33 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
   return (
     <>
       <style>{flipAnimationStyles}</style>
+      <style>{`
+        @keyframes countdown-arrow-up-anim {
+          0% { transform: translateX(-50%) translateY(0); opacity: 0; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
+          100% { transform: translateX(-50%) translateY(-18px); opacity: 0; }
+        }
+        @keyframes countdown-arrow-down-anim {
+          0% { transform: translateX(-50%) translateY(0); opacity: 0; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
+          100% { transform: translateX(-50%) translateY(18px); opacity: 0; }
+        }
+        .countdown-arrow-up { animation: countdown-arrow-up-anim 1.2s ease-in-out infinite; }
+        .countdown-arrow-down { animation: countdown-arrow-down-anim 1.2s ease-in-out infinite; }
+      `}</style>
+      {dragToast && createPortal(
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2 rounded-lg bg-black/80 text-white text-sm font-medium pointer-events-none backdrop-blur-sm shadow-lg whitespace-nowrap transition-colors" style={{ fontFamily: 'Inter, sans-serif' }}>
+          {dragToast.map((seg, i) => (
+            <span key={i}>
+              {i > 0 && '  |  '}
+              <span style={{ color: seg.atLimit ? '#ef4444' : 'white', transition: 'color 0.15s' }}>{seg.label}: {seg.value}%</span>
+            </span>
+          ))}
+        </div>,
+        document.body
+      )}
       <section className="pt-0 pb-8 px-8 text-center relative min-h-[200px]" style={{
         backgroundColor: mergedData.countdownUseMainColor !== false
           ? (data.mainColor1 || "transparent")
@@ -471,15 +604,14 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
               : mergedData.countdownBackgroundType === "video"
                 ? undefined
                 : (mergedData.countdownBackgroundColor || "transparent"),
-        background: mergedData.countdownUseMainColor !== false
-          ? (data.mainColor1 || "transparent")
+        backgroundImage: mergedData.countdownUseMainColor !== false
+          ? undefined
           : mergedData.countdownBackgroundType === "gradient" && mergedData.countdownGradient
             ? `linear-gradient(135deg, ${mergedData.countdownGradient.firstColor || "#ffffff"}, ${mergedData.countdownGradient.secondColor || "#ffffff"})`
             : undefined,
         ...(mergedData.countdownBackgroundType === "image" && mergedData.countdownImage?.urls && mergedData.countdownImage.urls.length > 0 ? {
           backgroundImage: `url(${mergedData.countdownImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
           backgroundPosition: 'center center',
-          backgroundAttachment: 'fixed',
           backgroundRepeat: 'no-repeat',
           backgroundSize: 'cover'
         } : {}),
@@ -487,11 +619,18 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
       }}>
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.countdownBackgroundType === "image" || mergedData.countdownBackgroundType === "video") && mergedData.countdownGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.countdownGradient.firstColor || "#ffffff", (mergedData.countdownGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.countdownGradient.secondColor || "#ffffff", (mergedData.countdownGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.countdownGradient.firstColor || "#ffffff", (mergedData.countdownGradient.firstOpacity !== undefined ? mergedData.countdownGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.countdownGradient.secondColor || "#ffffff", (mergedData.countdownGradient.secondOpacity !== undefined ? mergedData.countdownGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -523,17 +662,26 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={countdownUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.countdownDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={countdownUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.countdownDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={countdownUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.countdownDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={countdownUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.countdownDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={countdownUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.countdownDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(countdownUseDefaultDivider ? data.universalDivider : data.countdownDivider) === "divider-1" ? predefinedDividerImagesCentered : (countdownUseDefaultDivider ? data.universalDivider : data.countdownDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = countdownUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.countdownDivider || "divider-1");
           if (countdownUseDefaultDivider) {
             onChange?.("countdownDividerUseDefault", false);
+            onChange?.("countdownDivider", currentType);
           }
-          onChange?.("countdownDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("countdownDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("countdownDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("countdownDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -587,13 +735,33 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
       {mergedData.heroIconType === "image" && mergedData.heroIcon ? (
         <div
           id="countdown-icon"
-          className={`w-32 h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 relative mx-auto ${editMode ? "cursor-pointer" : ""}`}
-          onClick={editMode ? () => {
-            setShowIconPanel(true);
-            document.getElementById('countdown-icon')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          className={`w-32 h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 relative mx-auto ${editMode ? "cursor-pointer select-none" : ""}`}
+          onClick={editMode ? (e) => {
+            if (iconDragRef.current?.triggered) { e.stopPropagation(); iconDragRef.current = null; return; }
+            const currentType = (mergedData.heroIconType ?? "image") as "image" | "initial";
+            handleIconChange("heroIconType", currentType === "image" ? "initial" : "image");
           } : undefined}
-            style={{ filter: `drop-shadow(0 4px 6px rgba(0, 0, 0, ${mergedData.heroTextShadowOpacity ?? 0.1}))`, marginBottom: `${30 + (mergedData.heroIconMarginAdjustment || 0)}px`, transform: `scale(${(mergedData.heroIconSize || 100) / 100})` }}
+          onPointerDown={editMode ? iconDrag.handleDown : undefined}
+          onPointerMove={editMode ? iconDrag.handleMove : undefined}
+          onPointerUp={editMode ? iconDrag.handleUp : undefined}
+          onPointerCancel={editMode ? iconDrag.handleCancel : undefined}
+          onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
+          style={{ filter: `drop-shadow(0 4px 6px rgba(0, 0, 0, ${mergedData.heroTextShadowOpacity ?? 0.1}))`, marginBottom: `${30 + (mergedData.heroIconMarginAdjustment || 0)}px`, transform: `scale(${effectiveIconSize / 100})`, touchAction: editMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
           >
+            {iconDragging && (
+              <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+                {effectiveIconSize < 200 && (
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 countdown-arrow-up" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+                  </div>
+                )}
+                {effectiveIconSize > 50 && (
+                  <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 countdown-arrow-down" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+                  </div>
+                )}
+              </div>
+            )}
             {mergedData.heroIconColorTint ? (
               <div
                 className="w-full h-full rounded-full"
@@ -621,13 +789,33 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
         ) : mergedData.heroIconType === "initial" ? (
           <div
             id="countdown-icon"
-            className={`w-32 h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 flex items-center justify-center mx-auto ${editMode ? "cursor-pointer" : ""}`}
-            onClick={editMode ? () => {
-              setShowIconPanel(true);
-              document.getElementById('countdown-icon')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            className={`w-32 h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 flex items-center justify-center mx-auto ${editMode ? "cursor-pointer select-none" : ""}`}
+            onClick={editMode ? (e) => {
+              if (iconDragRef.current?.triggered) { e.stopPropagation(); iconDragRef.current = null; return; }
+              const currentType = (mergedData.heroIconType ?? "image") as "image" | "initial";
+              handleIconChange("heroIconType", currentType === "image" ? "initial" : "image");
             } : undefined}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: `${30 + (mergedData.heroIconMarginAdjustment || 0)}px`, transform: `scale(${(mergedData.heroIconSize || 100) / 100})` }}
+            onPointerDown={editMode ? iconDrag.handleDown : undefined}
+            onPointerMove={editMode ? iconDrag.handleMove : undefined}
+            onPointerUp={editMode ? iconDrag.handleUp : undefined}
+            onPointerCancel={editMode ? iconDrag.handleCancel : undefined}
+            onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: `${30 + (mergedData.heroIconMarginAdjustment || 0)}px`, transform: `scale(${effectiveIconSize / 100})`, touchAction: editMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
           >
+            {iconDragging && (
+              <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+                {effectiveIconSize < 200 && (
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 countdown-arrow-up" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+                  </div>
+                )}
+                {effectiveIconSize > 50 && (
+                  <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 countdown-arrow-down" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+                  </div>
+                )}
+              </div>
+            )}
             <span
               className="text-3xl md:text-5xl lg:text-6xl font-bold"
               style={{
@@ -644,9 +832,8 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                     const name2 = (data.herName || "").charAt(0).toUpperCase();
                     const initial1 = mergedData.heroIconName2First ? name2 : name1;
                     const initial2 = mergedData.heroIconName2First ? name1 : name2;
-                    const separator = mergedData.heroIconAddAmpersand
-                      ? `<span style="font-size: 0.6em; display: inline-block; vertical-align: middle;">${data.andText || "&"}</span>`
-                      : "";
+                    const ampOpacity = (mergedData.heroAmpersandOpacity ?? 100) / 100;
+                    const separator = `<span style="font-size: 0.6em; display: inline-block; vertical-align: middle; opacity: ${ampOpacity};">${data.andText || "&"}</span>`;
                     return `${initial1}${separator}${initial2}`;
                   }
                   return (data.coupleName || "").charAt(0).toUpperCase();
@@ -657,7 +844,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
         ) : null}
       
       <h2
-        className="text-2xl mb-1 md:mb-8 font-bold uppercase scale-[0.55] md:scale-100"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
           fontFamily: mergedData.countdownUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.countdownHeadingTypography || data.headingFont, "heading"),
@@ -695,24 +882,35 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
       )}
       {/* Countdown Display - Multiple Structures */}
       <div 
-        className={`${editMode ? "cursor-pointer" : ""} transition-all duration-300`}
-        onClick={editMode ? () => {
-          setShowCountdownSettingsPanel(true);
-          const element = document.getElementById('countdown-cssid');
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-          }
+        id="countdown-clock"
+        className={`${editMode ? "cursor-pointer select-none" : ""} mt-[50px] relative`}
+        onClick={editMode ? (e) => {
+          if (clockDragRef.current?.triggered) { e.stopPropagation(); clockDragRef.current = null; return; }
+          setCountdownStructure((prev) => (prev + 1) % 9);
         } : undefined}
-        onContextMenu={editMode ? handleCountdownStructureChange : undefined}
-        onMouseDown={editMode ? handleMouseDown : undefined}
-        onMouseUp={editMode ? handleMouseUp : undefined}
-        onMouseLeave={editMode ? handleMouseUp : undefined}
-        onTouchStart={editMode ? handleTouchStart : undefined}
-        onTouchEnd={editMode ? handleTouchEnd : undefined}
+        onPointerDown={editMode ? clockDrag.handleDown : undefined}
+        onPointerMove={editMode ? clockDrag.handleMove : undefined}
+        onPointerUp={editMode ? clockDrag.handleUp : undefined}
+        onPointerCancel={editMode ? clockDrag.handleCancel : undefined}
+        style={{ transform: desktopMode ? undefined : `scale(${effectiveClockSize / 100})`, touchAction: editMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
       >
+        {clockDragging && (
+          <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+            {effectiveClockSize < 200 && (
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 countdown-arrow-up" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+              </div>
+            )}
+            {effectiveClockSize > 50 && (
+              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 countdown-arrow-down" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+              </div>
+            )}
+          </div>
+        )}
         {/* Structure 1: Classic Glass Cards */}
         {countdownStructure === 0 && (
-          <div className="flex justify-center gap-4 md:gap-8">
+          <div className="flex justify-center gap-1 md:gap-8 max-[400px]:gap-1">
             {[
               { value: timeLeft.days, label: "Days" },
               { value: timeLeft.hours, label: "Hours" },
@@ -721,10 +919,10 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center min-w-[70px] md:min-w-[90px]"
+                className="flex flex-col items-center w-14 md:w-20 max-[400px]:w-12 shrink-0"
               >
                 <div
-                  className="w-16 h-16 md:w-20 md:h-20 flex items-center justify-center rounded-2xl mb-2 backdrop-blur-xl"
+                  className="w-14 h-14 md:w-20 md:h-20 max-[400px]:w-12 max-[400px]:h-12 flex items-center justify-center rounded-2xl mb-2 backdrop-blur-xl"
                   style={{
                     backgroundColor: hexToRgba(getCountdownCrystalColor(), 0.1),
                     border: `1px solid ${hexToRgba(getCountdownCrystalColor(), 0.2)}`,
@@ -738,7 +936,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                   </span>
                 </div>
                 <span
-                  className="text-xs uppercase tracking-wider"
+                  className="text-[8px] md:text-xs uppercase tracking-wider text-center w-full"
                   style={{
                     color: data.neutralColor1,
                     opacity: 0.7,
@@ -754,7 +952,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
         {/* Structure 2: Circular Pills */}
         {countdownStructure === 1 && (
-          <div className="flex justify-center gap-3 md:gap-6">
+          <div className="flex justify-center gap-1 md:gap-6 max-[400px]:gap-1">
             {[
               { value: timeLeft.days, label: "Days" },
               { value: timeLeft.hours, label: "Hours" },
@@ -763,10 +961,10 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center"
+                className="flex flex-col items-center w-16 md:w-24 max-[400px]:w-14 shrink-0"
               >
                 <div
-                  className="w-20 h-20 md:w-24 md:h-24 flex items-center justify-center backdrop-blur-xl mb-2"
+                  className="w-16 h-16 md:w-24 md:h-24 max-[400px]:w-14 max-[400px]:h-14 flex items-center justify-center backdrop-blur-xl mb-2"
                   style={{
                     backgroundColor: hexToRgba(getCountdownCrystalColor(), 0.15),
                     border: `2px solid ${hexToRgba(getCountdownCrystalColor(), 0.3)}`,
@@ -781,7 +979,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                   </span>
                 </div>
                 <span
-                  className="text-xs uppercase tracking-wider font-medium"
+                  className="text-[8px] md:text-xs uppercase tracking-wider font-medium text-center w-full"
                   style={{
                     color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
                     fontFamily: getFontFamily(data.bodyFont, "body"),
@@ -796,7 +994,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
         {/* Structure 3: Minimalist Lines */}
         {countdownStructure === 2 && (
-          <div className="flex justify-center items-center gap-6 md:gap-12">
+          <div className="flex justify-center items-center gap-2 md:gap-12 max-[400px]:gap-1">
             {[
               { value: timeLeft.days, label: "Days" },
               { value: timeLeft.hours, label: "Hours" },
@@ -805,11 +1003,11 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             ].map((item, index) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center"
+                className="flex flex-col items-center w-12 md:w-24 max-[400px]:w-10 shrink-0"
               >
-                <div className="relative">
+                <div className="relative w-full">
                   <div
-                    className="flex items-center justify-center px-4 md:px-6 py-2 backdrop-blur-xl"
+                    className="flex items-center justify-center px-2 md:px-6 py-2 max-[400px]:px-1 backdrop-blur-xl"
                     style={{
                       backgroundColor: hexToRgba(getCountdownCrystalColor(), 0.05),
                       borderTop: `2px solid ${getCountdownCrystalColor()}`,
@@ -818,12 +1016,12 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                       fontFamily: getFontFamily(data.headingFont, "heading"),
                     }}
                   >
-                    <span className="text-3xl md:text-4xl font-bold">
+                    <span className="text-xl md:text-4xl font-bold">
                       {String(item.value).padStart(2, "0")}
                     </span>
                   </div>
                   <span
-                    className="text-xs uppercase tracking-wider mt-2 font-medium"
+                    className="text-[8px] md:text-xs uppercase tracking-wider mt-2 font-medium text-center w-full block"
                     style={{
                       color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
                       fontFamily: getFontFamily(data.bodyFont, "body"),
@@ -850,7 +1048,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
         {/* Structure 4: Stacked Cards */}
         {countdownStructure === 3 && (
-          <div className="flex justify-center gap-2 md:gap-4">
+          <div className="flex justify-center gap-1 md:gap-4 max-[400px]:gap-1">
             {[
               { value: timeLeft.days, label: "Days" },
               { value: timeLeft.hours, label: "Hours" },
@@ -859,7 +1057,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center relative"
+                className="flex flex-col items-center relative w-14 md:w-20 max-[400px]:w-12 shrink-0"
               >
                 <div className="relative">
                   {/* Shadow layers */}
@@ -881,7 +1079,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                   />
                   {/* Main card */}
                   <div
-                    className="relative w-16 h-20 md:w-20 md:h-24 flex items-center justify-center backdrop-blur-xl rounded-xl"
+                    className="relative w-14 h-18 md:w-20 md:h-24 max-[400px]:w-12 max-[400px]:h-14 flex items-center justify-center backdrop-blur-xl rounded-xl"
                     style={{
                       backgroundColor: hexToRgba(getCountdownCrystalColor() || "#ffffff", 0.12),
                       border: `1px solid ${hexToRgba(getCountdownCrystalColor() || "#ffffff", 0.2)}`,
@@ -897,7 +1095,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                   </div>
                 </div>
                 <span
-                  className="text-xs uppercase tracking-wider mt-2 font-medium"
+                  className="text-[8px] md:text-xs uppercase tracking-wider mt-2 font-medium text-center w-full"
                   style={{
                     color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
                     fontFamily: getFontFamily(data.bodyFont, "body"),
@@ -912,7 +1110,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
         {/* Structure 5: Diamond Shape */}
         {countdownStructure === 4 && (
-          <div className="flex justify-center gap-4 md:gap-8">
+          <div className="flex justify-center gap-1 md:gap-8 max-[400px]:gap-1">
             {[
               { value: timeLeft.days, label: "Days" },
               { value: timeLeft.hours, label: "Hours" },
@@ -921,10 +1119,10 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center"
+                className="flex flex-col items-center w-14 md:w-20 max-[400px]:w-12 shrink-0"
               >
                 <div
-                  className="w-16 h-16 md:w-20 md:h-20 flex items-center justify-center backdrop-blur-xl mb-8 transform rotate-45"
+                  className="w-14 h-14 md:w-20 md:h-20 max-[400px]:w-12 max-[400px]:h-12 flex items-center justify-center backdrop-blur-xl mb-8 transform rotate-45"
                   style={{
                     backgroundColor: hexToRgba(getCountdownCrystalColor() || "#ffffff", 0.1),
                     border: `1px solid ${hexToRgba(getCountdownCrystalColor() || "#ffffff", 0.25)}`,
@@ -943,7 +1141,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                   </span>
                 </div>
                 <span
-                  className="text-xs uppercase tracking-wider font-medium"
+                  className="text-[8px] md:text-xs uppercase tracking-wider font-medium text-center w-full"
                   style={{
                     color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
                     fontFamily: getFontFamily(data.bodyFont, "body"),
@@ -958,7 +1156,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
         {/* Structure 6: Elegant Framed */}
         {countdownStructure === 5 && (
-          <div className="flex justify-center gap-6 md:gap-10">
+          <div className="flex justify-center gap-1 md:gap-10 max-[400px]:gap-1">
             {[
               { value: timeLeft.days, label: "Days" },
               { value: timeLeft.hours, label: "Hours" },
@@ -967,12 +1165,12 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center"
+                className="flex flex-col items-center w-16 md:w-24 max-[400px]:w-14 shrink-0"
               >
                 <div className="relative">
                   {/* Frame */}
                   <div
-                    className="w-20 h-24 md:w-24 md:h-28 flex items-center justify-center backdrop-blur-xl"
+                    className="w-16 h-20 md:w-24 md:h-28 max-[400px]:w-14 max-[400px]:h-18 flex items-center justify-center backdrop-blur-xl"
                     style={{
                       backgroundColor: 'transparent',
                       border: `3px solid ${getCountdownCrystalColor()}`,
@@ -1000,7 +1198,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                   </div>
                 </div>
                 <span
-                  className="text-xs uppercase tracking-wider mt-2 font-medium"
+                  className="text-[8px] md:text-xs uppercase tracking-wider mt-2 font-medium text-center w-full"
                   style={{
                     color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
                     fontFamily: `${data.bodyFont}, serif`,
@@ -1503,55 +1701,78 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
       {/* Date Display - Below Countdown */}
       {mergedData.countdownShowDate && dateComponents && (
-        <div className="mt-8">
+        <div
+          id="countdown-date"
+          className={`mt-8 relative ${editMode ? "select-none" : ""}`}
+          onPointerDown={editMode ? dateDrag.handleDown : undefined}
+          onPointerMove={editMode ? dateDrag.handleMove : undefined}
+          onPointerUp={editMode ? dateDrag.handleUp : undefined}
+          onPointerCancel={editMode ? dateDrag.handleCancel : undefined}
+          onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
+          style={{ transform: desktopMode ? undefined : `scale(${effectiveDateSize / 100})`, touchAction: editMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
+        >
+          {dateDragging && (
+            <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+              {effectiveDateSize < 200 && (
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 countdown-arrow-up" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+                </div>
+              )}
+              {effectiveDateSize > 50 && (
+                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 countdown-arrow-down" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+                </div>
+              )}
+            </div>
+          )}
           {/* Date - Box Layout (Default Structure) */}
           {mergedData.countdownDateStructure !== "alternative" && mergedData.countdownDateStructure !== "icon" && mergedData.countdownDateStructure !== "elegant" && mergedData.countdownDateStructure !== "modern" && (
             <div
               className={`flex flex-col items-center gap-1 font-sans ${editMode ? "cursor-pointer" : ""}`}
-              onClick={editMode ? () => handleCountdownChange("countdownDateStructure", "alternative") : undefined}
+              onClick={editMode ? (e) => { if (dateDragRef.current?.triggered) { e.stopPropagation(); dateDragRef.current = null; return; } handleCountdownChange("countdownDateStructure", "alternative"); } : undefined}
               style={{ color: mergedData.countdownUseMainColor !== false ? data.neutralColor1 : (mergedData.countdownMessageColor || data.neutralColor1) }}
             >
               {/* Top box - Month */}
-              <div className="text-[10px] md:text-xs lg:text-sm tracking-[0.2em] uppercase font-bold text-center">
+              <div className="text-[clamp(0.5rem,2.5vw,0.75rem)] md:text-xs lg:text-sm tracking-[0.2em] uppercase font-bold text-center">
                 {dateComponents.month}
               </div>
 
               {/* Middle row - 5 boxes */}
-              <div className="flex items-center gap-0 w-full max-w-sm">
+              <div className="flex items-center gap-0 w-full max-w-sm max-[400px]:max-w-[calc(100vw-32px)]">
                 {/* Box 1: Day with left-fading line */}
-                <div className="flex items-center justify-end shrink-0 w-32">
-                  <div className="w-24 h-[1px] bg-gradient-to-r from-transparent to-current opacity-50" />
-                  <div className="text-[8px] md:text-[10px] lg:text-xs tracking-[0.2em] uppercase text-right">
+                <div className="flex items-center justify-end shrink-0 w-[clamp(64px,25vw,128px)] md:w-32">
+                  <div className="flex-1 min-w-0 h-[1px] bg-gradient-to-r from-transparent to-current opacity-50" />
+                  <div className="text-[clamp(0.375rem,2vw,0.625rem)] md:text-[10px] lg:text-xs whitespace-nowrap shrink-0 tracking-[0.2em] uppercase text-right">
                     {dateComponents.day}
                   </div>
                 </div>
 
                 {/* Box 2: Line divider */}
                 <div className="flex justify-center shrink-0">
-                  <div className="w-4 h-[1px] bg-current opacity-50" />
+                  <div className="w-[clamp(6px,2.5vw,16px)] md:w-4 h-[1px] bg-current opacity-50" />
                 </div>
 
                 {/* Box 3: Date number (largest) */}
-                <div className="flex-1 flex items-center justify-center text-3xl md:text-4xl lg:text-5xl font-bold tracking-[0.1em]">
+                <div className="flex-1 flex items-center justify-center text-[clamp(1rem,5vw,1.875rem)] md:text-4xl lg:text-5xl font-bold tracking-[0.1em]">
                   {dateComponents.date}
                 </div>
 
                 {/* Box 4: Line divider */}
                 <div className="flex justify-center shrink-0">
-                  <div className="w-4 h-[1px] bg-current opacity-50" />
+                  <div className="w-[clamp(6px,2.5vw,16px)] md:w-4 h-[1px] bg-current opacity-50" />
                 </div>
 
                 {/* Box 5: Time with right-fading line */}
-                <div className="flex items-center justify-start shrink-0 w-32">
-                  <div className="text-[8px] md:text-[10px] lg:text-xs tracking-[0.2em] uppercase text-left whitespace-nowrap">
+                <div className="flex items-center justify-start shrink-0 w-[clamp(64px,25vw,128px)] md:w-32">
+                  <div className="text-[clamp(0.375rem,2vw,0.625rem)] md:text-[10px] lg:text-xs whitespace-nowrap shrink-0 tracking-[0.2em] uppercase text-left">
                     {data.time || "4:00 PM"}
                   </div>
-                  <div className="w-24 h-[1px] bg-gradient-to-l from-transparent to-current opacity-50" />
+                  <div className="flex-1 min-w-0 h-[1px] bg-gradient-to-l from-transparent to-current opacity-50" />
                 </div>
               </div>
 
               {/* Bottom box - Year */}
-              <div className="text-[10px] md:text-xs lg:text-sm tracking-[0.2em] uppercase font-bold text-center">
+              <div className="text-[clamp(0.5rem,2.5vw,0.75rem)] md:text-xs lg:text-sm tracking-[0.2em] uppercase font-bold text-center">
                 {dateComponents.year}
               </div>
             </div>
@@ -1561,7 +1782,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
           {mergedData.countdownDateStructure === "alternative" && (
             <div
               className={`flex flex-col items-center gap-1 font-sans text-center ${editMode ? "cursor-pointer" : ""}`}
-              onClick={editMode ? () => handleCountdownChange("countdownDateStructure", "icon") : undefined}
+              onClick={editMode ? (e) => { if (dateDragRef.current?.triggered) { e.stopPropagation(); dateDragRef.current = null; return; } handleCountdownChange("countdownDateStructure", "icon"); } : undefined}
               style={{ color: mergedData.countdownUseMainColor !== false ? data.neutralColor1 : (mergedData.countdownMessageColor || data.neutralColor1) }}
             >
               <div className="text-xs md:text-sm lg:text-base tracking-[0.1em]">
@@ -1577,7 +1798,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
           {mergedData.countdownDateStructure === "icon" && (
             <div
               className={`flex flex-col items-center gap-1 font-sans text-center ${editMode ? "cursor-pointer" : ""}`}
-              onClick={editMode ? () => handleCountdownChange("countdownDateStructure", "elegant") : undefined}
+              onClick={editMode ? (e) => { if (dateDragRef.current?.triggered) { e.stopPropagation(); dateDragRef.current = null; return; } handleCountdownChange("countdownDateStructure", "elegant"); } : undefined}
               style={{ color: mergedData.countdownUseMainColor !== false ? data.neutralColor1 : (mergedData.countdownMessageColor || data.neutralColor1) }}
             >
               <div
@@ -1607,7 +1828,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
           {mergedData.countdownDateStructure === "elegant" && (
             <div
               className={`inline-flex items-center font-sans text-center p-4 ${editMode ? "cursor-pointer" : ""}`}
-              onClick={editMode ? () => handleCountdownChange("countdownDateStructure", "modern") : undefined}
+              onClick={editMode ? (e) => { if (dateDragRef.current?.triggered) { e.stopPropagation(); dateDragRef.current = null; return; } handleCountdownChange("countdownDateStructure", "modern"); } : undefined}
               style={{ color: mergedData.countdownUseMainColor !== false ? data.neutralColor1 : (mergedData.countdownMessageColor || data.neutralColor1) }}
             >
               {/* Box 1: Month (aligned right) */}
@@ -1637,7 +1858,7 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
           {mergedData.countdownDateStructure === "modern" && (
             <div
               className={`inline-flex items-center font-sans text-center p-4 ${editMode ? "cursor-pointer" : ""}`}
-              onClick={editMode ? () => handleCountdownChange("countdownDateStructure", "default") : undefined}
+              onClick={editMode ? (e) => { if (dateDragRef.current?.triggered) { e.stopPropagation(); dateDragRef.current = null; return; } handleCountdownChange("countdownDateStructure", "default"); } : undefined}
               style={{ color: mergedData.countdownUseMainColor !== false ? data.neutralColor1 : (mergedData.countdownMessageColor || data.neutralColor1) }}
             >
               {/* Box 1: Day and time (aligned right) */}
@@ -2266,431 +2487,6 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
       </>
     )}
 
-    {/* Countdown Settings panel */}
-    {showCountdownSettingsPanel && (
-      <>
-        {/* Backdrop */}
-        {!isCountdownSettingsClosing && (
-          <div 
-            className="fixed inset-0 bg-transparent z-[45]" 
-            onMouseDown={handleCloseCountdownSettingsPanel}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          />
-        )}
-
-        {/* Sheet */}
-        <div
-          data-countdown-settings-panel="true"
-          className={`fixed z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"} ${
-            desktopMode 
-              ? `top-0 bottom-0 ${panelPosition === "left" ? "left-0 border-r" : "right-0 border-l"} ${isCountdownSettingsClosing ? (panelPosition === "left" ? "animate-slide-out-side" : "animate-slide-out-side-right") : (panelPosition === "left" ? "animate-slide-in-side" : "animate-slide-in-side-right")}`
-              : `bottom-0 left-0 right-0 rounded-t-3xl ${isCountdownSettingsClosing ? "animate-slide-down" : "animate-slide-up"}`
-          }`}
-          style={desktopMode ? { width: "400px" } : { maxWidth: 480, margin: "0 auto", maxHeight: "50vh" }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Handle bar - only show in mobile mode */}
-          {!desktopMode && (
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <div className={`w-10 h-1 rounded-full ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`} />
-            </div>
-          )}
-
-          {/* Header */}
-          <div className={`flex items-center justify-between px-5 py-2 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
-            <h3
-              className={`font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`}
-              style={{ fontFamily: "Inter, sans-serif" }}
-            >
-              Countdown Settings
-            </h3>
-            <button
-              onClick={handleCloseCountdownSettingsPanel}
-              className={`p-1 rounded-lg transition-colors ${
-                isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
-            {/* Main Color Section */}
-            <div className="space-y-6">
-              <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>CRYSTAL EFFECT</h4>
-              
-              <div className="space-y-2">
-                <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Main Color</label>
-                
-                {/* Color Picker Box */}
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <input
-                      type="color"
-                      value={mergedData.countdownCrystalColor || '#ffffff'}
-                      onChange={(e) => handleCountdownChange("countdownCrystalColor", e.target.value)}
-                      className={`w-10 h-10 rounded-lg border cursor-pointer p-0.5 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
-                    />
-                  </div>
-                  <input
-                    type="text"
-                    value={mergedData.countdownCrystalColor || ''}
-                    onChange={(e) => {
-                      let color = e.target.value.trim();
-                      // Add # if not present and it's a valid hex code
-                      if (color && !color.startsWith('#') && /^[0-9A-Fa-f]{6}$/.test(color)) {
-                        color = '#' + color;
-                      }
-                      handleCountdownChange("countdownCrystalColor", color);
-                    }}
-                    className={`flex-1 px-3 py-2 text-sm border rounded-lg ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                    style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
-                    placeholder="#000000"
-                    maxLength={7}
-                  />
-                </div>
-                
-                {/* Predefined Colors */}
-                <div className="flex flex-wrap gap-1.5 pt-1 justify-start">
-                  {predefinedSectionColors.map((color) => (
-                    <button
-                      key={color.value}
-                      type="button"
-                      onClick={() => handleCountdownChange("countdownCrystalColor", color.value)}
-                      className={`w-7 h-7 rounded-full border-2 transition-all active:scale-90`}
-                      style={{
-                        backgroundColor: color.value,
-                        borderColor: mergedData.countdownCrystalColor === color.value ? data.accentColor : "transparent",
-                        boxShadow: mergedData.countdownCrystalColor === color.value ? `0 0 0 1px ${data.accentColor}` : "0 1px 3px rgba(0,0,0,0.15)",
-                      }}
-                      title={color.name}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Countdown Design Section */}
-            <div className="space-y-6">
-              <h4 className={`text-sm font-medium text-left ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>COUNTDOWN DESIGN</h4>
-              
-              <div className="space-y-2">
-                <HybridDropdown
-                  label="Structure"
-                  value={countdownStructure}
-                  onChange={(value) => {
-                    const index = typeof value === 'string' ? parseInt(value) : value;
-                    setIsTransitioning(true);
-                    setTimeout(() => {
-                      setCountdownStructure(index);
-                      handleCountdownChange("countdownDateStructure", index === 0 ? "default" : index === 1 ? "alternative" : index === 2 ? "icon" : index === 3 ? "elegant" : "modern");
-                      setTimeout(() => setIsTransitioning(false), 50);
-                    }, 150);
-                  }}
-                  options={countdownStructures.map(structure => ({
-                    name: structure.name,
-                    value: structure.id
-                  }))}
-                  showPreview={false}
-                  isDarkMode={isDarkMode}
-                  accentColor={data.accentColor}
-                  disabled={isTransitioning}
-                />
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </>
-    )}
-
-    {/* Icon panel */}
-    {showIconPanel && (
-      <>
-        {/* Backdrop */}
-        {!isIconPanelClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={handleCloseIconPanel} onWheel={handleCloseIconPanel} />}
-
-        {/* Sheet */}
-        <div
-          className={`fixed z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"} ${
-            desktopMode 
-              ? `top-0 bottom-0 ${panelPosition === "left" ? "left-0 border-r" : "right-0 border-l"} ${isIconPanelClosing ? (panelPosition === "left" ? "animate-slide-out-side" : "animate-slide-out-side-right") : (panelPosition === "left" ? "animate-slide-in-side" : "animate-slide-in-side-right")}`
-              : `bottom-0 left-0 right-0 rounded-t-3xl ${isIconPanelClosing ? "animate-slide-down" : "animate-slide-up"}`
-          }`}
-          style={desktopMode ? { width: "400px" } : { maxWidth: 480, margin: "0 auto", maxHeight: "50vh" }}
-        >
-          {/* Handle bar - only show in mobile mode */}
-          {!desktopMode && (
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <div className={`w-10 h-1 rounded-full ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`} />
-            </div>
-          )}
-
-          {/* Header */}
-          <div className={`flex items-center px-5 py-2 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
-            <h3
-              className={`font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`}
-              style={{ fontFamily: "Inter, sans-serif" }}
-            >
-              Display Icon Settings
-            </h3>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6">
-            {/* Display Logo */}
-            <div className="space-y-3">
-              <label className="block text-base font-bold tracking-wide uppercase text-center" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>DISPLAY LOGO</label>
-              <div className="space-y-3">
-                {/* Icon Type Hybrid Control */}
-                <div className="flex items-center gap-2">
-                  {/* Previous Arrow */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const options: ("none" | "image" | "initial")[] = ["none", "image", "initial"];
-                      const currentIndex = options.indexOf(mergedData.heroIconType ?? "image");
-                      const prevIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
-                      handleIconChange("heroIconType", options[prevIndex]);
-                    }}
-                    className={`p-2 rounded-lg transition-all duration-200 border ${
-                      isDarkMode 
-                        ? "hover:bg-gray-800 text-gray-400 hover:text-white border-gray-700" 
-                        : "hover:bg-gray-100 text-gray-600 border-gray-200"
-                    }`}
-                    style={{ fontFamily: "Inter, sans-serif" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = accentColor;
-                      e.currentTarget.style.borderColor = accentColor;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '';
-                      e.currentTarget.style.borderColor = '';
-                    }}
-                  >
-                    <svg className="w-4 h-4 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown */}
-                  <select
-                    value={mergedData.heroIconType ?? "image"}
-                    onChange={(e) => handleIconChange("heroIconType", e.target.value as "image" | "initial" | "none")}
-                    className={`flex-1 px-3 py-2.5 border rounded-lg text-sm appearance-none cursor-pointer text-center transition-all duration-200 ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 bg-white"}`}
-                    style={{
-                      ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }),
-                      fontFamily: "Inter, sans-serif",
-                      backgroundImage: 'none',
-                      paddingRight: '12px'
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = accentColor;
-                      e.currentTarget.style.boxShadow = `0 0 0 1px ${accentColor}`;
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = '';
-                      e.currentTarget.style.boxShadow = '';
-                    }}
-                  >
-                    <option value="none">None</option>
-                    <option value="image">Use Image Icon</option>
-                    <option value="initial">Use Name Initial</option>
-                  </select>
-
-                  {/* Next Arrow */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const options: ("none" | "image" | "initial")[] = ["none", "image", "initial"];
-                      const currentIndex = options.indexOf(mergedData.heroIconType ?? "image");
-                      const nextIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
-                      handleIconChange("heroIconType", options[nextIndex]);
-                    }}
-                    className={`p-2 rounded-lg transition-all duration-200 border ${
-                      isDarkMode 
-                        ? "hover:bg-gray-800 text-gray-400 hover:text-white border-gray-700" 
-                        : "hover:bg-gray-100 text-gray-600 border-gray-200"
-                    }`}
-                    style={{ fontFamily: "Inter, sans-serif" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = accentColor;
-                      e.currentTarget.style.borderColor = accentColor;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '';
-                      e.currentTarget.style.borderColor = '';
-                    }}
-                  >
-                    <svg className="w-4 h-4 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Upload Image Options */}
-                {mergedData.heroIconType === "image" && (
-                  <>
-                    {/* URL Input */}
-                    <input
-                      type="text"
-                      value={mergedData.heroIcon || ""}
-                      onChange={(e) => handleIconChange("heroIcon", e.target.value)}
-                      placeholder="Paste icon URL here..."
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "bg-gray-700 border-gray-600 text-gray-200" : "border-gray-200"}`}
-                      style={{ fontFamily: "Inter, sans-serif" }}
-                    />
-                  </>
-                )}
-
-                {/* Name Initial Options */}
-                {mergedData.heroIconType === "initial" && (
-                  <>
-                    {/* Add & Checkbox */}
-                    {data.nameType === "couple" && (
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          id="heroIconAddAmpersand"
-                          checked={mergedData.heroIconAddAmpersand ?? true}
-                          onChange={(e) => handleIconChange("heroIconAddAmpersand", e.target.checked)}
-                          className={`w-4 h-4 rounded border-gray-300 focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-[#b88a78] ${
-                            isDarkMode ? "bg-gray-700 border-gray-600" : "bg-white border-gray-300"
-                          }`}
-                          style={{
-                            accentColor: accentColor
-                          }}
-                        />
-                        <label htmlFor="heroIconAddAmpersand" className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>Add '&'</label>
-                      </div>
-                    )}
-                    {/* Typography */}
-                    <div className="space-y-2">
-                      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Typography</label>
-                      <HybridFontControl
-                        value={mergedData.heroIconTypography || data.headingFont}
-                        onChange={(v) => handleIconChange("heroIconTypography", v)}
-                        type="heading"
-                        label=""
-                        showPreview={false}
-                        isDarkMode={isDarkMode}
-                        accentColor={accentColor}
-                        predefinedFonts={predefinedHeadingFonts}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className={`border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} />
-
-            {/* Reverse names checkbox */}
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="reverseNames"
-                checked={mergedData.heroIconName2First ?? false}
-                onChange={(e) => handleIconChange('heroIconName2First', e.target.checked)}
-                className={`w-4 h-4 rounded border-gray-300 focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-[#b88a78] ${
-                  isDarkMode ? "bg-gray-700 border-gray-600" : "bg-white border-gray-300"
-                }`}
-                style={{
-                  accentColor: accentColor
-                }}
-              />
-              <label htmlFor="reverseNames" className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>Reverse names</label>
-            </div>
-
-            {/* Text color picker */}
-            <div className="space-y-2">
-              <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Color</label>
-              <ColorControl
-                value={mergedData.heroIconTextColor ?? ""}
-                onChange={(value: string) => handleIconChange('heroIconTextColor', value)}
-                label=""
-                isDarkMode={isDarkMode}
-                accentColor={accentColor}
-                predefinedColors={predefinedSectionColors.map(c => c.value)}
-              />
-            </div>
-
-            {/* Text shadow opacity slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>Text Shadow Opacity</label>
-                <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{Math.round((mergedData.heroTextShadowOpacity ?? 0.1) * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={Math.round((mergedData.heroTextShadowOpacity ?? 0.1) * 100)}
-                onChange={(e) => handleIconChange('heroTextShadowOpacity', e.target.valueAsNumber / 100)}
-                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`}
-                style={{
-                  accentColor: accentColor,
-                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(mergedData.heroTextShadowOpacity ?? 0.1) * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${(mergedData.heroTextShadowOpacity ?? 0.1) * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                }}
-              />
-            </div>
-
-            {/* Icon Size Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>Icon Size</label>
-                <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{mergedData.heroIconSize || 100}%</span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="200"
-                value={mergedData.heroIconSize || 100}
-                onChange={(e) => {
-                  const size = parseInt(e.target.value);
-                  handleIconChange('heroIconSize', size);
-                }}
-                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`}
-                style={{
-                  accentColor: accentColor,
-                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((mergedData.heroIconSize || 100) - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((mergedData.heroIconSize || 100) - 50) / 150 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                }}
-              />
-            </div>
-
-            {/* Icon Margin Adjustment Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>Icon Margin Adjustment</label>
-                <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{mergedData.heroIconMarginAdjustment || 0}px</span>
-              </div>
-              <input
-                type="range"
-                min="-50"
-                max="50"
-                value={mergedData.heroIconMarginAdjustment || 0}
-                onChange={(e) => {
-                  const adjustment = parseInt(e.target.value);
-                  handleIconChange('heroIconMarginAdjustment', adjustment);
-                }}
-                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`}
-                style={{
-                  accentColor: accentColor,
-                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((mergedData.heroIconMarginAdjustment || 0) + 50) / 100 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} ${((mergedData.heroIconMarginAdjustment || 0) + 50) / 100 * 100}%, ${isDarkMode ? "#4B5563" : "#E5E7EB"} 100%)`
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </>
-    )}
     </>
   );
 }

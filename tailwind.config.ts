@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -16,7 +17,7 @@ const config: Config = {
         rose: {
           blush: "#fff8f3",
           light: "#e8cfc3",
-          main: "#b88a78",
+          main: "#6998EE",
           deep: "#8a6252",
         },
         warm: {
@@ -58,6 +59,14 @@ const config: Config = {
         float: {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%": { transform: "translateY(-8px)" },
+        },
+        typewriterBlink: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
+        letterFadeIn: {
+          "0%": { opacity: "0", transform: "translateY(4px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
         slideUp: {
           "0%": { transform: "translateY(100%)" },

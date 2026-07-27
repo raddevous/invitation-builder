@@ -189,6 +189,197 @@ input[type="range"]:disabled::-moz-range-thumb {
   border-bottom-color: #b88a78;
 }
 
+/* Envelope flap animation: visibility switch just before midpoint, first 90 degrees faster */
+@keyframes flap-env3 {
+  0%, 44.9% {
+    visibility: hidden;
+    transform: perspective(1200px) rotateX(89deg);
+  }
+  45% {
+    visibility: visible;
+    transform: perspective(1200px) rotateX(89deg);
+  }
+  100% {
+    visibility: visible;
+    transform: perspective(1200px) rotateX(180deg);
+  }
+}
+
+@keyframes flap-env4 {
+  0% {
+    visibility: visible;
+    transform: perspective(1200px) rotateX(0deg);
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+  }
+  44.9% {
+    visibility: visible;
+    transform: perspective(1200px) rotateX(89deg);
+    filter: drop-shadow(0 0px 0px rgba(0, 0, 0, 0));
+  }
+  45% {
+    visibility: hidden;
+    transform: perspective(1200px) rotateX(89deg);
+    filter: drop-shadow(0 0px 0px rgba(0, 0, 0, 0));
+  }
+  100% {
+    visibility: hidden;
+    transform: perspective(1200px) rotateX(89deg);
+    filter: drop-shadow(0 0px 0px rgba(0, 0, 0, 0));
+  }
+}
+
+@keyframes flap-wax {
+  0% { transform: perspective(1200px) rotateX(0deg); z-index: 6; }
+  44.9% { transform: perspective(1200px) rotateX(89deg); z-index: 6; }
+  45% { transform: perspective(1200px) rotateX(89deg); z-index: 3; }
+  100% { transform: perspective(1200px) rotateX(180deg); z-index: 3; }
+}
+
+.flap-env3 {
+  animation: flap-env3 3s linear forwards;
+}
+
+.flap-env4 {
+  animation: flap-env4 3s linear forwards;
+}
+
+.flap-wax {
+  animation: flap-wax 3s linear forwards;
+}
+
+/* Inner shadow on env-3 (front flap) — visible in static, fades out during phase 1 */
+@keyframes env3-inner-shadow-fade {
+  0% {
+    opacity: 1;
+  }
+  44.9% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.env3-inner-shadow {
+  animation: env3-inner-shadow-fade 3s linear forwards;
+}
+
+/* Inner shadow on env-4 (back flap) — appears at phase 2, fades out */
+@keyframes env4-inner-shadow-fade {
+  0%, 44.9% {
+    opacity: 0;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.env4-inner-shadow {
+  animation: env4-inner-shadow-fade 3s linear forwards;
+}
+
+/* Classic envelope sliding paper — delayed start, slides up from inside */
+@keyframes slide-paper-classic {
+  0% {
+    transform: translateY(0);
+    z-index: 5;
+  }
+  100% {
+    transform: translateY(-50%);
+    z-index: 5;
+  }
+}
+
+.slide-paper-classic {
+  animation: slide-paper-classic 2.5s ease-out 1.2s forwards;
+}
+
+/* env-2 z-index boost: jumps above paper at 40% (1.2s) to match slide paper start */
+@keyframes env2-z-boost {
+  0%, 39.9% {
+    z-index: 3;
+  }
+  40% {
+    z-index: 6;
+  }
+  100% {
+    z-index: 6;
+  }
+}
+
+.env2-z-boost {
+  animation: env2-z-boost 3s linear forwards;
+}
+
+@keyframes flap-env3-inner-shadow {
+  0%, 44.9% {
+    box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+  45% {
+    box-shadow: inset 0 -80px 120px -20px rgba(0, 0, 0, 0.45);
+  }
+  70% {
+    box-shadow: inset 0 -35px 35px -5px rgba(0, 0, 0, 0.3);
+  }
+  95%, 100% {
+    box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+/* Full Envelope flap animation: stops at +90 degrees */
+@keyframes flap-full-env4 {
+  0% {
+    visibility: visible;
+    transform: perspective(1200px) rotateX(0deg);
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+  }
+  44.9% {
+    visibility: visible;
+    transform: perspective(1200px) rotateX(90deg);
+    filter: drop-shadow(0 48px 30px rgba(0, 0, 0, 0.32));
+  }
+  45% {
+    visibility: hidden;
+    transform: perspective(1200px) rotateX(90deg);
+    filter: drop-shadow(0 48px 30px rgba(0, 0, 0, 0.32));
+  }
+  100% {
+    visibility: hidden;
+    transform: perspective(1200px) rotateX(90deg);
+    filter: drop-shadow(0 48px 30px rgba(0, 0, 0, 0.32));
+  }
+}
+
+.flap-full-env4 {
+  animation: flap-full-env4 4s ease-in-out forwards;
+}
+
+@keyframes slide-envf-2 {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(100%); }
+}
+
+.slide-envf-2 {
+  animation: slide-envf-2 4s ease-in-out forwards;
+}
+
+@keyframes std-image-fade-in {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.std-image-fade-in {
+  animation: std-image-fade-in 2s ease-out forwards;
+}
+
+@keyframes letterFadeIn {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* Envelope animation */
 @keyframes envelopeReveal {
   0% { transform: translateY(0) scale(1); opacity: 1; }
@@ -337,6 +528,143 @@ input[type="range"]:disabled::-moz-range-thumb {
   animation: fade-out 0.3s ease-in forwards;
 }
 
+/* Tip blur+glow animation */
+@keyframes tip-blur-glow-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    text-shadow: 0 0 0 transparent;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    text-shadow: 0 0 12px currentColor;
+  }
+}
+
+@keyframes tip-blur-glow-out {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    text-shadow: 0 0 12px currentColor;
+  }
+  to {
+    opacity: 0;
+    filter: blur(8px);
+    text-shadow: 0 0 0 transparent;
+  }
+}
+
+.animate-tip-blur-glow-in {
+  animation: tip-blur-glow-in 0.4s ease-out forwards;
+}
+
+.animate-tip-blur-glow-out {
+  animation: tip-blur-glow-out 0.4s ease-in forwards;
+}
+
+/* Palette fade+slide animations */
+@keyframes palette-fade-slide-in {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes palette-fade-slide-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+
+.animate-palette-fade-slide-in {
+  animation: palette-fade-slide-in 0.35s ease-out;
+}
+
+/* Image group slide+glow+blur animation */
+@keyframes image-slide-glow-left {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes image-slide-glow-right {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-image-slide-glow-left {
+  animation: image-slide-glow-left 0.6s ease-out forwards;
+}
+
+.animate-image-slide-glow-right {
+  animation: image-slide-glow-right 0.6s ease-out forwards;
+}
+
+/* Category label slide+fade animation */
+@keyframes label-slide-fade-left {
+  0% {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes label-slide-fade-right {
+  0% {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-label-slide-fade-left {
+  animation: label-slide-fade-left 0.4s ease-out forwards;
+}
+
+.animate-label-slide-fade-right {
+  animation: label-slide-fade-right 0.4s ease-out forwards;
+}
+
+@keyframes palette-slide-settle {
+  from {
+    transform: translateY(-10px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-palette-slide-settle {
+  animation: palette-slide-settle 0.35s ease-out;
+}
+
+.animate-palette-fade-slide-out {
+  animation: palette-fade-slide-out 0.35s ease-in forwards;
+}
+
 /* Print styles */
 @media print {
   /* Hide UI elements during print */
@@ -409,9 +737,37 @@ input[type="range"]:disabled::-moz-range-thumb {
     position: static !important;
   }
 
-  /* Ensure text is readable */
-  body {
+  /* Ensure text is readable for full-page prints, but not hero-only print */
+  body:not(.hero-print-only) {
     font-size: 12pt !important;
     color: black !important;
+  }
+
+  /* Hero-only print mode: render only the hero section exactly as it appears */
+  body.hero-print-only {
+    background: white !important;
+  }
+  body.hero-print-only .no-print,
+  body.hero-print-only header,
+  body.hero-print-only nav {
+    display: none !important;
+  }
+  body.hero-print-only section:not(#hero-section) {
+    display: none !important;
+  }
+  body.hero-print-only #hero-section {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+    z-index: 99999 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 }

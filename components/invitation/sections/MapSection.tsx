@@ -212,7 +212,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
   return (
     <>
       <section
-        className="px-6 pt-0 pb-8 text-center min-h-[200px]"
+        className="px-6 pt-0 pb-8 text-center min-h-[200px] relative"
         style={{
           backgroundColor: mergedData.mapUseMainColor !== false
             ? (data.mainColor1 || "transparent")
@@ -223,15 +223,14 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
                 : mergedData.mapBackgroundType === "video"
                   ? undefined
                   : (mergedData.mapBackgroundColor || "transparent"),
-          background: mergedData.mapUseMainColor !== false
-            ? (data.mainColor1 || "transparent")
+          backgroundImage: mergedData.mapUseMainColor !== false
+            ? undefined
             : mergedData.mapBackgroundType === "gradient" && mergedData.mapGradient
               ? `linear-gradient(135deg, ${mergedData.mapGradient.firstColor || "#ffffff"}, ${mergedData.mapGradient.secondColor || "#ffffff"})`
               : undefined,
           ...(mergedData.mapBackgroundType === "image" && mergedData.mapImage?.urls && mergedData.mapImage.urls.length > 0 ? {
             backgroundImage: `url(${mergedData.mapImage.urls.filter(url => url.trim() !== "")[backgroundImageIndex]})`,
             backgroundPosition: 'center center',
-            backgroundAttachment: 'fixed',
             backgroundRepeat: 'no-repeat',
             backgroundSize: 'cover'
           } : {}),
@@ -240,11 +239,18 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
       >
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.mapBackgroundType === "image" || mergedData.mapBackgroundType === "video") && mergedData.mapGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.mapGradient.firstColor || "#ffffff", (mergedData.mapGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.mapGradient.secondColor || "#ffffff", (mergedData.mapGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.mapGradient.firstColor || "#ffffff", (mergedData.mapGradient.firstOpacity !== undefined ? mergedData.mapGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.mapGradient.secondColor || "#ffffff", (mergedData.mapGradient.secondOpacity !== undefined ? mergedData.mapGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -261,7 +267,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
       )}
 
       {/* Content Wrapper - positioned above gradient overlay */}
-      <div style={{ position: 'relative', zIndex: 42 }}>
+      <div style={{ position: 'relative', zIndex: 10 }}>
       <Divider 
         type={mapUseDefaultDivider ? (data.universalDivider || "none") : (data.mapDivider || "none")} 
         color={data.mainColor2} 
@@ -275,17 +281,26 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={mapUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.mapDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={mapUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.mapDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={mapUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.mapDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={mapUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.mapDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={mapUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.mapDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(mapUseDefaultDivider ? data.universalDivider : data.mapDivider) === "divider-1" ? predefinedDividerImagesCentered : (mapUseDefaultDivider ? data.universalDivider : data.mapDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = mapUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.mapDivider || "divider-1");
           if (mapUseDefaultDivider) {
             onChange?.("mapDividerUseDefault", false);
+            onChange?.("mapDivider", currentType);
           }
-          onChange?.("mapDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("mapDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("mapDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("mapDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -294,7 +309,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
         } : undefined}
       />
       <h2
-        className="text-2xl mb-1 md:mb-8 text-center font-bold uppercase scale-[0.55] md:scale-100"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.mapUseMainColor !== false ? data.mainColor2 : (mergedData.mapHeadingColor || data.mainColor2),
           fontFamily: mergedData.mapUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.mapHeadingTypography || data.headingFont, "heading"),

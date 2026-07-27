@@ -22,7 +22,7 @@ export default function ToolsLandingPage() {
     // Store settings separately
     localStorage.setItem('appSettings', JSON.stringify({
       isDarkMode: isDarkMode ?? true,
-      accentColor: accentColor ?? "#2563EB",
+      accentColor: accentColor ?? "#6998EE",
     }));
     
     router.push(`/tools/${inv.slug}`);

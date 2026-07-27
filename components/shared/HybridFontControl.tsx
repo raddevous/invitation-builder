@@ -45,7 +45,7 @@ export default function HybridFontControl({
   type = "body",
   showPreview = true,
   isDarkMode = false,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
   disabled = false,
   predefinedFonts,
   useInterFont = false

@@ -6,15 +6,18 @@ import type { AssetCategory } from "@/lib/types/invitation";
 import { getScreenDef, getElement, WELCOME_SCREENS } from "@/lib/welcome-screens";
 import { fetchAssets } from "@/lib/utils";
 import type { StockAsset } from "@/lib/types/invitation";
+import ClassicEnvelopeSettings from "./ClassicEnvelopeSettings";
 
 interface WelcomeEditorProps {
   screenType: WelcomeScreenType;
   data: InvitationData;
   onChange: (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => void;
   onBack: () => void;
+  isDarkMode?: boolean;
+  accentColor?: string;
 }
 
-export default function WelcomeEditor({ screenType, data, onChange, onBack }: WelcomeEditorProps) {
+export default function WelcomeEditor({ screenType, data, onChange, onBack, isDarkMode = false, accentColor = "#6998EE" }: WelcomeEditorProps) {
   const def = getScreenDef(screenType);
   const screenLabel = WELCOME_SCREENS.find((s) => s.id === screenType)?.label ?? screenType;
 
@@ -41,56 +44,87 @@ export default function WelcomeEditor({ screenType, data, onChange, onBack }: We
     onChange("welcomeElements", next);
   };
 
+  const resetClassicEnvelope = () => {
+    onChange("welcomeScreenLabel", undefined);
+    onChange("welcomeEnvelopeColor", undefined);
+    onChange("welcomeFullEnvelopeStdImage", undefined);
+    onChange("welcomeTopMessage", undefined);
+    onChange("welcomeTopMessageFont", undefined);
+    onChange("welcomeTopMessageColor", undefined);
+    onChange("welcomeBackgroundType", undefined);
+    onChange("welcomeBackgroundColor", undefined);
+    onChange("welcomeBackgroundGradient", undefined);
+    onChange("welcomeBackgroundImage", undefined);
+    onChange("welcomeBackgroundVideo", undefined);
+    onChange("welcomeBackgroundOverlayColor", undefined);
+  };
+
+  const isEnvelopeSettings = screenType === "classic-envelope" || screenType === "full-envelope";
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white shrink-0">
-        <button
-          onClick={onBack}
-          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-        </button>
-        <div>
-          <h2 className="text-sm font-semibold text-[#5c4a3a]" style={{ fontFamily: "Playfair Display, serif" }}>
-            {screenLabel}
-          </h2>
-          <p className="text-[11px] text-gray-400">Edit elements</p>
+      {/* Header - hidden for envelope settings because EditorPanel handles it */}
+      {!isEnvelopeSettings && (
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white shrink-0">
+          <button
+            onClick={onBack}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.5">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+          <div className="flex-1">
+            <h2 className="text-sm font-semibold text-[#5c4a3a]" style={{ fontFamily: "Playfair Display, serif" }}>
+              {screenLabel}
+            </h2>
+            <p className="text-[11px] text-gray-400">Edit elements</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Elements list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        {def.elements.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-8">No editable elements for this screen.</p>
-        )}
+        {screenType === "classic-envelope" || screenType === "full-envelope" ? (
+          <ClassicEnvelopeSettings
+            data={data}
+            onChange={onChange}
+            isDarkMode={isDarkMode}
+            accentColor={accentColor}
+            showStdImage={screenType === "full-envelope"}
+          />
+        ) : (
+          <>
+            {def.elements.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">No editable elements for this screen.</p>
+            )}
 
-        {def.elements.map((elDef) => {
-          const settings = getElement(screenType, elDef.id, data.welcomeElements, elDef);
-          return (
-            <ElementControl
-              key={elDef.id}
-              label={elDef.label}
-              type={elDef.type}
-              category={elDef.category}
-              settings={settings}
-              constraints={elDef.constraints}
-              invitationId={data.coupleName}
-              onChange={(updates) => updateElement(elDef.id, updates)}
-              onReset={() => resetElement(elDef.id)}
-            />
-          );
-        })}
+            {def.elements.map((elDef) => {
+              const settings = getElement(screenType, elDef.id, data.welcomeElements, elDef);
+              return (
+                <ElementControl
+                  key={elDef.id}
+                  label={elDef.label}
+                  type={elDef.type}
+                  category={elDef.category}
+                  settings={settings}
+                  constraints={elDef.constraints}
+                  invitationId={data.coupleName}
+                  onChange={(updates) => updateElement(elDef.id, updates)}
+                  onReset={() => resetElement(elDef.id)}
+                />
+              );
+            })}
 
-        {def.elements.length > 0 && (
-          <button
-            onClick={resetAll}
-            className="w-full py-2.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
-          >
-            Reset All to Default
-          </button>
+            {def.elements.length > 0 && (
+              <button
+                onClick={resetAll}
+                className="w-full py-2.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Reset All to Default
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -134,7 +168,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
             <div
               onClick={() => onChange({ visible: !settings.visible })}
               className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
-                settings.visible ? "bg-[#b88a78]" : "bg-gray-200"
+                settings.visible ? "bg-[#6998EE]" : "bg-gray-200"
               }`}
             >
               <div className="absolute inset-0 flex items-center px-0.5">
@@ -144,7 +178,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
               </div>
             </div>
           </label>
-          <button onClick={onReset} className="text-[10px] text-gray-400 hover:text-[#b88a78] transition-colors">
+          <button onClick={onReset} className="text-[10px] text-gray-400 hover:text-[#6998EE] transition-colors">
             Reset
           </button>
         </div>
@@ -157,7 +191,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
             <div>
               <button
                 onClick={openPicker}
-                className="flex items-center gap-2 text-xs text-[#b88a78] border border-[#e8cfc3] rounded-xl px-3 py-2 hover:bg-[#fff8f3] transition-colors"
+                className="flex items-center gap-2 text-xs text-[#6998EE] border border-[#e8cfc3] rounded-xl px-3 py-2 hover:bg-[#fff8f3] transition-colors"
               >
                 {settings.src ? (
                   <img src={settings.src} alt="" className="w-6 h-6 object-contain rounded" />
@@ -180,7 +214,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
                   <button
                     onClick={() => { onChange({ src: "" }); setShowPicker(false); }}
                     className={`aspect-square rounded-xl border-2 flex items-center justify-center transition-all ${
-                      !settings.src ? "border-[#b88a78] bg-[#fff0e8]" : "border-gray-200 bg-gray-50"
+                      !settings.src ? "border-[#6998EE] bg-[#fff0e8]" : "border-gray-200 bg-gray-50"
                     }`}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2">
@@ -190,7 +224,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
 
                   {loadingAssets && (
                     <div className="col-span-3 flex items-center justify-center py-2">
-                      <div className="w-4 h-4 border-2 border-[#b88a78] border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-[#6998EE] border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
 
@@ -199,7 +233,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
                       key={a.id}
                       onClick={() => { onChange({ src: a.url }); setShowPicker(false); }}
                       className={`aspect-square rounded-xl border-2 overflow-hidden transition-all ${
-                        settings.src === a.url ? "border-[#b88a78]" : "border-transparent hover:border-gray-200"
+                        settings.src === a.url ? "border-[#6998EE]" : "border-transparent hover:border-gray-200"
                       }`}
                     >
                       <img src={a.thumbnail || a.url} alt={a.label} className="w-full h-full object-cover" />
@@ -222,7 +256,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
                 type="text"
                 value={settings.text ?? ""}
                 onChange={(e) => onChange({ text: e.target.value })}
-                className="w-full text-sm rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:border-[#b88a78] bg-white"
+                className="w-full text-sm rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:border-[#6998EE] bg-white"
               />
             </div>
           )}
@@ -275,7 +309,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
                   onClick={() => onChange({ alignment: align })}
                   className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${
                     settings.alignment === align
-                      ? "bg-[#b88a78] text-white"
+                      ? "bg-[#6998EE] text-white"
                       : "bg-white text-gray-500 border border-gray-200 hover:border-gray-300"
                   }`}
                 >
@@ -332,7 +366,7 @@ function SliderControl({
               strokeDasharray="113 200" strokeDashoffset="-28" strokeLinecap="round" />
           </svg>
           <div
-            className="absolute w-2 h-2 bg-[#b88a78] rounded-full"
+            className="absolute w-2 h-2 bg-[#6998EE] rounded-full"
             style={{
               top: "50%", left: "50%",
               transformOrigin: "0 0",
@@ -350,9 +384,9 @@ function SliderControl({
         <input
           type="range" min={min} max={max} step={step} value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-full h-1.5 rounded-full cursor-pointer accent-[#b88a78]"
+          className="w-full h-1.5 rounded-full cursor-pointer accent-[#6998EE]"
         />
-        <button onClick={() => onChange(defaultValue)} className="text-[10px] text-gray-400 mt-1 hover:text-[#b88a78] transition-colors">
+        <button onClick={() => onChange(defaultValue)} className="text-[10px] text-gray-400 mt-1 hover:text-[#6998EE] transition-colors">
           Reset
         </button>
       </div>

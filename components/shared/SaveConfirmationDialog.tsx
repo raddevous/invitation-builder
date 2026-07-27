@@ -16,7 +16,7 @@ export default function SaveConfirmationDialog({
   isOpen,
   pendingChangesCount,
   isDarkMode = false,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
   hideSaveConfirmationDialog = false,
   onSave,
   onDiscard,

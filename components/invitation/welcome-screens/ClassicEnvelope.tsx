@@ -1,167 +1,382 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect, Fragment } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
-import { getElement, getScreenDef } from "@/lib/welcome-screens";
 
 interface Props {
   data: InvitationData;
   onOpen: () => void;
 }
 
+const FLAP_DURATION_MS = 3000;
+const SLIDE_PAPER_DELAY_MS = 1200;
+const SLIDE_PAPER_DURATION_MS = 2500;
+
 export default function ClassicEnvelope({ data, onOpen }: Props) {
   const [flapOpen, setFlapOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
-  const [petals, setPetals] = useState<{ id: number; x: number; delay: number; duration: number }[]>([]);
-  const [butterflies, setButterflies] = useState<{ id: number; x: number; y: number; delay: number }[]>([]);
-  const displayName = data.nameType === "couple" 
-    ? `${data.hisName || ""} ${data.andText || "&"} ${data.herName || ""}`.trim()
-    : data.coupleName;
+  const [showTopMessage, setShowTopMessage] = useState(true);
+  const [messageReady, setMessageReady] = useState(false);
 
-  const def = getScreenDef("classic-envelope");
-  const tapEl = def.elements.find((e) => e.id === "tapText")!;
-  const tapSettings = getElement("classic-envelope", "tapText", data.welcomeElements, tapEl);
+  const envelopeColor = data.welcomeEnvelopeColor || data.mainColor1;
+  const envTexture = data.welcomeEnvelopeTexture || "envA";
+  const stdIndex = Math.max(1, Math.min(6, data.welcomeFullEnvelopeStdImage ?? 1));
+
+  // Letter fade-in effect for top message
+  const message = data.welcomeTopMessage || "";
+  const letters = Array.from(message);
+  const letterDelay = 120; // ms per letter
+  const totalDuration = letters.length * letterDelay;
 
   useEffect(() => {
-    setPetals(Array.from({ length: 10 }, (_, i) => ({
-      id: i, x: Math.random() * 100, delay: Math.random() * 6, duration: 5 + Math.random() * 4,
-    })));
-    setButterflies(Array.from({ length: 3 }, (_, i) => ({
-      id: i, x: 15 + i * 30, y: 20 + Math.random() * 40, delay: i * 2,
-    })));
-  }, []);
+    if (!data.welcomeTopMessage) {
+      setMessageReady(true);
+      return;
+    }
+    const timer = setTimeout(() => setMessageReady(true), totalDuration + 300 + 1000);
+    return () => clearTimeout(timer);
+  }, [data.welcomeTopMessage, totalDuration]);
+
+  const hisInitial = data.hisName?.charAt(0).toUpperCase() || "";
+  const herInitial = data.herName?.charAt(0).toUpperCase() || "";
+  const stampText =
+    data.nameType === "couple"
+      ? hisInitial && herInitial
+        ? `${hisInitial}&${herInitial}`
+        : hisInitial || herInitial
+      : data.coupleName?.charAt(0).toUpperCase() || hisInitial;
 
   const handleTap = useCallback(() => {
-    if (flapOpen) return;
-    setFlapOpen(true);
-    setTimeout(() => setExiting(true), 700);
-    setTimeout(() => onOpen(), 1400);
-  }, [flapOpen, onOpen]);
+    if (flapOpen || !messageReady) return;
+    setShowTopMessage(false);
+    setTimeout(() => {
+      setFlapOpen(true);
+      setTimeout(() => setExiting(true), SLIDE_PAPER_DELAY_MS + SLIDE_PAPER_DURATION_MS + 250);
+      setTimeout(() => onOpen(), SLIDE_PAPER_DELAY_MS + SLIDE_PAPER_DURATION_MS + 250 + Math.round(SLIDE_PAPER_DURATION_MS * 0.5 + 800));
+    }, 300);
+  }, [flapOpen, onOpen, messageReady]);
 
   return (
     <div
-      className="fixed inset-0 z-40 flex flex-col items-center justify-center cursor-pointer select-none overflow-hidden"
-      style={{ backgroundColor: data.mainColor1 }}
-      onClick={handleTap}
+      className="fixed inset-0 z-40 flex flex-col items-center justify-center select-none overflow-hidden"
+      style={{
+        opacity: exiting ? 0 : 1,
+        transition: `opacity ${Math.round(SLIDE_PAPER_DURATION_MS * 0.5 + 800)}ms ease`,
+      }}
     >
-      {/* Falling petals */}
-      {petals.map((p) => (
+      {/* Background */}
+      <div className="absolute inset-0 pointer-events-none">
         <div
-          key={p.id}
-          className="petal absolute text-sm pointer-events-none"
-          style={{ left: `${p.x}%`, animationDelay: `${p.delay}s`, animationDuration: `${p.duration}s` }}
-        >🌸</div>
-      ))}
-
-      {/* Butterflies */}
-      {butterflies.map((b) => (
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url(/assets/${data.welcomeBackgroundImage?.urls?.[0] || "texturebg1"}.jpg)`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
         <div
-          key={b.id}
-          className="absolute text-lg pointer-events-none animate-butterfly"
-          style={{ left: `${b.x}%`, top: `${b.y}%`, animationDelay: `${b.delay}s`, animationDuration: `${4 + b.id}s` }}
-        >🦋</div>
-      ))}
+          className="absolute inset-0"
+          style={{ backgroundColor: envelopeColor, mixBlendMode: "color" }}
+        />
+      </div>
 
       {/* Envelope + content */}
-      <div
-        className="flex flex-col items-center"
-        style={{
-          opacity: exiting ? 0 : 1,
-          transition: "opacity 0.6s ease",
-        }}
-      >
-        {/* 3D Envelope */}
+      <div className="relative z-10 flex flex-col items-center px-4 max-w-full">
+        {/* Envelope image stack */}
         <div
-          className="relative mb-8"
-          style={{ width: 220, height: 160, animation: flapOpen ? "none" : "float 3s ease-in-out infinite" }}
+          className="relative w-[min(360px,calc(100vw-2rem))] h-[min(257px,calc((100vw-2rem)*257/360))] md:w-[460px] md:h-[329px] lg:w-[540px] lg:h-[386px]"
+          style={{
+            filter: "drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))",
+            animation: flapOpen ? "none" : "float 3s ease-in-out infinite",
+          }}
         >
-          {/* Body */}
+          {/* Layer 1: envelope base */}
+          <img
+            src="/assets/env-1.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            style={{ zIndex: 1 }}
+          />
           <div
-            className="absolute inset-0 rounded-lg shadow-xl"
-            style={{ backgroundColor: "white", border: `1.5px solid ${data.accentColor}` }}
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              zIndex: 1,
+              backgroundColor: envelopeColor,
+              mixBlendMode: "color",
+              WebkitMaskImage: "url(/assets/env-1.png)",
+              WebkitMaskSize: "contain",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskPosition: "center",
+              maskImage: "url(/assets/env-1.png)",
+              maskSize: "contain",
+              maskRepeat: "no-repeat",
+              maskPosition: "center",
+            }}
           />
 
-          {/* Bottom-left triangle */}
-          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 220 160" style={{ overflow: "visible" }}>
-            <path d="M0 55 L0 155 L110 100 Z" fill={data.accentColor} opacity="0.5" />
-            <path d="M220 55 L220 155 L110 100 Z" fill={data.accentColor} opacity="0.4" />
-            <line x1="30" y1="128" x2="190" y2="128" stroke={data.accentColor} strokeWidth="0.6" strokeDasharray="4 4" />
-            <line x1="30" y1="140" x2="190" y2="140" stroke={data.accentColor} strokeWidth="0.6" strokeDasharray="4 4" />
-          </svg>
-
-          {/* Wax seal */}
+          {/* Layer 2: sliding paper with std image */}
           <div
-            className="absolute flex items-center justify-center rounded-full shadow"
-            style={{
-              width: 38, height: 38,
-              backgroundColor: data.mainColor2,
-              top: "55%", left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 2,
-            }}
+            className={`absolute inset-0 pointer-events-none overflow-hidden ${
+              flapOpen ? "slide-paper-classic" : ""
+            }`}
+            style={{ zIndex: 2 }}
           >
-            <span className="text-white text-base">♥</span>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className="relative select-none w-[55%] h-[85%] md:w-[65%] md:h-[89%] lg:w-[70%] lg:h-[93%]"
+                style={{
+                  backgroundColor: "#f5f0e8",
+                  boxShadow: "0 6px 18px rgba(0, 0, 0, 0.22)",
+                  padding: "8%",
+                }}
+              >
+                <div className="relative w-full h-full">
+                <img
+                  src={`/assets/std/std-${stdIndex}.png`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+                {envelopeColor && (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundColor: envelopeColor,
+                      mixBlendMode: "hue",
+                      WebkitMaskImage: `url(/assets/std/std-${stdIndex}.png)`,
+                      WebkitMaskSize: "contain",
+                      WebkitMaskRepeat: "no-repeat",
+                      WebkitMaskPosition: "center",
+                      maskImage: `url(/assets/std/std-${stdIndex}.png)`,
+                      maskSize: "contain",
+                      maskRepeat: "no-repeat",
+                      maskPosition: "center",
+                    }}
+                  />
+                )}
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Flap — animates with 3D rotateX */}
+          {/* Layer 3: envelope mid */}
           <div
-            className="absolute top-0 left-0 right-0 overflow-hidden"
-            style={{
-              height: 70,
-              transformOrigin: "top center",
-              perspective: "500px",
-              transition: "transform 0.65s cubic-bezier(0.4, 0, 0.2, 1)",
-              transform: flapOpen ? "perspective(500px) rotateX(-185deg)" : "perspective(500px) rotateX(0deg)",
-              zIndex: 3,
-            }}
+            className={`absolute inset-0 pointer-events-none ${
+              flapOpen ? "env2-z-boost" : ""
+            }`}
+            style={{ zIndex: 3 }}
           >
-            <svg width="220" height="70" viewBox="0 0 220 70" style={{ display: "block" }}>
-              <polygon points="0,0 220,0 110,65" fill={data.accentColor} />
-              <polygon points="0,0 220,0 110,65" fill="white" opacity="0.25" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Names */}
-        <div className="text-center mb-4">
-          <p className="text-xs tracking-[0.35em] uppercase mb-2" style={{ color: data.neutralColor2, fontFamily: `${data.bodyFont}, serif` }}>
-            You are invited to
-          </p>
-          <h1 className="text-4xl leading-tight" style={{ color: data.mainColor2, fontFamily: `${data.headingFont}, serif` }}>
-            {displayName}
-          </h1>
-          <p className="mt-2 italic opacity-70" style={{ color: data.neutralColor1, fontFamily: `${data.bodyFont}, serif` }}>
-            {data.subtitle}
-          </p>
-        </div>
-
-        {/* Decoration */}
-        <div className="mb-4">
-          <svg width="56" height="20" viewBox="0 0 56 20" fill="none">
-            <ellipse cx="28" cy="10" rx="7" ry="4" fill={data.accentColor} opacity="0.7" />
-            <ellipse cx="14" cy="9" rx="5" ry="3" fill={data.accentColor} opacity="0.5" />
-            <ellipse cx="42" cy="9" rx="5" ry="3" fill={data.accentColor} opacity="0.5" />
-            <ellipse cx="5" cy="12" rx="4" ry="2.5" fill={data.accentColor} opacity="0.3" />
-            <ellipse cx="51" cy="12" rx="4" ry="2.5" fill={data.accentColor} opacity="0.3" />
-          </svg>
-        </div>
-
-        {/* Tap prompt */}
-        {tapSettings.visible && (
-          <div className="flex flex-col items-center gap-2 opacity-60" style={{ color: data.neutralColor2 }}>
-            <div className="w-px h-6" style={{ backgroundColor: data.neutralColor2, opacity: 0.4 }} />
-            <p
-              className="text-sm tracking-[0.2em] uppercase"
+            <img
+              src={`/assets/${envTexture}/env-2.png`}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
               style={{
-                fontFamily: `${data.bodyFont}, serif`,
-                transform: `scale(${tapSettings.scale}) rotate(${tapSettings.rotation}deg)`,
+                backgroundColor: envelopeColor,
+                mixBlendMode: "color",
+                WebkitMaskImage: `url(/assets/${envTexture}/env-2.png)`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(/assets/${envTexture}/env-2.png)`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
               }}
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: "linear-gradient(to top, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.1) 30%, transparent 60%)",
+                WebkitMaskImage: `url(/assets/${envTexture}/env-2.png)`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(/assets/${envTexture}/env-2.png)`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+          </div>
+
+          {/* Wax seal stamp — rotates and swaps z-index with the flap */}
+          <div
+            className={`absolute inset-0 pointer-events-none ${
+              flapOpen ? "flap-wax" : "z-[6]"
+            }`}
+            style={{ transformOrigin: "top center", filter: "drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))" }}
+          >
+            <div
+              className="absolute top-[65%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 flex items-center justify-center cursor-pointer"
+              style={{ pointerEvents: "auto" }}
+              onClick={handleTap}
             >
-              {tapSettings.text}
-            </p>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
+              <img
+                src="/assets/weddir-env-stamp.png"
+                alt=""
+                className="absolute inset-0 w-full h-full object-contain select-none"
+              />
+              <div
+                className="absolute inset-0 w-full h-full"
+                style={{
+                  backgroundColor: envelopeColor || "#897843",
+                  mixBlendMode: "color",
+                  WebkitMaskImage: "url(/assets/weddir-env-stamp.png)",
+                  WebkitMaskSize: "contain",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskPosition: "center",
+                  maskImage: "url(/assets/weddir-env-stamp.png)",
+                  maskSize: "contain",
+                  maskRepeat: "no-repeat",
+                  maskPosition: "center",
+                }}
+              />
+              <span
+                className="absolute inset-0 flex items-center justify-center text-lg md:text-xl lg:text-2xl font-bold select-none"
+                style={{
+                  color: `color-mix(in srgb, ${envelopeColor || "#897843"} 80%, transparent)`,
+                  mixBlendMode: "luminosity",
+                  textShadow: "-0.5px -0.5px 0 rgba(255, 255, 255, 0.5), 0.5px 0.5px 2px rgba(0, 0, 0, 0.55)",
+                  fontFamily: "Cinzel, serif",
+                }}
+              >
+                {stampText.split("&").map((part, index, arr) => (
+                  <Fragment key={index}>
+                    {part}
+                    {index < arr.length - 1 && (
+                      <span style={{ fontSize: "0.6em" }}>&</span>
+                    )}
+                  </Fragment>
+                ))}
+              </span>
+            </div>
+
+          </div>
+
+          {/* Layer 4: back flap piece (env-4) */}
+          <div
+            className={`absolute inset-0 pointer-events-none select-none ${
+              flapOpen ? "flap-env3" : ""
+            }`}
+            style={{ zIndex: 4, transformOrigin: "top center" }}
+          >
+            <img
+              src="/assets/env-4.png"
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundColor: envelopeColor,
+                mixBlendMode: "color",
+                WebkitMaskImage: "url(/assets/env-4.png)",
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: "url(/assets/env-4.png)",
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+            {flapOpen ? (
+              <div
+                className="absolute inset-0 pointer-events-none env4-inner-shadow"
+                style={{
+                  background: "linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.2) 30%, transparent 60%)",
+                  WebkitMaskImage: "url(/assets/env-4.png)",
+                  WebkitMaskSize: "contain",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskPosition: "center",
+                  maskImage: "url(/assets/env-4.png)",
+                  maskSize: "contain",
+                  maskRepeat: "no-repeat",
+                  maskPosition: "center",
+                }}
+              />
+            ) : null}
+          </div>
+
+          {/* Layer 5: front flap top (env-3) */}
+          <div
+            className={`absolute inset-0 pointer-events-none select-none ${
+              flapOpen ? "flap-env4" : ""
+            }`}
+            style={{
+              zIndex: 5,
+              transformOrigin: "top center",
+              filter: "drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))",
+            }}
+          >
+            <img
+              src={`/assets/${envTexture}/env-3.png`}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            />
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundColor: envelopeColor,
+                mixBlendMode: "color",
+                WebkitMaskImage: `url(/assets/${envTexture}/env-3.png)`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(/assets/${envTexture}/env-3.png)`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+            <div
+              className={`absolute inset-0 pointer-events-none ${
+                flapOpen ? "env3-inner-shadow" : ""
+              }`}
+              style={{
+                background: "linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.2) 30%, transparent 60%)",
+                WebkitMaskImage: `url(/assets/${envTexture}/env-3.png)`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(/assets/${envTexture}/env-3.png)`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Message below envelope */}
+        {data.welcomeTopMessage && (
+          <div
+            className="text-center pointer-events-none select-none mt-12"
+            style={{
+              color: data.welcomeTopMessageColor || envelopeColor || data.mainColor1 || "#5c4a3a",
+              fontFamily: data.welcomeTopMessageFont || "Playfair Display, serif",
+              fontSize: "clamp(18px, 5.5vmin, 38px)",
+              textShadow: "-0.5px -0.5px 0 rgba(255, 255, 255, 0.5), 0.5px 0.5px 0 rgba(0, 0, 0, 0.4)",
+              letterSpacing: "0.05em",
+              opacity: showTopMessage ? 1 : 0,
+              transition: "opacity 1000ms ease",
+            }}
+          >
+            {letters.map((char, i) => (
+              <span
+                key={i}
+                style={{
+                  display: "inline-block",
+                  opacity: 0,
+                  animation: `letterFadeIn 0.8s ease-out forwards`,
+                  animationDelay: `${i * letterDelay + 1000}ms`,
+                }}
+              >
+                {char === " " ? "\u00A0" : char}
+              </span>
+            ))}
           </div>
         )}
       </div>

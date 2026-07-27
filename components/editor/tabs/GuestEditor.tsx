@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
+import { USHER_INSTRUCTIONS, USHERETTE_INSTRUCTIONS, getNextMessage } from "@/lib/constants/heroMessages";
 
 interface GuestEditorProps {
   data: InvitationData;
@@ -13,19 +14,19 @@ interface GuestEditorProps {
 
 type InviteeTitle = "M" | "Mr." | "Ms." | "Mrs.";
 
-export default function GuestEditor({ data, onChange, isDarkMode = false, accentColor = "#B88A78", onClose, onSave }: GuestEditorProps) {
+export default function GuestEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave }: GuestEditorProps) {
   const [inviteeSort, setInviteeSort] = useState<"alphabetical" | "date-added">("date-added");
   const [inviteePage, setInviteePage] = useState(0);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [filterIncludeEntourage, setFilterIncludeEntourage] = useState(true);
   const [filterIncludeNormal, setFilterIncludeNormal] = useState(true);
-  const [filterSortOption, setFilterSortOption] = useState<"date" | "name" | "date-entourage" | "name-entourage">("date");
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [filterSortOption, setFilterSortOption] = useState<"date" | "name" | "ushers" | "usherettes" | "entourage-only" | "normal-only" | "all">("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editGuestData, setEditGuestData] = useState<{ isEntourage: boolean; name: string; title: InviteeTitle; originalIndex: number; plusOne?: string; tableNumber?: string } | null>(null);
-  const [originalGuestData, setOriginalGuestData] = useState<{ name: string; title: InviteeTitle; plusOne?: string; tableNumber?: string } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editGuestData, setEditGuestData] = useState<{ isEntourage: boolean; name: string; title: InviteeTitle; originalIndex: number; plusOne?: string; tableNumber?: string; entourageTitle?: string; instruction?: string } | null>(null);
+  const [originalGuestData, setOriginalGuestData] = useState<{ name: string; title: InviteeTitle; plusOne?: string; tableNumber?: string; instruction?: string } | null>(null);
   const [guestNumberError, setGuestNumberError] = useState(false);
   const [newGuestName, setNewGuestName] = useState("");
   const [newGuestTitle, setNewGuestTitle] = useState<InviteeTitle>("M");
@@ -44,7 +45,8 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
         editGuestData.name !== originalGuestData.name ||
         editGuestData.title !== originalGuestData.title ||
         editGuestData.plusOne !== originalGuestData.plusOne ||
-        editGuestData.tableNumber !== originalGuestData.tableNumber;
+        editGuestData.tableNumber !== originalGuestData.tableNumber ||
+        editGuestData.instruction !== originalGuestData.instruction;
       const nameIsNotBlank = editGuestData.name.trim() !== "";
       setEditDialogHasChanges(hasChanges && nameIsNotBlank);
     }
@@ -58,14 +60,15 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     return inviteesData;
   });
   const [pendingEntourageHonorifics, setPendingEntourageHonorifics] = useState<Record<string, InviteeTitle>>(data.rsvpEntourageHonorifics || {});
-  const [pendingEntourageGuestDetails, setPendingEntourageGuestDetails] = useState<Record<string, { plusOne: string; tableNumber: string }>>(() => {
+  const [pendingEntourageGuestDetails, setPendingEntourageGuestDetails] = useState<Record<string, { plusOne: string; tableNumber: string; instruction?: string }>>(() => {
     const details = data.rsvpEntourageGuestDetails || {};
     // Convert old number format to new string format
-    const converted: Record<string, { plusOne: string; tableNumber: string }> = {};
+    const converted: Record<string, { plusOne: string; tableNumber: string; instruction?: string }> = {};
     for (const [key, value] of Object.entries(details)) {
       converted[key] = {
         plusOne: typeof value.plusOne === 'number' ? String(value.plusOne) : value.plusOne,
-        tableNumber: value.tableNumber
+        tableNumber: value.tableNumber,
+        instruction: value.instruction
       };
     }
     return converted;
@@ -74,34 +77,67 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [duplicateErrors, setDuplicateErrors] = useState<Record<number, boolean>>({});
 
-  // Sync local state with data when data changes from outside
+  // Snapshot of initial data for revert detection
+  const initialGuestDataSnapshot = useRef(JSON.stringify({
+    invitees: (data.rsvpInvitees || []).map((i: any) => typeof i === 'string' ? { name: i, title: 'M' } : i),
+    entourageHonorifics: data.rsvpEntourageHonorifics || {},
+    entourageGuestDetails: (() => {
+      const details = data.rsvpEntourageGuestDetails || {};
+      const converted: Record<string, { plusOne: string; tableNumber: string; instruction?: string }> = {};
+      for (const [key, value] of Object.entries(details)) {
+        converted[key] = {
+          plusOne: typeof value.plusOne === 'number' ? String(value.plusOne) : value.plusOne,
+          tableNumber: value.tableNumber,
+          instruction: value.instruction
+        };
+      }
+      return converted;
+    })(),
+    guestDetails: data.rsvpGuestDetails || {}
+  }));
+
+  // Revert detection: compare current pending state with initial snapshot
   useEffect(() => {
-    const inviteesData = (data.rsvpInvitees || []).map(invitee =>
-      typeof invitee === 'string' ? { name: invitee, title: "M" as const } : invitee
-    );
-    setPendingInvitees(inviteesData);
-    setPendingEntourageHonorifics(data.rsvpEntourageHonorifics || {});
-    
-    // Convert old number format to new string format for entourage
-    const details = data.rsvpEntourageGuestDetails || {};
-    const converted: Record<string, { plusOne: string; tableNumber: string }> = {};
-    for (const [key, value] of Object.entries(details)) {
-      converted[key] = {
-        plusOne: typeof value.plusOne === 'number' ? String(value.plusOne) : value.plusOne,
-        tableNumber: value.tableNumber
-      };
-    }
-    setPendingEntourageGuestDetails(converted);
-    
-    setPendingGuestDetails(data.rsvpGuestDetails || {});
-    
-    setHasUnsavedChanges(false);
-    setDuplicateErrors({});
-  }, [data.rsvpInvitees, data.rsvpEntourageHonorifics, data.rsvpEntourageGuestDetails, data.rsvpGuestDetails]);
+    const currentData = JSON.stringify({
+      invitees: pendingInvitees,
+      entourageHonorifics: pendingEntourageHonorifics,
+      entourageGuestDetails: pendingEntourageGuestDetails,
+      guestDetails: pendingGuestDetails
+    });
+    setHasUnsavedChanges(currentData !== initialGuestDataSnapshot.current);
+  }, [pendingInvitees, pendingEntourageHonorifics, pendingEntourageGuestDetails, pendingGuestDetails]);
 
   // Auto-added guests from the Entourage list (excludes couple, groom's parents, bride's parents).
   // These are read-only here; edit/remove them from the Entourage List instead.
   const entourageGuests = useMemo(() => getEntourageGuestNames(data.entourage), [data.entourage]);
+
+  // Special names that should not be added to the guest list (groom, bride, parents)
+  const specialNames = useMemo(() => {
+    const names: Array<{ name: string; label: string }> = [];
+    if (data.nameType === "event" && data.coupleName?.trim()) names.push({ name: data.coupleName.trim(), label: "The Couple" });
+    if (data.nameType === "couple") {
+      if (data.hisName?.trim()) names.push({ name: data.hisName.trim(), label: "The Groom" });
+      if (data.herName?.trim()) names.push({ name: data.herName.trim(), label: "The Bride" });
+    }
+    const ent = data.entourage;
+    if (ent?.couple?.groomName?.trim()) names.push({ name: ent.couple.groomName.trim(), label: "The Groom" });
+    if (ent?.couple?.brideName?.trim()) names.push({ name: ent.couple.brideName.trim(), label: "The Bride" });
+    if (ent?.groomParents?.fatherName?.trim()) names.push({ name: ent.groomParents.fatherName.trim(), label: "The Groom's Parents" });
+    if (ent?.groomParents?.motherName?.trim()) names.push({ name: ent.groomParents.motherName.trim(), label: "The Groom's Parents" });
+    if (ent?.brideParents?.fatherName?.trim()) names.push({ name: ent.brideParents.fatherName.trim(), label: "The Bride's Parents" });
+    if (ent?.brideParents?.motherName?.trim()) names.push({ name: ent.brideParents.motherName.trim(), label: "The Bride's Parents" });
+    return names;
+  }, [data.nameType, data.coupleName, data.hisName, data.herName, data.entourage]);
+
+  const getSpecialNameLabel = (name: string): string | null => {
+    const lower = name.toLowerCase().trim();
+    const match = specialNames.find(n => n.name.toLowerCase().trim() === lower);
+    return match ? match.label : null;
+  };
+
+  const isSpecialName = (name: string) => {
+    return getSpecialNameLabel(name) !== null;
+  };
 
   // Check for duplicate names (case-insensitive)
   const checkDuplicate = (name: string, currentIndex: number) => {
@@ -124,7 +160,6 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   const handleEntourageHonorificChange = (guestName: string, title: InviteeTitle) => {
     const updated = { ...pendingEntourageHonorifics, [guestName]: title };
     setPendingEntourageHonorifics(updated);
-    setHasUnsavedChanges(true);
   };
 
   // Handle invitee changes (local only)
@@ -132,7 +167,6 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     const updated = [...pendingInvitees];
     updated[index] = { ...updated[index], [field]: value as InviteeTitle };
     setPendingInvitees(updated);
-    setHasUnsavedChanges(true);
 
     // Check for duplicate if name is being changed
     if (field === "name") {
@@ -143,30 +177,35 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
 
   // Handle invitee removal (local only)
   const handleInviteeRemove = (index: number, name: string) => {
-    if (name.trim()) {
-      if (confirm(`Remove "${name}" from the guest list?`)) {
-        const updated = [...pendingInvitees];
-        updated.splice(index, 1);
-        setPendingInvitees(updated);
-        setHasUnsavedChanges(true);
-        // Clear duplicate error for this index
-        setDuplicateErrors(prev => {
-          const newErrors = { ...prev };
-          delete newErrors[index];
-          return newErrors;
-        });
-      }
-    } else {
+    const doRemove = () => {
       const updated = [...pendingInvitees];
       updated.splice(index, 1);
       setPendingInvitees(updated);
-      setHasUnsavedChanges(true);
+      // Reindex pendingGuestDetails after splice
+      const newGuestDetails: Record<number, { plusOne: string; tableNumber: string }> = {};
+      Object.entries(pendingGuestDetails).forEach(([key, value]) => {
+        const numKey = Number(key);
+        if (numKey < index) {
+          newGuestDetails[numKey] = value;
+        } else if (numKey > index) {
+          newGuestDetails[numKey - 1] = value;
+        }
+        // Skip the removed index
+      });
+      setPendingGuestDetails(newGuestDetails);
       // Clear duplicate error for this index
       setDuplicateErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors[index];
         return newErrors;
       });
+    };
+    if (name.trim()) {
+      if (confirm(`Remove "${name}" from the guest list?`)) {
+        doRemove();
+      }
+    } else {
+      doRemove();
     }
   };
 
@@ -174,7 +213,6 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   const handleAddInvitee = () => {
     const updated = [...pendingInvitees, { name: "", title: "M" as const }];
     setPendingInvitees(updated);
-    setHasUnsavedChanges(true);
   };
 
   // Recalculate duplicate errors when pendingInvitees changes
@@ -203,13 +241,12 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     };
   }, [showFilterMenu]);
 
-  // Apply changes to parent
-  const handleApplyChanges = () => {
+  // Apply changes to parent state (no API save)
+  const applyPendingChanges = () => {
     // Check for any duplicate errors before applying
     const hasDuplicates = Object.values(duplicateErrors).some(error => error);
     if (hasDuplicates) {
-      alert("Please fix duplicate names before saving.");
-      return;
+      return; // Don't apply if there are duplicates
     }
     // Filter out guests with blank names
     const filteredInvitees = pendingInvitees.filter(invitee => invitee.name.trim() !== "");
@@ -217,36 +254,11 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     onChange("rsvpEntourageHonorifics", pendingEntourageHonorifics as unknown as InvitationData[keyof InvitationData]);
     onChange("rsvpEntourageGuestDetails", pendingEntourageGuestDetails as unknown as InvitationData[keyof InvitationData]);
     onChange("rsvpGuestDetails", pendingGuestDetails as unknown as InvitationData[keyof InvitationData]);
-    setHasUnsavedChanges(false);
-    if (onSave) {
-      onSave({ ...data, rsvpInvitees: filteredInvitees as any, rsvpEntourageHonorifics: pendingEntourageHonorifics as any, rsvpEntourageGuestDetails: pendingEntourageGuestDetails as any, rsvpGuestDetails: pendingGuestDetails as any });
-    }
   };
 
-  // Handle close with unsaved changes check
+  // Handle close - auto-apply pending changes, no save prompt
   const handleClose = () => {
-    if (hasUnsavedChanges) {
-      setShowUnsavedDialog(true);
-    } else {
-      onClose();
-    }
-  };
-
-  const handleDiscardChanges = () => {
-    setShowUnsavedDialog(false);
-    const inviteesData = (data.rsvpInvitees || []).map(invitee =>
-      typeof invitee === 'string' ? { name: invitee, title: "M" as const } : invitee
-    );
-    setPendingInvitees(inviteesData.length > 0 ? inviteesData : [{ name: "", title: "M" }]);
-    setPendingEntourageHonorifics(data.rsvpEntourageHonorifics || {});
-    setHasUnsavedChanges(false);
-    setDuplicateErrors({});
-    onClose();
-  };
-
-  const handleSaveAndClose = async () => {
-    setShowUnsavedDialog(false);
-    handleApplyChanges();
+    applyPendingChanges();
     onClose();
   };
 
@@ -267,20 +279,53 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
         readOnly: true,
         key: `entourage-${idx}`,
         guestName: guest.name,
+        entourageTitle: guest.title,
       }));
     }
 
     // Sort based on filter option
     const allItems = [...entourageDisplayItems, ...displayInvitees];
     
-    if (filterSortOption === "name" || filterSortOption === "name-entourage") {
+    if (filterSortOption === "name") {
       allItems.sort((a, b) => {
         const nameA = a.name.split('\n')[0].toLowerCase();
         const nameB = b.name.split('\n')[0].toLowerCase();
         return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
       });
+    } else if (filterSortOption === "ushers") {
+      let filtered = allItems.filter(item => (item as any).entourageTitle === "Ushers");
+      filtered.sort((a, b) => {
+        const nameA = a.name.split('\n')[0].toLowerCase();
+        const nameB = b.name.split('\n')[0].toLowerCase();
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      });
+      return filtered;
+    } else if (filterSortOption === "usherettes") {
+      let filtered = allItems.filter(item => (item as any).entourageTitle === "Usherettes");
+      filtered.sort((a, b) => {
+        const nameA = a.name.split('\n')[0].toLowerCase();
+        const nameB = b.name.split('\n')[0].toLowerCase();
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      });
+      return filtered;
+    } else if (filterSortOption === "entourage-only") {
+      let filtered = allItems.filter(item => item.readOnly === true);
+      filtered.sort((a, b) => {
+        const nameA = a.name.split('\n')[0].toLowerCase();
+        const nameB = b.name.split('\n')[0].toLowerCase();
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      });
+      return filtered;
+    } else if (filterSortOption === "normal-only") {
+      let filtered = allItems.filter(item => item.readOnly === false);
+      filtered.sort((a, b) => {
+        const nameA = a.name.split('\n')[0].toLowerCase();
+        const nameB = b.name.split('\n')[0].toLowerCase();
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      });
+      return filtered;
     }
-    // "date" and "date-entourage" keep original order (entourage first, then date-added order for regular)
+    // "date" keeps original order (entourage first, then date-added order for regular)
 
     // Keep empty string at the end if it exists
     const emptyIndex = allItems.findIndex(item => item.name === "");
@@ -357,7 +402,7 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
       <div className="px-4 py-2 space-y-3 shrink-0" style={{ fontFamily: "Inter, sans-serif" }}>
         <div className="flex items-center justify-between">
           <label className="block text-xs tracking-wide uppercase text-gray-500">
-            GUEST LIST ({entourageGuests.length + pendingInvitees.filter((n) => n.name.trim()).length})
+            GUEST LIST ({combinedInvitees.filter(item => item.name.trim() !== "").length})
           </label>
           <div className="flex items-center gap-2">
             <div className="relative" ref={filterMenuRef}>
@@ -388,67 +433,85 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                     >
                       Sort by Name
                     </button>
+                    <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                     <button
                       type="button"
-                      onClick={() => setFilterSortOption("date-entourage")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "date-entourage" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                      onClick={() => setFilterSortOption("ushers")}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "ushers" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                     >
-                      Sort by Date (with Entourage)
+                      Ushers Only
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFilterSortOption("name-entourage")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "name-entourage" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                      onClick={() => setFilterSortOption("usherettes")}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "usherettes" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                     >
-                      Sort by Name (with Entourage)
+                      Usherettes Only
                     </button>
                     <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                     <button
                       type="button"
-                      onClick={() => setFilterIncludeEntourage(!filterIncludeEntourage)}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100"}`}
+                      onClick={() => setFilterSortOption("entourage-only")}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "entourage-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                     >
-                      {filterIncludeEntourage ? "Exclude Entourage" : "Include Entourage"}
+                      Entourage Only
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFilterIncludeNormal(!filterIncludeNormal)}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100"}`}
+                      onClick={() => setFilterSortOption("normal-only")}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "normal-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                     >
-                      {filterIncludeNormal ? "Exclude Normal Guest" : "Include Normal Guest"}
+                      Normal Guest Only
+                    </button>
+                    <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
+                    <button
+                      type="button"
+                      onClick={() => setFilterSortOption("all")}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "all" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                    >
+                      Show All
                     </button>
                   </div>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowAddDialog(true)}
-                title="Add guest"
-                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all"
-                style={{ backgroundColor: accentColor, color: "white" }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-            </div>
           </div>
         </div>
 
         {/* Search Box */}
-        <input
-          type="text"
-          placeholder="Search guests..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className={`w-full px-4 py-2 rounded-lg text-sm focus:outline-none transition-colors ${
-            isDarkMode 
-              ? "bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-500" 
-              : "bg-gray-100 border-gray-200 text-gray-700 placeholder-gray-500"
-          } border`}
-        />
+        <div className="relative w-full">
+          {searchQuery.trim() && combinedInvitees.length === 0 && (
+            <div
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 z-10 cursor-pointer"
+              onClick={() => {
+                setNewGuestName(searchQuery.trim());
+                setShowAddDialog(true);
+              }}
+              style={{
+                backgroundColor: accentColor,
+                WebkitMaskImage: 'url(/assets/ico-addguest.png)',
+                WebkitMaskSize: 'contain',
+                WebkitMaskPosition: 'center',
+                WebkitMaskRepeat: 'no-repeat',
+                maskImage: 'url(/assets/ico-addguest.png)',
+                maskSize: 'contain',
+                maskPosition: 'center',
+                maskRepeat: 'no-repeat',
+              }}
+            />
+          )}
+          <input
+            type="text"
+            placeholder="Search or add guests..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={`w-full py-2 rounded-lg text-sm focus:outline-none transition-colors ${
+              isDarkMode 
+                ? "bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-500" 
+                : "bg-gray-100 border-gray-200 text-gray-700 placeholder-gray-500"
+            } border ${searchQuery.trim() && combinedInvitees.length === 0 ? 'pl-10' : 'px-4'}`}
+          />
+        </div>
       </div>
 
       {/* Scrollable content */}
@@ -469,58 +532,44 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                         >
                           {combinedInvitees
                             .slice(pageIndex * itemsPerPage, (pageIndex + 1) * itemsPerPage)
-                            .map(({ name, originalIndex, readOnly, key, guestName }) => (
+                            .map(({ name, originalIndex, readOnly, key, guestName, ...item }) => (
                               readOnly ? (
                                 <div key={key} className="flex items-center gap-2">
                                   <div
-                                    className={`flex-1 px-3 py-2 border rounded-lg text-sm ${isDarkMode ? "border-gray-700 text-gray-300" : "border-gray-200 text-gray-600"}`}
-                                    style={isDarkMode ? { backgroundColor: "#151B24", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#EDEEF1", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}
-                                    title="Auto-added from Entourage List"
-                                  >
-                                    {name}
-                                  </div>
-                                  <button
-                                    type="button"
                                     onClick={() => {
                                       const guestDetails = pendingEntourageGuestDetails[guestName] || { plusOne: "", tableNumber: "" };
+                                      const entTitle = (item as any).entourageTitle || "";
                                       setEditGuestData({ 
                                         isEntourage: true, 
                                         name: guestName, 
                                         title: pendingEntourageHonorifics[guestName] || "M", 
                                         originalIndex,
                                         plusOne: guestDetails.plusOne,
-                                        tableNumber: guestDetails.tableNumber
+                                        tableNumber: guestDetails.tableNumber,
+                                        entourageTitle: entTitle,
+                                        instruction: guestDetails.instruction || ""
                                       });
                                       setOriginalGuestData({
                                         name: guestName,
                                         title: pendingEntourageHonorifics[guestName] || "M",
                                         plusOne: guestDetails.plusOne,
-                                        tableNumber: guestDetails.tableNumber
+                                        tableNumber: guestDetails.tableNumber,
+                                        instruction: guestDetails.instruction || ""
                                       });
                                       setGuestNumberError(false);
                                       setEditDialogHasChanges(false);
                                       setShowEditDialog(true);
                                     }}
-                                    title="Edit Guest"
-                                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
-                                    style={{
-                                      backgroundColor: isDarkMode ? "#374151" : "#E5E7EB",
-                                      color: isDarkMode ? "#9CA3AF" : "#6B7280",
-                                    }}
+                                    className={`flex-1 px-3 py-2 border rounded-lg text-sm cursor-pointer transition-colors ${isDarkMode ? "border-gray-700 text-gray-300 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                                    style={isDarkMode ? { backgroundColor: "#151B24", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#EDEEF1", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}
+                                    title="Auto-added from Entourage List - Click to edit"
                                   >
-                                    <img src="/assets/ico-edit.png" alt="Edit" width="14" height="14" />
-                                  </button>
+                                    {name}
+                                  </div>
                                 </div>
                               ) : (
                               <div key={key} className="flex items-center gap-2">
                                 <div
-                                  className={`flex-1 px-3 py-2 border rounded-lg text-sm ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 text-gray-600"}`}
-                                  style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
-                                >
-                                  {name}
-                                </div>
-                                <button
-                                  type="button"
                                   onClick={() => {
                                     const guestDetails = pendingGuestDetails[originalIndex] || { plusOne: "", tableNumber: "" };
                                     setEditGuestData({ 
@@ -541,15 +590,11 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                                     setEditDialogHasChanges(false);
                                     setShowEditDialog(true);
                                   }}
-                                  title="Edit guest"
-                                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
-                                  style={{
-                                    backgroundColor: isDarkMode ? "#374151" : "#E5E7EB",
-                                    color: isDarkMode ? "#9CA3AF" : "#6B7280",
-                                  }}
+                                  className={`flex-1 px-3 py-2 border rounded-lg text-sm cursor-pointer transition-colors ${isDarkMode ? "border-gray-700 text-gray-200 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                                  style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
                                 >
-                                  <img src="/assets/ico-edit.png" alt="Edit" width="14" height="14" />
-                                </button>
+                                  {name}
+                                </div>
                               </div>
                               )
                             ))}
@@ -583,53 +628,6 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
               style={{ backgroundColor: accentColor }}
             />
           ))}
-        </div>
-      )}
-
-      {/* Apply button - shows when there are unsaved changes */}
-      {hasUnsavedChanges && (
-        <div className="flex justify-center p-4 border-t" style={{ borderColor: isDarkMode ? "#374151" : "#E5E7EB" }}>
-          <button
-            onClick={handleApplyChanges}
-            className="px-6 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-            style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-          >
-            Save Changes
-          </button>
-        </div>
-      )}
-
-      {/* Unsaved changes dialog */}
-      {showUnsavedDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}>
-            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Unsaved Changes
-            </h3>
-            <p className={`text-sm mb-6 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              You have unsaved changes. Do you want to save them or discard them?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleDiscardChanges}
-                className={`flex-1 px-4 py-2 border rounded-lg text-sm transition-colors ${
-                  isDarkMode 
-                    ? "border-gray-600 text-gray-300 hover:bg-gray-700" 
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Discard
-              </button>
-              <button
-                onClick={handleSaveAndClose}
-                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-                style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -671,6 +669,28 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                   style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
                 />
               </div>
+              {(() => {
+                const lowerName = newGuestName.toLowerCase().trim();
+                if (!lowerName) return null;
+                const normalMatch = pendingInvitees.some(inv => inv.name.toLowerCase().trim() === lowerName);
+                const entourageMatch = entourageGuests.some(g => g.name.toLowerCase().trim() === lowerName);
+                const specialLabel = getSpecialNameLabel(newGuestName);
+                if (specialLabel) {
+                  return (
+                    <p className="text-red-500 text-xs ml-28" style={{ fontFamily: "Inter, sans-serif" }}>
+                      You cannot add {specialLabel} to the list
+                    </p>
+                  );
+                }
+                if (normalMatch || entourageMatch) {
+                  return (
+                    <p className="text-red-500 text-xs ml-28" style={{ fontFamily: "Inter, sans-serif" }}>
+                      This name already exists
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <div className="w-24 px-3 py-2 border rounded-lg text-sm font-medium transition-colors" style={{ backgroundColor: "transparent", borderColor: "transparent", fontFamily: "Inter, sans-serif", color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
@@ -734,7 +754,6 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                             tableNumber: newGuestTableNumber
                           }
                         });
-                        setHasUnsavedChanges(true);
                         setShowAddDialog(false);
                         setNewGuestName("");
                         setNewGuestTitle("M");
@@ -744,9 +763,19 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                         setAddDialogGuestNumberError(false);
                       }
                     }}
-                    disabled={addDialogGuestNumberError || !newGuestName.trim()}
+                    disabled={addDialogGuestNumberError || !newGuestName.trim() || (() => {
+                      const lowerName = newGuestName.toLowerCase().trim();
+                      return pendingInvitees.some(inv => inv.name.toLowerCase().trim() === lowerName) ||
+                        entourageGuests.some(g => g.name.toLowerCase().trim() === lowerName) ||
+                        isSpecialName(newGuestName);
+                    })()}
                     className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: (addDialogGuestNumberError || !newGuestName.trim()) ? "#9CA3AF" : accentColor, fontFamily: "Inter, sans-serif" }}
+                    style={{ backgroundColor: (addDialogGuestNumberError || !newGuestName.trim() || (() => {
+                      const lowerName = newGuestName.toLowerCase().trim();
+                      return pendingInvitees.some(inv => inv.name.toLowerCase().trim() === lowerName) ||
+                        entourageGuests.some(g => g.name.toLowerCase().trim() === lowerName) ||
+                        isSpecialName(newGuestName);
+                    })()) ? "#9CA3AF" : accentColor, fontFamily: "Inter, sans-serif" }}
                   >
                     Add
                   </button>
@@ -810,6 +839,39 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                   style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
                 />
               </div>
+              {editGuestData.isEntourage && (editGuestData.entourageTitle === "Ushers" || editGuestData.entourageTitle === "Usherettes") && (
+                <div className="relative">
+                  <textarea
+                    value={editGuestData.instruction || ""}
+                    onChange={(e) => {
+                      setEditGuestData({ ...editGuestData, instruction: e.target.value });
+                    }}
+                    placeholder={editGuestData.entourageTitle === "Ushers" ? "As one of the Usher, may you please help us with the parking space?" : "e.g. As one of the Usherette, may you please guide our guest?"}
+                    rows={2}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors resize-none ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
+                    style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const messages = editGuestData.entourageTitle === "Ushers" ? USHER_INSTRUCTIONS : USHERETTE_INSTRUCTIONS;
+                      const currentText = editGuestData.instruction || "";
+                      const currentIndex = messages.indexOf(currentText);
+                      const { nextIndex } = getNextMessage(messages, currentIndex >= 0 ? currentIndex : -1);
+                      setEditGuestData({ ...editGuestData, instruction: messages[nextIndex] });
+                    }}
+                    title="Cycle through predefined instructions"
+                    className="absolute top-1 right-1 p-1 rounded transition-colors"
+                    style={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M23 4v6h-6" />
+                      <path d="M1 20v-6h6" />
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                  </button>
+                </div>
+              )}
               <>
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
@@ -861,16 +923,7 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
               <div className="flex gap-2">
                 {!editGuestData.isEntourage && (
                   <button
-                    onClick={() => {
-                      const updated = [...pendingInvitees];
-                      updated.splice(editGuestData.originalIndex, 1);
-                      setPendingInvitees(updated);
-                      setHasUnsavedChanges(true);
-                      setShowEditDialog(false);
-                      setEditGuestData(null);
-                      setOriginalGuestData(null);
-                      setGuestNumberError(false);
-                    }}
+                    onClick={() => setShowDeleteConfirm(true)}
                     className="w-24 px-3 py-2 rounded-lg flex items-center justify-center transition-colors"
                     style={{ backgroundColor: "#EF4444", color: "white", fontFamily: "Inter, sans-serif" }}
                   >
@@ -886,7 +939,8 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                           ...pendingEntourageGuestDetails, 
                           [editGuestData.name]: { 
                             plusOne: editGuestData.plusOne || "", 
-                            tableNumber: editGuestData.tableNumber || "" 
+                            tableNumber: editGuestData.tableNumber || "",
+                            instruction: editGuestData.instruction || undefined
                           } 
                         });
                       } else {
@@ -901,7 +955,6 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                           }
                         });
                       }
-                      setHasUnsavedChanges(true);
                       setShowEditDialog(false);
                       setEditGuestData(null);
                       setOriginalGuestData(null);
@@ -927,6 +980,70 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setShowDeleteConfirm(false)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Delete Guest
+            </h3>
+            <p className={`text-sm mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Are you sure you want to delete "{editGuestData?.name}" from the guest list?
+            </p>
+            <p className="text-red-500 text-xs mb-6" style={{ fontFamily: "Inter, sans-serif" }}>
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setShowEditDialog(false);
+                  setEditGuestData(null);
+                  setOriginalGuestData(null);
+                }}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB", color: isDarkMode ? "#9CA3AF" : "#6B7280", fontFamily: "Inter, sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (editGuestData) {
+                    const idx = editGuestData.originalIndex;
+                    const updated = [...pendingInvitees];
+                    updated.splice(idx, 1);
+                    setPendingInvitees(updated);
+                    // Reindex pendingGuestDetails after splice
+                    const newGuestDetails: Record<number, { plusOne: string; tableNumber: string }> = {};
+                    Object.entries(pendingGuestDetails).forEach(([key, value]) => {
+                      const numKey = Number(key);
+                      if (numKey < idx) {
+                        newGuestDetails[numKey] = value;
+                      } else if (numKey > idx) {
+                        newGuestDetails[numKey - 1] = value;
+                      }
+                    });
+                    setPendingGuestDetails(newGuestDetails);
+                    setShowDeleteConfirm(false);
+                    setShowEditDialog(false);
+                    setEditGuestData(null);
+                    setOriginalGuestData(null);
+                    setGuestNumberError(false);
+                  }
+                }}
+                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: "#EF4444", fontFamily: "Inter, sans-serif" }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>

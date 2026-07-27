@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 import EntourageEditor from "./EntourageEditor";
 import GuestEditor from "./GuestEditor";
@@ -11,6 +11,14 @@ import TableMapEditor from "./TableMapEditor";
 import WeddingProgramEditor from "./WeddingProgramEditor";
 import StoryTimelineEditor from "./StoryTimelineEditor";
 import { getFontFamily } from "@/lib/utils/fonts";
+import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
 interface ToolsTabProps {
   data: InvitationData;
@@ -36,16 +44,19 @@ interface ToolTileProps {
   accentColor?: string;
 }
 
-function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#B88A78" }: ToolTileProps) {
+function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#6998EE" }: ToolTileProps) {
+  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className={`aspect-square flex flex-col items-center justify-center gap-3 p-6 rounded-xl transition-all duration-200 ${
         isDarkMode
           ? "bg-gray-700 hover:bg-gray-600"
           : "bg-gray-50 hover:bg-gray-100"
       }`}
-      style={{ border: `1px solid ${isDarkMode ? "#374151" : "#e5e7eb"}` }}
+      style={{ border: `1px solid ${hovered ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3)}` }}
     >
       <div className="w-12 h-12" style={{
         backgroundColor: accentColor,
@@ -65,7 +76,7 @@ function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#B8
   );
 }
 
-export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#2563EB", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isDemoMode = false }: ToolsTabProps) {
+export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#6998EE", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isDemoMode = false }: ToolsTabProps) {
   const [showEntourageEditor, setShowEntourageEditor] = useState(false);
   const [showGuestEditor, setShowGuestEditor] = useState(false);
   const [showRSVPResponseEditor, setShowRSVPResponseEditor] = useState(false);
@@ -78,6 +89,133 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isMobile, setIsMobile] = useState(false);
+
+  // Snapshot of data for change detection at tools level
+  const dataSnapshot = useRef(JSON.stringify(data));
+  // State version to force recompute of changedSections after save updates the ref
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
+
+  // Detect which sections have changed by comparing current data against snapshot
+  const changedSections = useMemo(() => {
+    // Include snapshotVersion in deps so memo recomputes after save
+    void snapshotVersion;
+    const snapshot = JSON.parse(dataSnapshot.current);
+    const sections: string[] = [];
+
+    // Entourage
+    if (JSON.stringify(data.entourage) !== JSON.stringify(snapshot.entourage)) sections.push("Entourage");
+    // Guest List
+    if (JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees) ||
+        JSON.stringify(data.rsvpEntourageHonorifics) !== JSON.stringify(snapshot.rsvpEntourageHonorifics) ||
+        JSON.stringify(data.rsvpEntourageGuestDetails) !== JSON.stringify(snapshot.rsvpEntourageGuestDetails) ||
+        JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails)) sections.push("Guest List");
+    // Media
+    if (data.heroIcon !== snapshot.heroIcon ||
+        JSON.stringify(data.galleryImages) !== JSON.stringify(snapshot.galleryImages) ||
+        JSON.stringify(data.venueImages) !== JSON.stringify(snapshot.venueImages) ||
+        data.customHeadingFont !== snapshot.customHeadingFont ||
+        data.customBodyFont !== snapshot.customBodyFont ||
+        JSON.stringify(data.backgroundMusic) !== JSON.stringify(snapshot.backgroundMusic) ||
+        JSON.stringify(data.backgroundMusicFileNames) !== JSON.stringify(snapshot.backgroundMusicFileNames)) sections.push("Media");
+    // Wedding Program
+    if (JSON.stringify(data.weddingProgram) !== JSON.stringify(snapshot.weddingProgram)) sections.push("Wedding Program");
+    // Story Timeline
+    if (JSON.stringify(data.storyTimeline) !== JSON.stringify(snapshot.storyTimeline)) sections.push("Story Timeline");
+    // Table Map
+    if (JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) sections.push("Table Map");
+    // Settings (exclude isDarkMode/accentColor which are app settings, not invitation data)
+    const settingsFields = ['musicEnabled', 'musicTrack', 'musicVolume', 'rsvpEnabled', 'rsvpDeadline', 'rsvpAllowPlusOne', 'rsvpAskPlusOneName', 'rsvpAllowKids', 'rsvpAskMealPreference', 'rsvpMealOptions', 'rsvpCustomQuestions', 'rsvpCollectPhone', 'rsvpCollectAddress', 'rsvpShowGuestCount', 'rsvpButtonText', 'rsvpSubmitMessage', 'rsvpClosedMessage'];
+    const hasSettingsChanges = settingsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]));
+    if (hasSettingsChanges) sections.push("Settings");
+
+    return sections;
+  }, [data, snapshotVersion]);
+
+  const hasUnsavedChanges = changedSections.length > 0;
+  const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+
+  // Handle tools-level save
+  const handleToolsSave = async () => {
+    if (onSave) {
+      await onSave(data);
+      dataSnapshot.current = JSON.stringify(data);
+      setSnapshotVersion(v => v + 1);
+    }
+  };
+
+  // Handle discard - revert all changes back to the saved snapshot
+  const handleToolsDiscard = () => {
+    const snapshot = JSON.parse(dataSnapshot.current);
+    // Revert each field that has changed
+    if (JSON.stringify(data.entourage) !== JSON.stringify(snapshot.entourage)) {
+      onChange("entourage" as keyof InvitationData, snapshot.entourage);
+    }
+    if (JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees)) {
+      onChange("rsvpInvitees" as keyof InvitationData, snapshot.rsvpInvitees);
+    }
+    if (JSON.stringify(data.rsvpEntourageHonorifics) !== JSON.stringify(snapshot.rsvpEntourageHonorifics)) {
+      onChange("rsvpEntourageHonorifics" as keyof InvitationData, snapshot.rsvpEntourageHonorifics);
+    }
+    if (JSON.stringify(data.rsvpEntourageGuestDetails) !== JSON.stringify(snapshot.rsvpEntourageGuestDetails)) {
+      onChange("rsvpEntourageGuestDetails" as keyof InvitationData, snapshot.rsvpEntourageGuestDetails);
+    }
+    if (JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails)) {
+      onChange("rsvpGuestDetails" as keyof InvitationData, snapshot.rsvpGuestDetails);
+    }
+    if (data.heroIcon !== snapshot.heroIcon) {
+      onChange("heroIcon" as keyof InvitationData, snapshot.heroIcon);
+    }
+    if (JSON.stringify(data.galleryImages) !== JSON.stringify(snapshot.galleryImages)) {
+      onChange("galleryImages" as keyof InvitationData, snapshot.galleryImages);
+    }
+    if (JSON.stringify(data.venueImages) !== JSON.stringify(snapshot.venueImages)) {
+      onChange("venueImages" as keyof InvitationData, snapshot.venueImages);
+    }
+    if (data.customHeadingFont !== snapshot.customHeadingFont) {
+      onChange("customHeadingFont" as keyof InvitationData, snapshot.customHeadingFont);
+    }
+    if (data.customBodyFont !== snapshot.customBodyFont) {
+      onChange("customBodyFont" as keyof InvitationData, snapshot.customBodyFont);
+    }
+    if (JSON.stringify(data.backgroundMusic) !== JSON.stringify(snapshot.backgroundMusic)) {
+      onChange("backgroundMusic" as keyof InvitationData, snapshot.backgroundMusic);
+    }
+    if (JSON.stringify(data.backgroundMusicFileNames) !== JSON.stringify(snapshot.backgroundMusicFileNames)) {
+      onChange("backgroundMusicFileNames" as keyof InvitationData, snapshot.backgroundMusicFileNames);
+    }
+    if (JSON.stringify(data.weddingProgram) !== JSON.stringify(snapshot.weddingProgram)) {
+      onChange("weddingProgram" as keyof InvitationData, snapshot.weddingProgram);
+    }
+    if (JSON.stringify(data.storyTimeline) !== JSON.stringify(snapshot.storyTimeline)) {
+      onChange("storyTimeline" as keyof InvitationData, snapshot.storyTimeline);
+    }
+    if (JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) {
+      onChange("venueLayout" as keyof InvitationData, snapshot.venueLayout);
+    }
+    // Settings fields
+    const settingsFields = ['musicEnabled', 'musicTrack', 'musicVolume', 'rsvpEnabled', 'rsvpDeadline', 'rsvpAllowPlusOne', 'rsvpAskPlusOneName', 'rsvpAllowKids', 'rsvpAskMealPreference', 'rsvpMealOptions', 'rsvpCustomQuestions', 'rsvpCollectPhone', 'rsvpCollectAddress', 'rsvpShowGuestCount', 'rsvpButtonText', 'rsvpSubmitMessage', 'rsvpClosedMessage'] as const;
+    settingsFields.forEach(f => {
+      if (JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f])) {
+        onChange(f as keyof InvitationData, (snapshot as any)[f]);
+      }
+    });
+  };
+
+  // Handle save bubble click - show confirmation dialog unless setting says always save
+  const handleSaveBubbleClick = () => {
+    if (hideSaveConfirmationDialog) {
+      handleToolsSave();
+    } else {
+      setShowSaveConfirmation(true);
+    }
+  };
+
+  // Handle hide save confirmation dialog change
+  const handleHideSaveConfirmationDialogChange = (value: boolean) => {
+    if (onSettingsChange) {
+      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: value, hideInstructions, showScreenDimensions });
+    }
+  };
 
   // Detect mobile screen size
   useEffect(() => {
@@ -250,7 +388,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowMediaEditor(false)}
-        invitationId={slug}
+        invitationId={invitationId}
         onSave={onSave}
         isDemoMode={isDemoMode}
       />
@@ -271,6 +409,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         showScreenDimensions={showScreenDimensions}
         invitationId={invitationId}
         isDemoMode={isDemoMode}
+        slug={slug}
       />
     );
   }
@@ -314,6 +453,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowWeddingProgramEditor(false)}
+        data={data}
+        onChange={onChange}
+        onSave={onSave}
       />
     );
   }
@@ -325,12 +467,40 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         onClose={() => setShowStoryTimelineEditor(false)}
         galleryImages={data.galleryImages || []}
+        data={data}
+        onChange={onChange}
+        onSave={onSave}
       />
     );
   }
 
   return (
-    <div className="flex flex-col h-screen lg:h-full">
+    <div className="flex flex-col h-dvh lg:h-full">
+      {/* Save bubble - shows when there are unsaved changes at tools level */}
+      {hasUnsavedChanges && (
+        <button
+          onClick={handleSaveBubbleClick}
+          aria-label={`Save ${changedSections.length} unsaved change${changedSections.length === 1 ? "" : "s"}`}
+          title={`Save changes (${changedSections.join(", ")})`}
+          className="fixed top-4 right-4 z-[60] no-print p-4 rounded-full shadow-lg transition-opacity backdrop-blur-sm"
+          style={{ backgroundColor: accentColor }}
+        >
+          <div className="relative">
+            <img
+              src="/assets/ico-sav.png"
+              alt="Save"
+              className="w-7 h-7"
+            />
+            <span
+              className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 text-[10px] font-bold rounded-full bg-white/80 border"
+              style={{ color: accentColor, borderColor: accentColor, fontFamily: "Inter, sans-serif" }}
+            >
+              {changedSections.length}
+            </span>
+          </div>
+        </button>
+      )}
+
       {/* Custom Hero Preview - fixed, no scroll */}
       <div className="relative h-[28vh] overflow-hidden w-full shrink-0">
         {/* Background */}
@@ -358,8 +528,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         <div 
           className="absolute inset-0 z-0"
           style={{ 
-            backgroundColor: data.heroOverlayColor1 
-              ? `${data.heroOverlayColor1}${Math.round((data.heroOverlayOpacity1 ?? 0.5) * 255).toString(16).padStart(2, '0')}`
+            backgroundColor: data.mainColor1
+              ? `${data.mainColor1}${Math.round((data.heroOverlayOpacity1 ?? 0.5) * 255).toString(16).padStart(2, '0')}`
               : undefined 
           }}
         />
@@ -698,6 +868,19 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
           />
         </div>
       </div>
+
+      {/* Save confirmation dialog */}
+      <SaveConfirmationDialog
+        isOpen={showSaveConfirmation}
+        pendingChangesCount={changedSections.length}
+        isDarkMode={isDarkMode}
+        accentColor={accentColor}
+        hideSaveConfirmationDialog={hideSaveConfirmationDialog}
+        onSave={handleToolsSave}
+        onDiscard={handleToolsDiscard}
+        onClose={() => setShowSaveConfirmation(false)}
+        onHideSaveConfirmationDialogChange={handleHideSaveConfirmationDialogChange}
+      />
     </div>
   );
 }

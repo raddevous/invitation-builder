@@ -41,7 +41,7 @@ interface FontControlProps {
   predefinedFonts?: string[] | FontOption[];
 }
 
-export default function FontControl({ label, value, onChange, type = "body", showPreview = true, isDarkMode = false, accentColor = "#B88A78", disabled = false, predefinedFonts }: FontControlProps) {
+export default function FontControl({ label, value, onChange, type = "body", showPreview = true, isDarkMode = false, accentColor = "#6998EE", disabled = false, predefinedFonts }: FontControlProps) {
   // Convert predefined fonts to FontOption format if needed
   const fontOptions: FontOption[] = predefinedFonts && predefinedFonts.length > 0 
     ? (typeof predefinedFonts[0] === 'string' 
@@ -63,7 +63,7 @@ export default function FontControl({ label, value, onChange, type = "body", sho
   // Get the actual font family to use for preview
   const getFontFamily = (fontValue: string) => {
     if (fontValue === "custom-heading-font") {
-      return "'CustomHeadingFont', 'Playfair Display', serif";
+      return "'CustomHeadingFont', 'Inter', sans-serif";
     }
     if (fontValue === "custom-body-font") {
       return "'CustomBodyFont', 'Inter', sans-serif";
@@ -74,22 +74,35 @@ export default function FontControl({ label, value, onChange, type = "body", sho
   return (
     <div className="space-y-2">
       <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className={`w-full px-3 py-2.5 border rounded-lg text-sm ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 bg-white"} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-        style={{
-          ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }),
-          fontFamily: getFontFamily(value)
-        }}
-      >
-        {filteredFontOptions.map((font) => (
-          <option key={font.value} value={font.value} style={{ fontFamily: getFontFamily(font.value) }}>
-            {font.name}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className={`w-full px-3 py-2.5 pr-9 border rounded-lg text-sm appearance-none cursor-pointer ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 bg-white"} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          style={{
+            ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }),
+            fontFamily: getFontFamily(value)
+          }}
+        >
+          {filteredFontOptions.map((font) => (
+            <option key={font.value} value={font.value} style={{ fontFamily: getFontFamily(font.value) }}>
+              {font.name}
+            </option>
+          ))}
+        </select>
+        <svg
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={isDarkMode ? "#9ca3af" : "#6b7280"}
+          strokeWidth="2.5"
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
       {showPreview && (
         <p
           className="text-lg italic pl-1"

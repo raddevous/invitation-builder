@@ -286,7 +286,7 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
   const effectiveVerticalFlip = giftguideUseDefaultDivider ? (data.universalDividerVerticalFlip ?? false) : (data.giftguideDividerVerticalFlip ?? false);
 
   return (
-    <section className="pt-0 pb-8 px-8 relative min-h-[200px]" style={{
+    <section className="pt-0 pb-8 px-8 max-[440px]:px-4 relative min-h-[200px]" style={{
       backgroundColor: mergedData.giftguideUseMainColor !== false
         ? (data.mainColor1 || "transparent")
         : mergedData.giftguideBackgroundType === "gradient"
@@ -296,15 +296,14 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
             : mergedData.giftguideBackgroundType === "video"
               ? undefined
               : (mergedData.giftguideBackgroundColor || "transparent"),
-      background: mergedData.giftguideUseMainColor !== false
-        ? (data.mainColor1 || "transparent")
+      backgroundImage: mergedData.giftguideUseMainColor !== false
+        ? undefined
         : mergedData.giftguideBackgroundType === "gradient" && mergedData.giftguideGradient
           ? `linear-gradient(135deg, ${mergedData.giftguideGradient.firstColor || "#ffffff"}, ${mergedData.giftguideGradient.secondColor || "#ffffff"})`
           : undefined,
       ...(mergedData.giftguideBackgroundType === "image" && mergedData.giftguideImage?.urls && mergedData.giftguideImage.urls.length > 0 ? {
         backgroundImage: `url(${mergedData.giftguideImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
         backgroundPosition: 'center center',
-        backgroundAttachment: 'fixed',
         backgroundRepeat: 'no-repeat',
         backgroundSize: 'cover'
       } : {}),
@@ -312,11 +311,18 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
     }}>
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.giftguideBackgroundType === "image" || mergedData.giftguideBackgroundType === "video") && mergedData.giftguideGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.giftguideGradient.firstColor || "#ffffff", (mergedData.giftguideGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.giftguideGradient.secondColor || "#ffffff", (mergedData.giftguideGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.giftguideGradient.firstColor || "#ffffff", (mergedData.giftguideGradient.firstOpacity !== undefined ? mergedData.giftguideGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.giftguideGradient.secondColor || "#ffffff", (mergedData.giftguideGradient.secondOpacity !== undefined ? mergedData.giftguideGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -347,17 +353,26 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={giftguideUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.giftguideDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={giftguideUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.giftguideDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={giftguideUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.giftguideDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={giftguideUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.giftguideDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={giftguideUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.giftguideDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(giftguideUseDefaultDivider ? data.universalDivider : data.giftguideDivider) === "divider-1" ? predefinedDividerImagesCentered : (giftguideUseDefaultDivider ? data.universalDivider : data.giftguideDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = giftguideUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.giftguideDivider || "divider-1");
           if (giftguideUseDefaultDivider) {
             onChange?.("giftguideDividerUseDefault", false);
+            onChange?.("giftguideDivider", currentType);
           }
-          onChange?.("giftguideDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("giftguideDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("giftguideDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("giftguideDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -408,7 +423,7 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
       )}
       
             <h2
-        className="text-2xl mb-1 md:mb-8 text-center font-bold uppercase scale-[0.55] md:scale-100"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.giftguideUseMainColor !== false ? data.mainColor2 : (mergedData.giftguideHeadingColor || data.mainColor2),
           fontFamily: mergedData.giftguideUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.giftguideHeadingTypography || data.headingFont, "heading"),
@@ -432,7 +447,7 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
 
       <div className="max-w-2xl mx-auto">
         <p
-          className="text-center mb-10 leading-relaxed scale-[0.7] md:scale-100"
+          className="text-center mb-10 leading-relaxed scale-[0.7] max-[440px]:scale-[0.6] md:scale-100"
           style={{
             color: mergedData.giftguideUseMainColor !== false ? data.neutralColor1 : (mergedData.giftguideMessageColor || data.neutralColor1),
             fontFamily: mergedData.giftguideUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.giftguideMessageTypography || data.bodyFont, "body"),
@@ -549,7 +564,7 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
 
             {/* Account Info Container with Glass Effect */}
             <div 
-                className={`backdrop-blur-md ${crystalColors.bg10} rounded-2xl p-6 border ${crystalColors.borderWhite20} shadow-xl relative overflow-hidden w-64 mx-auto`}
+                className={`backdrop-blur-md ${crystalColors.bg10} rounded-2xl p-6 border ${crystalColors.borderWhite20} shadow-xl relative overflow-hidden w-full max-w-64 mx-auto`}
                 style={{
                   backgroundColor: crystalColors.bg10Style || undefined,
                   borderColor: crystalColors.borderWhite20Style || undefined
@@ -565,7 +580,7 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
               {/* QR Code display - NO glass effect */}
               <div className="flex flex-col items-center relative z-10">
                 {displayAccount?.qrCode && (
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => {
+                  <div className="w-full max-w-48 bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => {
                       setShowGiftGuideSettingsPanel(true);
                       const element = document.getElementById('gift-guide-cssid');
                       if (element) {
@@ -575,7 +590,7 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
                     <img
                       src={displayAccount.qrCode}
                       alt={`QR Code for ${displayAccount.maskedName}`}
-                      className="w-48 h-48 object-contain"
+                      className="w-full h-auto object-contain"
                     />
                   </div>
                 )}

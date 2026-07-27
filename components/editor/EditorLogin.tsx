@@ -51,7 +51,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
             style={{ backgroundColor: "#e8cfc3" }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b88a78" strokeWidth="1.5">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6998EE" strokeWidth="1.5">
               <path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z" />
               <polyline points="16,7 12,11 8,7" />
             </svg>
@@ -76,7 +76,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
             <label
               htmlFor="access-code"
               className="block text-xs tracking-[0.2em] uppercase mb-2"
-              style={{ color: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+              style={{ color: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
             >
               Access Code
             </label>
@@ -106,7 +106,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
             disabled={loading || !code.trim()}
             className="w-full py-4 rounded-2xl text-white font-medium tracking-wide transition-all active:scale-95 disabled:opacity-50"
             style={{
-              backgroundColor: "#b88a78",
+              backgroundColor: "#6998EE",
               fontFamily: "Cormorant Garamond, serif",
               fontSize: "1.1rem",
             }}
@@ -133,8 +133,8 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
               onClick={onTryDemo}
               className="w-full py-4 rounded-2xl font-medium tracking-wide transition-all active:scale-95 border-2"
               style={{
-                borderColor: "#b88a78",
-                color: "#b88a78",
+                borderColor: "#6998EE",
+                color: "#6998EE",
                 backgroundColor: "transparent",
                 fontFamily: "Cormorant Garamond, serif",
                 fontSize: "1.1rem",
@@ -147,7 +147,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
 
         <p
           className="text-center text-xs mt-8"
-          style={{ color: "#b88a78", opacity: 0.5, fontFamily: "Cormorant Garamond, serif" }}
+          style={{ color: "#6998EE", opacity: 0.5, fontFamily: "Cormorant Garamond, serif" }}
         >
           Your access code was provided when you purchased your invitation.
         </p>

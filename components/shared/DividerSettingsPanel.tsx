@@ -102,7 +102,7 @@ export default function DividerSettingsPanel({
   imageSize,
   onImageSizeChange,
   predefinedColors,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
   useDefault = false,
   onUseDefaultChange,
   onApplyToAll,
@@ -432,12 +432,12 @@ export default function DividerSettingsPanel({
             </div>
           )}
 
-          {/* Pull Down Slider - only for split-horizontal */}
-          {(dividerStyle === "split-horizontal" || dividerType === "divider-2") && dividerType !== "divider-1" && (
+          {/* Move Up-Down Slider - for split-horizontal and centered-single */}
+          {(dividerStyle === "split-horizontal" || dividerType === "divider-2" || dividerStyle === "centered-single" || dividerType === "divider-1") && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  Pull Down
+                  Move Up-Down
                 </label>
                 <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                   {pullDown}%
@@ -445,7 +445,7 @@ export default function DividerSettingsPanel({
               </div>
               <input
                 type="range"
-                min={0}
+                min={-50}
                 max={50}
                 step={1}
                 value={pullDown}
@@ -453,7 +453,7 @@ export default function DividerSettingsPanel({
                 className="w-full"
                 style={{
                   accentColor: accentColor,
-                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${pullDown / 50 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} ${pullDown / 50 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} 100%)`,
+                  background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(pullDown - (-50)) / 100 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} ${(pullDown - (-50)) / 100 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} 100%)`,
                   borderRadius: '4px',
                   height: '8px'
                 }}

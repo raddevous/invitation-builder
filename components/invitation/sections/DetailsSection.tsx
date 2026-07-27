@@ -10,6 +10,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { EVENT_DETAILS_EMPTY_MESSAGES, getNextMessage } from "@/lib/constants/heroMessages";
 
 interface DetailsSectionProps {
   data: InvitationData;
@@ -26,6 +27,7 @@ interface WeddingProgramItem {
   place: string;
   time: string;
   imageVariant: number;
+  iconSrc?: string;
 }
 
 interface WeddingProgramContainer {
@@ -48,17 +50,26 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
   const [isScalePanelClosing, setIsScalePanelClosing] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load wedding program from localStorage
+  // Load wedding program from data.weddingProgram
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('weddingProgram');
-      if (stored) {
-        setWeddingProgram(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error('Failed to load wedding program:', error);
+    if (data.weddingProgram && data.weddingProgram.length > 0) {
+      const containers: WeddingProgramContainer[] = data.weddingProgram.map((item: any) => ({
+        id: item.id,
+        title: item.name,
+        item: {
+          id: item.id,
+          name: item.name,
+          eventDetails: item.eventDetails,
+          place: item.place,
+          time: item.time,
+          imageVariant: item.imageVariant,
+          iconSrc: item.iconSrc
+        },
+        isExpanded: false
+      }));
+      setWeddingProgram(containers);
     }
-  }, []);
+  }, [data.weddingProgram]);
 
   const handleCloseDividerSettingsPanel = () => {
     setIsDividerSettingsClosing(true);
@@ -232,15 +243,14 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
                 : mergedData.eventDetailsBackgroundType === "video"
                   ? undefined
                   : (mergedData.eventDetailsBackgroundColor || "transparent"),
-          background: mergedData.eventDetailsUseMainColor !== false
-            ? (data.mainColor1 || "transparent")
+          backgroundImage: mergedData.eventDetailsUseMainColor !== false
+            ? undefined
             : mergedData.eventDetailsBackgroundType === "gradient" && mergedData.eventDetailsGradient
               ? `linear-gradient(135deg, ${mergedData.eventDetailsGradient.firstColor || "#ffffff"}, ${mergedData.eventDetailsGradient.secondColor || "#ffffff"})`
               : undefined,
           ...(mergedData.eventDetailsBackgroundType === "image" && mergedData.eventDetailsImage?.urls && mergedData.eventDetailsImage.urls.length > 0 ? {
             backgroundImage: `url(${mergedData.eventDetailsImage.urls.filter(url => url.trim() !== "")[currentImageIndex]})`,
             backgroundPosition: 'center center',
-            backgroundAttachment: 'fixed',
             backgroundRepeat: 'no-repeat',
             backgroundSize: 'cover'
           } : {}),
@@ -249,11 +259,18 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
       >
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.eventDetailsBackgroundType === "image" || mergedData.eventDetailsBackgroundType === "video") && mergedData.eventDetailsGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.eventDetailsGradient.firstColor || "#ffffff", (mergedData.eventDetailsGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.eventDetailsGradient.secondColor || "#ffffff", (mergedData.eventDetailsGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.eventDetailsGradient.firstColor || "#ffffff", (mergedData.eventDetailsGradient.firstOpacity !== undefined ? mergedData.eventDetailsGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.eventDetailsGradient.secondColor || "#ffffff", (mergedData.eventDetailsGradient.secondOpacity !== undefined ? mergedData.eventDetailsGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -284,17 +301,26 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
         pullDown={effectivePullDown}
         verticalFlip={effectiveVerticalFlip}
         imageSize={eventDetailsUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.eventDetailsDividerImageSize ?? 100)}
-        baseHeight={desktopMode ? 200 : 120}
+        baseHeight={desktopMode ? 150 : 100}
         horizontalMargin={desktopMode ? 80 : 48}
         customImageUrl1={eventDetailsUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.eventDetailsDividerCustomImageUrl1 || "/assets/divdr-1.png")}
         customImageUrl2={eventDetailsUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.eventDetailsDividerCustomImageUrl2 || "/assets/divdr-2.png")}
         customImageUrl3={eventDetailsUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.eventDetailsDividerCustomImageUrl3 || "/assets/divdr-3.png")}
         colorBlend={eventDetailsUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.eventDetailsDividerColorBlend ?? false)}
-        onClick={editMode ? (newType) => {
+        predefinedImages={(eventDetailsUseDefaultDivider ? data.universalDivider : data.eventDetailsDivider) === "divider-1" ? predefinedDividerImagesCentered : (eventDetailsUseDefaultDivider ? data.universalDivider : data.eventDetailsDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+        onImageCycle={editMode ? (newImageUrl: string) => {
+          const currentType = eventDetailsUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.eventDetailsDivider || "divider-1");
           if (eventDetailsUseDefaultDivider) {
             onChange?.("eventDetailsDividerUseDefault", false);
+            onChange?.("eventDetailsDivider", currentType);
           }
-          onChange?.("eventDetailsDivider", newType);
+          if (currentType === "divider-1") {
+            onChange?.("eventDetailsDividerCustomImageUrl1", newImageUrl);
+          } else if (currentType === "divider-2") {
+            onChange?.("eventDetailsDividerCustomImageUrl2", newImageUrl);
+          } else {
+            onChange?.("eventDetailsDividerCustomImageUrl3", newImageUrl);
+          }
         } : undefined}
         onLongPress={editMode ? () => {
           setShowDividerSettingsPanel(true);
@@ -344,7 +370,7 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
         />
       )}
       <h2
-        className="text-2xl font-bold uppercase mb-1 md:mb-8 scale-[0.55] md:scale-100"
+        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.eventDetailsUseMainColor !== false ? data.mainColor2 : (mergedData.eventDetailsHeadingColor || data.mainColor2),
           fontFamily: mergedData.eventDetailsUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.eventDetailsHeadingTypography || data.headingFont, "heading"),
@@ -380,6 +406,29 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
         </p>
       )}
 
+      {/* Empty state message when no wedding program entries */}
+      {weddingProgram.length === 0 && (
+        <div className="text-center py-8 px-4 mb-[60px]">
+          <p
+            className={`leading-relaxed scale-[0.7] md:scale-100 ${editMode ? "cursor-pointer" : ""}`}
+            style={{
+              color: mergedData.eventDetailsUseMainColor !== false ? data.neutralColor1 : (mergedData.eventDetailsMessageColor || data.neutralColor1),
+              fontFamily: mergedData.eventDetailsUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.eventDetailsMessageTypography || data.bodyFont, "body"),
+              fontSize: `${mergedData.eventDetailsMessageFontSize || 100}%`,
+              opacity: 0.7,
+              fontStyle: "italic"
+            }}
+            onClick={editMode ? () => {
+              const currentIndex = data.eventDetailsEmptyMessageIndex ?? 0;
+              const { nextIndex } = getNextMessage(EVENT_DETAILS_EMPTY_MESSAGES, currentIndex);
+              onChange?.("eventDetailsEmptyMessageIndex", nextIndex);
+            } : undefined}
+          >
+            {EVENT_DETAILS_EMPTY_MESSAGES[data.eventDetailsEmptyMessageIndex ?? 0]}
+          </p>
+        </div>
+      )}
+
       {/* Wedding Program Timeline */}
       {weddingProgram.length > 0 && (
         <div className="relative w-full max-w-4xl mx-auto py-8 px-4 md:px-0">
@@ -409,7 +458,7 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
           {weddingProgram.map((container, index) => {
             const item = container.item;
             const isEven = index % 2 === 0;
-            const iconSrc = `/assets/ico-timeslot-${item.imageVariant + 1}.png`;
+            const iconSrc = item.iconSrc || `/assets/ico-timeslot-${item.imageVariant + 1}.png`;
 
             // Text block content
             const TextBlock = ({ alignRight = false }: { alignRight?: boolean }) => (
@@ -461,29 +510,20 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
 
             // Icon block
             const IconBlock = () => (
-              accentMode === 2 ? (
-                <div
-                  className="w-16 h-16 md:w-20 md:h-20 flex-shrink-0"
-                  style={{
-                    backgroundColor: timelineColor,
-                    WebkitMaskImage: `url(${iconSrc})`,
-                    maskImage: `url(${iconSrc})`,
-                    WebkitMaskSize: 'contain',
-                    maskSize: 'contain',
-                    WebkitMaskRepeat: 'no-repeat',
-                    maskRepeat: 'no-repeat',
-                    WebkitMaskPosition: 'center',
-                    maskPosition: 'center',
-                  }}
-                />
-              ) : (
-                <img
-                  src={iconSrc}
-                  alt=""
-                  className="w-16 h-16 md:w-20 md:h-20 flex-shrink-0 object-contain"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-              )
+              <div
+                className="w-16 h-16 md:w-20 md:h-20 flex-shrink-0"
+                style={{
+                  backgroundColor: accentMode === 2 ? timelineColor : "white",
+                  WebkitMaskImage: `url(${iconSrc})`,
+                  maskImage: `url(${iconSrc})`,
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
+              />
             );
 
             return (
@@ -552,7 +592,7 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
       )}
 
       <style jsx>{`
-        @media (max-width: 767px) {
+        @media (max-width: 768px) {
           .timeline-grid {
             grid-template-columns: 1fr auto auto auto 1fr !important;
             gap: 0.5rem !important;

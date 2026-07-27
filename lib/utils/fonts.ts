@@ -4,7 +4,7 @@
  */
 export function getFontFamily(fontValue: string, type: "heading" | "body"): string {
   if (fontValue === "custom-heading-font") {
-    return "'CustomHeadingFont', 'Playfair Display', serif";
+    return "'CustomHeadingFont', 'Inter', sans-serif";
   }
   if (fontValue === "custom-body-font") {
     return "'CustomBodyFont', 'Inter', sans-serif";

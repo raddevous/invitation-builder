@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { Invitation } from "@/lib/types/invitation";
 import EditorLogin from "@/components/editor/EditorLogin";
 import ToolsTab from "@/components/editor/tabs/ToolsTab";
 import EditorPanel from "@/components/editor/EditorPanel";
-import { debounce } from "@/lib/utils";
+import { debounce, updateFavicon } from "@/lib/utils";
 
 interface AppSettings {
   isDarkMode: boolean;
@@ -24,7 +24,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     isDarkMode: true,
-    accentColor: "#2563EB",
+    accentColor: "#6998EE",
     hideSaveConfirmationDialog: false,
     hideInstructions: false,
     showScreenDimensions: false,
@@ -32,6 +32,34 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
+  const [showUnsavedToolsDialog, setShowUnsavedToolsDialog] = useState(false);
+
+  // Snapshot of invitation data for tools-level unsaved changes detection
+  const savedDataSnapshot = useRef<string>("");
+
+  // Load invitation and set the saved snapshot synchronously to avoid race condition
+  // where hasToolsUnsavedChanges is true before the useEffect runs
+  const loadInvitation = (inv: Invitation) => {
+    savedDataSnapshot.current = JSON.stringify(inv.data);
+    setInvitation(inv);
+  };
+
+  // Check if there are unsaved changes at tools level
+  const hasToolsUnsavedChanges = invitation
+    ? JSON.stringify(invitation.data) !== savedDataSnapshot.current
+    : false;
+
+  // Prevent closing tab/browser when there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasToolsUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasToolsUnsavedChanges]);
 
   // Check if slug exists on mount
   useEffect(() => {
@@ -54,7 +82,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         try {
           const parsed: Invitation = JSON.parse(stored);
           if (parsed.slug === slug) {
-            setInvitation(parsed);
+            loadInvitation(parsed);
           }
         } catch {
           // ignore invalid stored data
@@ -89,10 +117,22 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
+  // Disable right-click in tools page
+  useEffect(() => {
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener('contextmenu', preventContextMenu);
+    return () => document.removeEventListener('contextmenu', preventContextMenu);
+  }, []);
+
   // Update CSS variable for accent color when settings change
   useEffect(() => {
     document.documentElement.style.setProperty('--accent-color', settings.accentColor);
   }, [settings.accentColor]);
+
+  // Use the user-defined display logo as the page favicon
+  useEffect(() => {
+    updateFavicon(invitation?.data?.heroIcon);
+  }, [invitation?.data?.heroIcon]);
 
   useEffect(() => {
     // Load settings from localStorage
@@ -116,6 +156,10 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
 
   // Refetch before opening editor to ensure latest data
   const handleOpenEditor = async () => {
+    if (hasToolsUnsavedChanges) {
+      setShowUnsavedToolsDialog(true);
+      return;
+    }
     setShowEditorPanel(true);
   };
 
@@ -133,6 +177,8 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
       });
       if (!res.ok) throw new Error("Save failed");
       setSaveStatus("saved");
+      // Update snapshot after successful save
+      savedDataSnapshot.current = JSON.stringify(inv.data);
       // Update localStorage with the saved data
       localStorage.setItem('invitation', JSON.stringify(inv));
     } catch {
@@ -171,11 +217,11 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         <div className="flex flex-col items-center gap-4">
           <div
             className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin"
-            style={{ borderColor: "#e8cfc3", borderTopColor: "#b88a78" }}
+            style={{ borderColor: "#e8cfc3", borderTopColor: "#6998EE" }}
           />
           <p
             className="text-sm italic"
-            style={{ color: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+            style={{ color: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
           >
             Checking invitation…
           </p>
@@ -193,7 +239,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
       >
         <p
           className="text-3xl mb-3"
-          style={{ fontFamily: "Playfair Display, serif", color: "#b88a78" }}
+          style={{ fontFamily: "Playfair Display, serif", color: "#6998EE" }}
         >
           Invitation Not Found
         </p>
@@ -206,7 +252,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         <button
           onClick={() => window.location.href = '/'}
           className="px-6 py-3 rounded-lg text-white font-medium transition-all"
-          style={{ backgroundColor: "#b88a78", fontFamily: "Cormorant Garamond, serif" }}
+          style={{ backgroundColor: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
         >
           Go Home
         </button>
@@ -215,7 +261,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   }
 
   if (!invitation) {
-    return <EditorLogin onLogin={setInvitation} onTryDemo={() => router.push('/demo')} />;
+    return <EditorLogin onLogin={loadInvitation} onTryDemo={() => router.push('/demo')} />;
   }
 
   if (showEditorPanel) {
@@ -270,9 +316,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           slug={invitation.slug}
           invitationId={invitation.id}
           onChange={(field, value) => {
-            const updated = invitation ? { ...invitation, data: { ...invitation.data, [field]: value } } : null;
-            setInvitation(updated);
-            // Don't update localStorage here - only update after successful Supabase save
+            setInvitation(prev => prev ? { ...prev, data: { ...prev.data, [field]: value } } : prev);
           }}
           onSave={async (updatedData) => {
             const updatedInvitation = { ...invitation, data: updatedData };
@@ -291,6 +335,46 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           showScreenDimensions={settings.showScreenDimensions}
         />
       </div>
+
+      {/* Unsaved tools changes dialog - shown when trying to leave tools section */}
+      {showUnsavedToolsDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4">
+          <div className={`${settings.isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}>
+            <h3 className={`text-lg font-semibold mb-2 ${settings.isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Unsaved Changes
+            </h3>
+            <p className={`text-sm mb-6 ${settings.isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              You have unsaved changes in the tools section. Do you want to save them before leaving?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowUnsavedToolsDialog(false)}
+                className={`flex-1 px-4 py-2 border rounded-lg text-sm transition-colors ${
+                  settings.isDarkMode
+                    ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+                style={{ fontFamily: "Inter, sans-serif" }}
+              >
+                Stay
+              </button>
+              <button
+                onClick={async () => {
+                  setShowUnsavedToolsDialog(false);
+                  if (invitation) {
+                    await saveToSupabase(invitation);
+                  }
+                  setShowEditorPanel(true);
+                }}
+                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: settings.accentColor, fontFamily: "Inter, sans-serif" }}
+              >
+                Save & Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

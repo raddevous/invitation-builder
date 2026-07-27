@@ -9,6 +9,8 @@ interface DividerProps {
   offset?: number;
   onClick?: (newType: DividerType) => void;
   onLongPress?: () => void;
+  predefinedImages?: { value: string }[];
+  onImageCycle?: (newImageUrl: string) => void;
   tintColor?: string;
   tintOpacity?: number;
   dividerStyle?: DividerStyle;
@@ -55,12 +57,14 @@ const IMAGE_DIVIDER_ASSETS: Partial<Record<DividerType, string>> = {
 
 export default function Divider({
   type,
-  color = "#b88a78",
+  color = "#6998EE",
   className = "",
   id,
   offset = 0,
   onClick,
   onLongPress,
+  predefinedImages,
+  onImageCycle,
   tintColor,
   tintOpacity = 100,
   dividerStyle = "centered-single",
@@ -69,7 +73,7 @@ export default function Divider({
   pullDown = 0,
   verticalFlip = false,
   imageSize = 100,
-  baseHeight = 200,
+  baseHeight = 150,
   horizontalMargin = 20,
   customImageUrl1,
   customImageUrl2,
@@ -92,11 +96,10 @@ export default function Divider({
 
   const startPress = () => {
     longPressTriggered.current = false;
-    if (onClick) {
+    if (onLongPress) {
       pressTimer.current = setTimeout(() => {
         longPressTriggered.current = true;
-        const newType = getNextDividerType(normalizedType);
-        onClick(newType);
+        onLongPress();
       }, LONG_PRESS_DURATION);
     }
   };
@@ -113,8 +116,16 @@ export default function Divider({
       longPressTriggered.current = false;
       return;
     }
-    if (onLongPress) {
-      onLongPress();
+    if (onImageCycle && predefinedImages && predefinedImages.length > 0) {
+      const currentImage = normalizedType === "divider-1" ? (customImageUrl1 || "/assets/divdr-1.png")
+        : normalizedType === "divider-2" ? (customImageUrl2 || "/assets/divdr-2.png")
+        : normalizedType === "divider-3" ? (customImageUrl3 || "/assets/divdr-3.png")
+        : null;
+      if (currentImage) {
+        const currentIndex = predefinedImages.findIndex(img => img.value === currentImage);
+        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % predefinedImages.length;
+        onImageCycle(predefinedImages[nextIndex].value);
+      }
     }
   };
 
@@ -220,7 +231,7 @@ export default function Divider({
       <div
         id={id}
         className={`flex items-center justify-center py-4 ${className}`}
-        style={{ height: `${baseHeight}px`, marginTop: `${marginTop}px`, marginBottom: `0px`, transform: 'translateY(-50%)' }}
+        style={{ height: `${baseHeight}px`, marginTop: `${marginTop}px`, marginBottom: `0px`, transform: `translateY(-50%) translateY(${pullDown}%)` }}
       >
         {renderImageDividerUnit(imageAsset, false, false, undefined, imageSize)}
       </div>

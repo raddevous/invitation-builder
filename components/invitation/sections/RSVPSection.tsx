@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { InvitationData } from "@/lib/types/invitation";
 import Divider from "./Divider";
 import HybridFontControl from "@/components/shared/HybridFontControl";
 import ColorControl from "@/components/shared/ColorControl";
+import PhotoGalleryPicker from "@/components/shared/PhotoGalleryPicker";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
@@ -20,11 +22,12 @@ interface RSVPSectionProps {
   panelPosition?: "left" | "right";
   onPanelOpen?: () => void;
   onPanelClose?: () => void;
+  onPrePrintPanelChange?: (open: boolean) => void;
 }
 
 type AttendanceValue = "attending" | "not-attending" | "maybe";
 
-export default function RSVPSection({ data, invitationId, editMode = false, onChange = () => {}, desktopMode = false, panelPosition = "left", onPanelOpen = () => {}, onPanelClose = () => {} }: RSVPSectionProps) {
+export default function RSVPSection({ data, invitationId, editMode = false, onChange = () => {}, desktopMode = false, panelPosition = "left", onPanelOpen = () => {}, onPanelClose = () => {}, onPrePrintPanelChange = () => {} }: RSVPSectionProps) {
   const { isDarkMode, accentColor } = useTheme();
   const [guestName, setGuestName] = useState("");
   const [attendance, setAttendance] = useState<AttendanceValue | "">("");
@@ -61,11 +64,26 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   const [removePageNumber, setRemovePageNumber] = useState(true);
   const [tempTextResize, setTempTextResize] = useState(100);
   const [tempBackgroundZoom, setTempBackgroundZoom] = useState(100);
-  const [tempBackgroundYPosition, setTempBackgroundYPosition] = useState(100);
+  const [tempBackgroundYPosition, setTempBackgroundYPosition] = useState(0);
+  const [tempBackgroundXPosition, setTempBackgroundXPosition] = useState(0);
   const [tempAdjustHeight, setTempAdjustHeight] = useState(60);
   const [changeNameToBlank, setChangeNameToBlank] = useState(true);
   const [seatNumberToUnderscores, setSeatNumberToUnderscores] = useState(true);
   const [removeMessageBox, setRemoveMessageBox] = useState(true);
+  const [tempRemoveBackground, setTempRemoveBackground] = useState(false);
+  const [tempBackgroundImage, setTempBackgroundImage] = useState<string | null>(null);
+  const [tempBackgroundOpacity, setTempBackgroundOpacity] = useState(1);
+  const [showTempBackgroundPicker, setShowTempBackgroundPicker] = useState(false);
+  const [isTempBackgroundPickerClosing, setIsTempBackgroundPickerClosing] = useState(false);
+  const [tempColorOverlayEnabled, setTempColorOverlayEnabled] = useState(false);
+  const [tempOverlayType, setTempOverlayType] = useState<"solid" | "gradient">("solid");
+  const [tempOverlayColor1, setTempOverlayColor1] = useState<string | null>(null);
+  const [tempOverlayColor2, setTempOverlayColor2] = useState<string | null>(null);
+  const [tempOverlayOpacity1, setTempOverlayOpacity1] = useState(0.7);
+  const [tempOverlayOpacity2, setTempOverlayOpacity2] = useState(0.7);
+  const [tempTextColor, setTempTextColor] = useState<string | null>(null);
+  const [tempLogoTransparency, setTempLogoTransparency] = useState(100);
+  const prePrintToastRef = useRef<HTMLDivElement | null>(null);
   const [originalStyles, setOriginalStyles] = useState<any>(null);
   const [isLivePreviewActive, setIsLivePreviewActive] = useState(false);
 
@@ -147,23 +165,23 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   // Predefined message options for each entourage title (for cycling)
   // Use {TITLE} placeholder which will be replaced with custom title when displayed
   const titleMessageOptions: Record<string, string[]> = {
-    "Witness": ["We promise to keep the ceremony short if you promise to sign the paperwork!", "We need your signature! Will you be our official {TITLE}?", "Help us make it legal! Will you be our {TITLE}?", "We want our favorite people to make it official. Will you be one of our {TITLE}s?", "Will you stand with us and sign as our {TITLE}s?", "We need two incredible people to sign the lines. Will you be one of our {TITLE}s?"],
-    "Chairman": ["We request the honor of your guidance as our Wedding {TITLE}.", "We would be deeply honored if you would serve as the {TITLE}", "Your wisdom means everything to us. Will you do us the honor of being our Wedding {TITLE}?", "Will you do us the honor of serving as our {TITLE}"],
+    "Witness": ["We promise to keep the ceremony short if you promise to sign the paperwork!", "We need your signature! Will you be our official {TITLE}?", "Help us make it legal! Will you be our {TITLE}?", "We want our favorite people to make it official. Will you be one of our {TITLE}?", "Will you stand with us and sign as our {TITLE}?", "We need two incredible people to sign the lines. Will you be one of our {TITLE}?"],
+    "Chairman": ["We request the honor of your guidance as our Wedding {TITLE}.", "We would be deeply honored if you would serve as the {TITLE}.", "Your wisdom means everything to us. Will you do us the honor of being our Wedding {TITLE}?", "Will you do us the honor of serving as our {TITLE}?"],
     "Best Man": ["Time to suit up. Will you be my {TITLE}?", "Will you stand by my side as my {TITLE}?", "I can't imagine getting married without you there. Will you be my {TITLE}?", "There is no one else I'd rather have by my side. Will you do me the honor of being my {TITLE}?", "I found the girl, now I just need my {TITLE}."],
     "Maid of Honor": ["Will you stand by my side as my {TITLE}?", "I can't say 'I do' without you. {TITLE}?", "Found the guy, now I need my {TITLE}.", "You've been there through everything. Will you do me the honor of being my {TITLE}?", "I cannot imagine my wedding day without you by my side. Will you be my {TITLE}?", "There is no one else I'd rather have holding my bouquet. Will you be my {TITLE}?", "Best friend, sister, and my future {TITLE}? Say yes!", "Help me plan, keep me sane, and be my {TITLE}!"],
     "Director of the Ceremony": ["Will you direct our ceremony?", "{TITLE}. Are you ready to lead?", "We request the honor of your guidance as our {TITLE}.", "Your exceptional leadership means everything to us. Will you direct our ceremony?", "We invite you to bless our union by serving as our official {TITLE}.", "We trust you completely with our big day. Will you do us the honor of being our {TITLE}?", "We cannot think of a better person to keep us on track. Will you be the {TITLE} of our ceremony?", "You've always been our rock. Will you guide us down the aisle as our {TITLE}?"],
     "Officiating Minister": ["We request the honor of your leadership as our {TITLE}.", "We would be deeply honored if you would serve as the {TITLE} for our wedding.", "We invite you to bless our union and lead our marriage ceremony as our {TITLE}.", "We request the honor of your presence and guidance as our {TITLE}.", "Your spiritual guidance means the world to us. Will you do us the honor of officiating our wedding?", "As we take this sacred step, we would be deeply blessed to have you as our {TITLE}.", "We cannot imagine anyone else marrying us. Will you guide us through our vows as our {TITLE}?"],
     "Marriage Talk Speaker": ["We request the honor of your wisdom as our {TITLE}.", "We would be deeply honored if you would share your insights as our {TITLE}.", "We invite you to bless our marriage with your guidance as our official {TITLE}.", "We request the honor of your presence and your inspiring words as our {TITLE}.", "Your perspective on love and commitment means the world to us. Will you be our {TITLE}?", "We want to start our next chapter with the best advice. Will you do us the honor of speaking at our wedding?", "We invite you to guide us and our guests with an inspirational talk as we begin our marriage."],
     "Director of the Feast": ["We request the honor of your leadership as our {TITLE}.", "We would be deeply honored if you would serve as the {TITLE} for our wedding reception.", "We invite you to oversee our celebration and hospitality as our official {TITLE}.", "We request the honor of your presence and guidance as our {TITLE}.", "You always know how to bring people together. Will you do us the honor of being our {TITLE}?", "We cannot think of a better person to lead our wedding feast. Will you serve as our {TITLE}?", "We trust your taste and vision completely. Will you guide our reception as our {TITLE}?"],
-    "Ushers": ["Time to suit up. Will you be an {TITLE}?", "Help people find their seats. {TITLE}?", "We request the honor of your assistance as one of our Wedding {TITLE}s.", "We would be deeply honored if you would serve as an {TITLE} for our ceremony.", "Your presence and help mean everything to us. Will you do us the honor of being one of our {TITLE}s?", "We invite you to welcome our guests and lead them by serving as one of our {TITLE}", "Will you help us keep the ceremony running smoothly? Be our {TITLE}!", "We need some sharp-dressed people to guide our guests. Will you be our {TITLE}", "Can you make sure my grandma gets to the right seat? {TITLE}?"],
-    "Usherettes": ["Time to dress up. Will you be an {TITLE}?", "Help people find their seats. {TITLE}?", "We request the honor of your assistance as our Wedding {TITLE}", "We would be deeply honored if you would serve as an {TITLE} for our ceremony.", "Your presence and help mean everything to us. Will you do us the honor of being our {TITLE}?", "Will you help us keep the ceremony running smoothly? Be our {TITLE}!", "We need some lovely people to guide our guests. Will you be one of our {TITLE}s?", "Your presence and help mean everything to us. Will you do us the honor of being one of our {TITLE}s?"],
-    "Groomsmen": ["Will you stand by my side as my {TITLE}?", "Time to suit up. Will you be a {TITLE}?", "I found the girl, now I need my {TITLE}.", "I can't imagine getting married without you there. Will you be one of my {TITLE}?"],
-    "Bridesmaids": ["Will you stand by my side as my {TITLE}?", "Time to dress up. Will you be a {TITLE}?", "I found the guy, now I need my {TITLE}.", "I can't imagine getting married without you there. Will you be my {TITLE}?", "There is no one else I'd rather have by my side. Will you do me the honor of being my {TITLE}?", "Sisters by blood or choice. Will you stand with me as my {TITLE}?", "Will you hold my bouquet, drink the champagne, and make sure I don't trip on my dress?"],
-    "Jr Groomsmen": ["Will you stand by my side as my {TITLE}?", "Time to suit up! Will you be a {TITLE}?", "I need a sharp-dressed guy by my side. {TITLE}?", "It means so much to have family by my side. Will you be my {TITLE}?", "You are growing into an amazing young man. Will you do me the honor of being my {TITLE}?", "I can't imagine taking this big step without you there. Will you stand with me as my {TITLE}?"],
-    "Jr Bridesmaid": ["Will you stand by my side as my {TITLE}?", "Time to dress up! Will you be a {TITLE}?", "I need a lovely young lady by my side. {TITLE}?", "It means so much to have family by my side. Will you be my {TITLE}?", "You are growing into an amazing young lady. Will you do me the honor of being my {TITLE}?", "I can't imagine taking this big step without you there. Will you stand with me as my {TITLE}?"],
-    "flower girls": ["I need a pretty princess by my side. {TITLE}?", "Time to dress up! Will you be my {TITLE}?", "You are so special to us. Will you do us the honor of being our {TITLE}?", "I can't wait to walk down the aisle, but first, I need you! {TITLE}?", "We want our favorite little girl to lead the way. Will you be our {TITLE}?", "Are you ready to wear a pretty dress and throw petals? Be my {TITLE}!"],
-    "Bible Bearer": ["We need a special helper to carry our Bible. Are you in?", "Our sacred day would not be complete without you. Will you be our {TITLE}?", "We want the people we love most to lead the way. Will you be our {TITLE}?", "We would be so blessed to have you carry the holy book down the aisle. {TITLE}?"],
-    "Ring Bearer": ["Our big day won't be complete without you. Will you be our {TITLE}?", "We want our favorite little guy to lead the way. Will you be our {TITLE}?", "We would be so happy to have you carry our rings down the aisle. {TITLE}?", "Are you ready to look sharper than the Groom and carry the rings? Be our {TITLE}!", "You are so special to us. Will you do us the honor of being our {TITLE}?"]
+    "Ushers": ["Time to suit up. Will you be one of our {TITLE}?", "Help people find their seats. Will you be one of our {TITLE}?", "We request the honor of your assistance as one of our Wedding {TITLE}.", "We would be deeply honored if you would serve as one of our {TITLE} for our ceremony.", "Your presence and help mean everything to us. Will you do us the honor of being one of our {TITLE}?", "We invite you to welcome our guests and lead them by serving as one of our {TITLE}.", "Will you help us keep the ceremony running smoothly? Be one of our {TITLE}!", "We need some sharp-dressed people to guide our guests. Will you be one of our {TITLE}?", "Can you make sure my grandma gets to the right seat? Will you be one of our {TITLE}?"],
+    "Usherettes": ["Time to dress up. Will you be one of our {TITLE}?", "Help people find their seats. Will you be one of our {TITLE}?", "We request the honor of your assistance as our Wedding {TITLE}.", "We would be deeply honored if you would serve as one of our {TITLE} for our ceremony.", "Your presence and help mean everything to us. Will you do us the honor of being one of our {TITLE}?", "Will you help us keep the ceremony running smoothly? Be one of our {TITLE}!", "We need some lovely people to guide our guests. Will you be one of our {TITLE}?", "We invite you to welcome our guests and lead them by serving as one of our {TITLE}."],
+    "Groomsmen": ["Will you stand by my side as one of my {TITLE}?", "Time to suit up. Will you be one of my {TITLE}?", "I found the girl, now I need my {TITLE}.", "I can't imagine getting married without you there. Will you be one of my {TITLE}?"],
+    "Bridesmaids": ["Will you stand by my side as one of my {TITLE}?", "Time to dress up. Will you be one of my {TITLE}?", "I found the guy, now I need my {TITLE}.", "I can't imagine getting married without you there. Will you be one of my {TITLE}?", "There is no one else I'd rather have by my side. Will you do me the honor of being one of my {TITLE}?", "Sisters by blood or choice. Will you stand with me as one of my {TITLE}?", "Will you hold my bouquet, drink the champagne, and make sure I don't trip on my dress?"],
+    "Jr Groomsmen": ["Will you stand by my side as one of my {TITLE}?", "Time to suit up! Will you be one of my {TITLE}?", "I need a sharp-dressed guy by my side. Will you be one of my {TITLE}?", "It means so much to have family by my side. Will you be one of my {TITLE}?", "You are growing into an amazing young man. Will you do me the honor of being one of my {TITLE}?", "I can't imagine taking this big step without you there. Will you stand with me as one of my {TITLE}?"],
+    "Jr Bridesmaid": ["Will you stand by my side as my {TITLE}?", "Time to dress up! Will you be my {TITLE}?", "I need a lovely young lady by my side. Will you be my {TITLE}?", "It means so much to have family by my side. Will you be my {TITLE}?", "You are growing into an amazing young lady. Will you do me the honor of being my {TITLE}?", "I can't imagine taking this big step without you there. Will you stand with me as my {TITLE}?"],
+    "flower girls": ["I need a pretty princess by my side. Will you be my {TITLE}?", "Time to dress up! Will you be my {TITLE}?", "You are so special to us. Will you do us the honor of being our {TITLE}?", "I can't wait to walk down the aisle, but first, I need you! Will you be my {TITLE}?", "We want our favorite little girl to lead the way. Will you be our {TITLE}?", "Are you ready to wear a pretty dress and throw petals? Be my {TITLE}!"],
+    "Bible Bearer": ["We need a special helper to carry our Bible. Are you in?", "Our sacred day would not be complete without you. Will you be our {TITLE}?", "We want the people we love most to lead the way. Will you be our {TITLE}?", "We would be so blessed to have you carry the holy book down the aisle. Will you be our {TITLE}?"],
+    "Ring Bearer": ["Our big day won't be complete without you. Will you be our {TITLE}?", "We want our favorite little guy to lead the way. Will you be our {TITLE}?", "We would be so happy to have you carry our rings down the aisle. Will you be our {TITLE}?", "Are you ready to look sharper than the Groom and carry the rings? Be our {TITLE}!", "You are so special to us. Will you do us the honor of being our {TITLE}?"]
   };
 
   // Function to get all entourage titles with their custom titles
@@ -272,10 +290,15 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     return null;
   };
 
+  // Helper to format sentences as separate lines in HTML
+  const formatSentencesAsLines = (html: string): string => {
+    return html.replace(/([.!?])\s+/g, '$1<br>');
+  };
+
   // Function to get reserved text based on guest's entourage title
   const getReservedTextForGuest = (guestName: string): string => {
     const entourage = data.entourage;
-    if (!entourage) return data.rsvpReservedText || "We have reserve a seat in your honor.";
+    if (!entourage) return formatSentencesAsLines(data.rsvpReservedText || "We have reserve a seat in your honor.");
 
     // Strip honorific from guest name for matching (e.g., "Mr. John Doe" -> "John Doe")
     const cleanGuestName = guestName.replace(/^(Mr\.|Ms\.|Mrs\.|M\.)\s+/i, "").trim().toLowerCase();
@@ -403,7 +426,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
             .replace(/{guestnumber}/g, `<strong style="border-bottom: 1px solid currentColor; display: inline-block;">${guestNumber}</strong>`)
             .replace(/{s}/g, plural);
           
-          return `${messageWithPlaceholder}\n${processedDefaultMessage}`;
+          return formatSentencesAsLines(`${messageWithPlaceholder}<br><br>${processedDefaultMessage}`);
         }
       }
     }
@@ -417,9 +440,9 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     }
     
     const plural = guestNumber > 1 ? "s" : "";
-    return reservedText
+    return formatSentencesAsLines(reservedText
       .replace(/{guestnumber}/g, `<strong style="border-bottom: 1px solid currentColor; display: inline-block;">${guestNumber}</strong>`)
-      .replace(/{s}/g, plural);
+      .replace(/{s}/g, plural));
   };
 
   const handleLightboxSubmit = async () => {
@@ -655,6 +678,44 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     }, 300);
   };
 
+  // Pre-print toast and temporary background helpers
+  const showPrePrintToast = () => {
+    if (prePrintToastRef.current) return;
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg z-[60] text-sm ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`;
+    toast.textContent = 'Close Pre-print Settings first';
+    toast.style.fontFamily = 'Inter, sans-serif';
+    document.body.appendChild(toast);
+    prePrintToastRef.current = toast;
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => {
+        toast.remove();
+        if (prePrintToastRef.current === toast) prePrintToastRef.current = null;
+      }, 300);
+    }, 2000);
+  };
+
+  const handleOpenTempBackgroundPicker = () => {
+    setIsTempBackgroundPickerClosing(false);
+    setShowTempBackgroundPicker(true);
+  };
+
+  const handleCloseTempBackgroundPicker = () => {
+    setIsTempBackgroundPickerClosing(true);
+    setTimeout(() => {
+      setShowTempBackgroundPicker(false);
+      setIsTempBackgroundPickerClosing(false);
+    }, 300);
+  };
+
+  const resolveGalleryUrl = (url: string) => {
+    if (!url) return "";
+    if (url.startsWith("http") || url.startsWith("/")) return url;
+    return `/stock/gallery/${url}`;
+  };
+
   // Print settings functions
   const storeOriginalStyles = () => {
     const paperContainer = document.getElementById('rsvp-paper-container');
@@ -664,8 +725,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
       container: {
         borderRadius: paperContainer.style.borderRadius || '',
         boxShadow: paperContainer.style.boxShadow || '',
-        backgroundSize: paperContainer.style.backgroundSize || '',
-        backgroundPosition: paperContainer.style.backgroundPosition || '',
         aspectRatio: paperContainer.style.aspectRatio || '',
         height: paperContainer.style.height || '',
         offsetHeight: paperContainer.getBoundingClientRect().height,
@@ -760,16 +819,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
       }
     }
 
-    const bgZoom = tempBackgroundZoom / 100;
-    const bgYPos = (tempBackgroundYPosition - 100) / 100;
-
-    if (bgZoom !== 1 || bgYPos !== 0) {
-      paperContainer.style.backgroundSize = `${bgZoom * 100}% auto`;
-      paperContainer.style.backgroundPosition = `center ${50 + bgYPos * 50}%`;
-    } else {
-      paperContainer.style.backgroundSize = originalStyles.container.backgroundSize;
-      paperContainer.style.backgroundPosition = originalStyles.container.backgroundPosition;
-    }
+    // Background size/position are now controlled by React render
 
     // Apply height adjustment — use stored original height to avoid compounding
     if (tempAdjustHeight !== 100) {
@@ -838,8 +888,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
 
     paperContainer.style.borderRadius = originalStyles.container.borderRadius;
     paperContainer.style.boxShadow = originalStyles.container.boxShadow;
-    paperContainer.style.backgroundSize = originalStyles.container.backgroundSize;
-    paperContainer.style.backgroundPosition = originalStyles.container.backgroundPosition;
     paperContainer.style.aspectRatio = originalStyles.container.aspectRatio || '3/4';
     paperContainer.style.height = originalStyles.container.height || '';
 
@@ -888,6 +936,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     }, 300);
   };
 
+  useEffect(() => {
+    onPrePrintPanelChange(showPrintSettings || isPrintSettingsClosing);
+  }, [showPrintSettings, isPrintSettingsClosing, onPrePrintPanelChange]);
+
   const handleCancelPrint = () => {
     revertLivePreview();
     setRemoveRoundCorners(false);
@@ -895,11 +947,23 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     setRemovePageNumber(false);
     setTempTextResize(100);
     setTempBackgroundZoom(100);
-    setTempBackgroundYPosition(100);
+    setTempBackgroundYPosition(0);
+    setTempBackgroundXPosition(0);
     setTempAdjustHeight(100);
     setChangeNameToBlank(false);
     setSeatNumberToUnderscores(false);
     setRemoveMessageBox(false);
+    setTempRemoveBackground(false);
+    setTempBackgroundImage(null);
+    setTempBackgroundOpacity(1);
+    setTempColorOverlayEnabled(false);
+    setTempOverlayType("solid");
+    setTempOverlayColor1(null);
+    setTempOverlayColor2(null);
+    setTempOverlayOpacity1(0.7);
+    setTempOverlayOpacity2(0.7);
+    setTempTextColor(null);
+    setTempLogoTransparency(100);
     setOriginalStyles(null);
     handleClosePrintSettings();
   };
@@ -934,16 +998,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
         const newSize = currentSizeNum * (tempTextResize / 100);
         (el as HTMLElement).style.fontSize = `${newSize}px`;
       });
-    }
-
-    const bgZoom = tempBackgroundZoom / 100;
-    const bgYPos = (tempBackgroundYPosition - 100) / 100;
-    let bgPosition = 'center';
-    let bgSize = 'cover';
-
-    if (bgZoom !== 1 || bgYPos !== 0) {
-      bgSize = `${bgZoom * 100}% auto`;
-      bgPosition = `center ${50 + bgYPos * 50}%`;
     }
 
     // Apply height adjustment — use original stored height
@@ -997,8 +1051,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
       border-radius: ${removeRoundCorners ? '0px' : computedStyles.borderRadius};
       background: ${computedStyles.background};
       background-image: ${computedStyles.backgroundImage};
-      background-size: ${bgSize};
-      background-position: ${bgPosition};
+      background-size: ${computedStyles.backgroundSize};
+      background-position: ${computedStyles.backgroundPosition};
       background-repeat: no-repeat;
       box-shadow: ${removeShadows ? 'none' : computedStyles.boxShadow};
       overflow: visible;
@@ -1083,13 +1137,25 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     setRemovePageNumber(false);
     setTempTextResize(100);
     setTempBackgroundZoom(100);
-    setTempBackgroundYPosition(100);
+    setTempBackgroundYPosition(0);
+    setTempBackgroundXPosition(0);
     setTempAdjustHeight(100);
     setChangeNameToBlank(false);
     setSeatNumberToUnderscores(false);
     setRemoveMessageBox(false);
-    setOriginalStyles(null);
+    setTempRemoveBackground(false);
+    setTempBackgroundImage(null);
+    setTempBackgroundOpacity(1);
+    setTempColorOverlayEnabled(false);
+    setTempOverlayType("solid");
+    setTempOverlayColor1(null);
+    setTempOverlayColor2(null);
+    setTempOverlayOpacity1(0.7);
+    setTempOverlayOpacity2(0.7);
+    setTempTextColor(null);
+    setTempLogoTransparency(100);
     revertLivePreview();
+    setOriginalStyles(null);
     handleClosePrintSettings();
   };
 
@@ -1107,7 +1173,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     if (originalStyles && isLivePreviewActive) {
       applyLivePreview();
     }
-  }, [removeRoundCorners, removeShadows, removePageNumber, tempTextResize, tempBackgroundZoom, tempBackgroundYPosition, tempAdjustHeight, removeMessageBox, changeNameToBlank, seatNumberToUnderscores, originalStyles, isLivePreviewActive]);
+  }, [removeRoundCorners, removeShadows, removePageNumber, tempTextResize, tempAdjustHeight, removeMessageBox, changeNameToBlank, seatNumberToUnderscores, originalStyles, isLivePreviewActive]);
 
   // Start live preview when panel opens and styles are stored
   useEffect(() => {
@@ -1249,7 +1315,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
 
   return (
     <section
-      className="px-6 pt-0 pb-8 text-center relative"
+      className="px-6 pt-0 pb-8 max-[682px]:px-4 relative"
       style={{
         backgroundColor: mergedData.rsvpUseMainColor !== false
           ? (data.mainColor1 || "transparent")
@@ -1260,35 +1326,48 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
               : mergedData.rsvpBackgroundType === "video"
                 ? undefined
                 : (mergedData.rsvpBackgroundColor || data.mainColor1 || "transparent"),
-        background: mergedData.rsvpUseMainColor !== false
-          ? (data.mainColor1 || "transparent")
+        backgroundImage: mergedData.rsvpUseMainColor !== false
+          ? undefined
           : mergedData.rsvpBackgroundType === "gradient" && mergedData.rsvpGradient
             ? `linear-gradient(135deg, ${mergedData.rsvpGradient.firstColor || "#ffffff"}, ${mergedData.rsvpGradient.secondColor || "#ffffff"})`
             : undefined,
         ...(mergedData.rsvpBackgroundType === "image" && mergedData.rsvpImage?.urls && mergedData.rsvpImage.urls.length > 0 ? {
           backgroundImage: `url(${mergedData.rsvpImage.urls[0]})`,
           backgroundPosition: 'center center',
-          backgroundAttachment: 'fixed',
           backgroundRepeat: 'no-repeat',
           backgroundSize: 'cover'
         } : {}),
         ...(mergedData.rsvpBackgroundType === "video" && mergedData.rsvpVideo?.url ? {
           backgroundImage: `url(${mergedData.rsvpVideo.url})`,
           backgroundPosition: 'center center',
-          backgroundAttachment: 'fixed',
           backgroundRepeat: 'no-repeat',
           backgroundSize: 'cover'
         } : {}),
         transition: 'background 1s ease-in-out'
       }}
     >
+      {/* Hidden trigger for opening RSVP pre-print settings from the editor menu */}
+      <button
+        id="rsvp-print-trigger"
+        type="button"
+        className="hidden"
+        onClick={() => setShowPrintSettings(true)}
+      />
+
       {/* Gradient Overlay - positioned behind content */}
       {(mergedData.rsvpBackgroundType === "image" || mergedData.rsvpBackgroundType === "video") && mergedData.rsvpGradient && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: `linear-gradient(135deg, ${hexToRgba(mergedData.rsvpGradient.firstColor || "#ffffff", (mergedData.rsvpGradient.firstOpacity || 50) / 100)}, ${hexToRgba(mergedData.rsvpGradient.secondColor || "#ffffff", (mergedData.rsvpGradient.secondOpacity || 50) / 100)})`,
-          opacity: 1,
-          zIndex: 1
-        }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `linear-gradient(135deg, ${hexToRgba(mergedData.rsvpGradient.firstColor || "#ffffff", (mergedData.rsvpGradient.firstOpacity !== undefined ? mergedData.rsvpGradient.firstOpacity : 50) / 100)}, ${hexToRgba(mergedData.rsvpGradient.secondColor || "#ffffff", (mergedData.rsvpGradient.secondOpacity !== undefined ? mergedData.rsvpGradient.secondOpacity : 50) / 100)})`,
+            opacity: 1,
+            zIndex: 1
+          }} />
+        </div>
       )}
 
       {/* Background Video */}
@@ -1319,17 +1398,26 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
           pullDown={effectivePullDown}
           verticalFlip={effectiveVerticalFlip}
           imageSize={rsvpUseDefaultDivider ? (data.universalDividerImageSize ?? 100) : (data.rsvpDividerImageSize ?? 100)}
-          baseHeight={desktopMode ? 200 : 120}
+          baseHeight={desktopMode ? 150 : 100}
           horizontalMargin={desktopMode ? 80 : 48}
           customImageUrl1={rsvpUseDefaultDivider ? (data.universalDividerCustomImageUrl1 || "/assets/divdr-1.png") : (data.rsvpDividerCustomImageUrl1 || "/assets/divdr-1.png")}
           customImageUrl2={rsvpUseDefaultDivider ? (data.universalDividerCustomImageUrl2 || "/assets/divdr-2.png") : (data.rsvpDividerCustomImageUrl2 || "/assets/divdr-2.png")}
           customImageUrl3={rsvpUseDefaultDivider ? (data.universalDividerCustomImageUrl3 || "/assets/divdr-3.png") : (data.rsvpDividerCustomImageUrl3 || "/assets/divdr-3.png")}
           colorBlend={rsvpUseDefaultDivider ? (data.universalDividerColorBlend ?? false) : (data.rsvpDividerColorBlend ?? false)}
-          onClick={editMode ? (newType) => {
+          predefinedImages={(rsvpUseDefaultDivider ? data.universalDivider : data.rsvpDivider) === "divider-1" ? predefinedDividerImagesCentered : (rsvpUseDefaultDivider ? data.universalDivider : data.rsvpDivider) === "divider-2" ? predefinedDividerImagesSplit : predefinedDividerImagesMirrored}
+          onImageCycle={editMode ? (newImageUrl: string) => {
+            const currentType = rsvpUseDefaultDivider ? (data.universalDivider || "divider-1") : (data.rsvpDivider || "divider-1");
             if (rsvpUseDefaultDivider) {
               onChange?.("rsvpDividerUseDefault", false);
+              onChange?.("rsvpDivider", currentType);
             }
-            onChange?.("rsvpDivider", newType);
+            if (currentType === "divider-1") {
+              onChange?.("rsvpDividerCustomImageUrl1", newImageUrl);
+            } else if (currentType === "divider-2") {
+              onChange?.("rsvpDividerCustomImageUrl2", newImageUrl);
+            } else {
+              onChange?.("rsvpDividerCustomImageUrl3", newImageUrl);
+            }
           } : undefined}
           onLongPress={editMode ? () => {
             setShowDividerSettingsPanel(true);
@@ -1380,10 +1468,11 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
         )}
       
       {/* Section heading - clickable in edit mode */}
-      <div>
+      <div className="max-w-2xl mx-auto max-[682px]:max-w-none">
         {getTopText() && (
           <p
-            className="text-center mb-1 md:mb-6 uppercase scale-[0.7] md:scale-100"
+            id="rsvp-top-text"
+            className="text-center mb-1 md:mb-4 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
             style={{ 
               color: mergedData.rsvpUseMainColor !== false ? data.neutralColor1 : (mergedData.rsvpBottomTextColor || data.neutralColor1), 
               fontFamily: mergedData.rsvpUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.rsvpTopTextTypography || data.headingFont, "heading"),
@@ -1400,7 +1489,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
         )}
         
         <h2
-          className="text-xl mb-1 md:mb-6 text-center font-bold uppercase scale-[0.55] md:scale-100"
+          className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
           style={{ 
             color: mergedData.rsvpUseMainColor !== false ? data.mainColor2 : (mergedData.rsvpHeaderColor || data.mainColor2), 
             fontFamily: mergedData.rsvpUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.rsvpHeaderTypography || data.headingFont, "heading"),
@@ -1418,12 +1507,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
 
         {getBottomText() && (
           <p
-            className="text-center text-sm mb-2 md:mb-6 scale-[0.7] md:scale-100"
+            className="text-center mb-6 scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
             style={{ 
               color: mergedData.rsvpUseMainColor !== false ? data.neutralColor1 : (mergedData.rsvpBottomTextColor || data.neutralColor1), 
               opacity: 0.7, 
               fontFamily: mergedData.rsvpUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.rsvpBottomTextTypography || data.bodyFont, "body"),
-              fontSize: `${(mergedData.rsvpBottomTextFontSize || 100) / 100 * 0.85}rem`
+              fontSize: `${(mergedData.rsvpBottomTextFontSize || 100) / 100}rem`
             }}
           >
             <span
@@ -1440,9 +1529,9 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
         <div className="py-8 flex flex-col items-center gap-4">
           <div
             className="w-16 h-16 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: accentColor }}
+            style={{ backgroundColor: accentColor, color: data.rsvpPaperTextColor || data.mainColor2 }}
           >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={data.mainColor2} strokeWidth="2">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M20 6L9 17l-5-5" />
             </svg>
           </div>
@@ -1460,10 +1549,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
           </p>
         </div>
       ) : (
-        <div className="max-w-md mx-auto space-y-4">
+        <div id="rsvp-find-name-container" className="max-w-md mx-auto space-y-4">
           {/* Crystal Container */}
           <div 
-            className={`backdrop-blur-md ${crystalColors.bg10} rounded-2xl p-6 border ${crystalColors.borderWhite20} shadow-xl relative overflow-hidden w-96 mx-auto ${editMode ? 'cursor-pointer' : ''}`}
+            className={`backdrop-blur-md ${crystalColors.bg10} rounded-2xl p-6 border ${crystalColors.borderWhite20} shadow-xl relative overflow-hidden w-full max-w-96 mx-auto ${editMode ? 'cursor-pointer' : ''}`}
             style={{
               backgroundColor: crystalColors.bg10Style || undefined,
               borderColor: crystalColors.borderWhite20Style || undefined
@@ -1504,6 +1593,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onClick={(e) => e.stopPropagation()}
+                    onFocus={() => {
+                      const container = document.getElementById('rsvp-find-name-container');
+                      if (container) {
+                        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
                     placeholder="Type your name..."
                     className="w-full px-4 py-3 rounded-xl border focus:outline-none transition-colors text-sm"
                     style={{
@@ -1521,7 +1616,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
           {/* Search results - outside crystal container */}
           {searchQuery && (
             <div 
-              className={`backdrop-blur-md ${crystalColors.bg10} rounded-2xl border ${crystalColors.borderWhite20} shadow-xl relative overflow-hidden w-96 mx-auto`}
+              className={`backdrop-blur-md ${crystalColors.bg10} rounded-2xl border ${crystalColors.borderWhite20} shadow-xl relative overflow-hidden w-full max-w-96 mx-auto`}
               style={{
                 backgroundColor: crystalColors.bg10Style || undefined,
                 borderColor: crystalColors.borderWhite20Style || undefined
@@ -1635,7 +1730,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
           
           {/* Lightbox Content */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-            <div 
+            <div
               id="rsvp-paper-container"
               className="pointer-events-auto shadow-2xl relative overflow-hidden"
               style={{
@@ -1644,7 +1739,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 aspectRatio: '3/4',
                 borderRadius: '8px',
                 isolation: 'isolate',
-                ...(data.rsvpPaperBackground && data.rsvpPaperBackground !== 'none' ? {
+                ...(!tempRemoveBackground && data.rsvpPaperBackground && data.rsvpPaperBackground !== 'none' ? {
                   backgroundImage: `url(/assets/texturebg${data.rsvpPaperBackground.replace('texture', '')}.jpg)`,
                   backgroundSize: `${data.rsvpPaperBackgroundZoom || 100}%`,
                   backgroundPosition: `center ${data.rsvpPaperBackgroundYPosition || 0}%`,
@@ -1652,15 +1747,18 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 } : {})
               }}
             >
-              {/* Print button - upper left of paper container */}
-              {!editMode && (
+              {tempTextColor && (
+                <style>{`#rsvp-paper-container, #rsvp-paper-container * { color: ${tempTextColor} !important; }`}</style>
+              )}
+              {/* Print button - upper right of paper container; hidden when pre-print settings are open */}
+              {!showPrintSettings && !isPrintSettingsClosing && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setTimeout(() => setShowPrintSettings(true), 300);
+                    setShowPrintSettings(true);
                   }}
                   className="absolute top-4 right-4 p-2 rounded-lg bg-white/80 hover:bg-white/90 dark:bg-gray-800/80 hover:dark:bg-gray-800/90 transition-colors shadow-md print:hidden"
-                  style={{ zIndex: 20 }}
+                  style={{ zIndex: 50 }}
                   title="Print RSVP"
                 >
                   <svg className="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1668,16 +1766,44 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   </svg>
                 </button>
               )}
-              {/* Paper color layer with hue blend - inside container with rounded edges */}
+              {/* Paper color layer */}
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
+                  zIndex: 10,
                   backgroundColor: data.rsvpPaperColor || '#ffffff',
                   mixBlendMode: 'hue'
                 }}
               />
+              {/* Temporary background overlay */}
+              {tempColorOverlayEnabled && (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    zIndex: 20,
+                    backgroundImage: tempBackgroundImage ? `url(${resolveGalleryUrl(tempBackgroundImage)})` : 'none',
+                    backgroundSize: `${tempBackgroundZoom}% auto`,
+                    backgroundPosition: `${50 + tempBackgroundXPosition}% ${50 + tempBackgroundYPosition}%`,
+                    backgroundRepeat: 'no-repeat',
+                    opacity: tempBackgroundOpacity
+                  }}
+                />
+              )}
+              {/* Overlay Type layer */}
+              {tempColorOverlayEnabled && tempOverlayColor1 && (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    zIndex: 30,
+                    ...(tempOverlayType === "gradient" && tempOverlayColor2
+                      ? { background: `linear-gradient(135deg, ${hexToRgba(tempOverlayColor1, tempOverlayOpacity1)}, ${hexToRgba(tempOverlayColor2, tempOverlayOpacity2)})` }
+                      : { backgroundColor: hexToRgba(tempOverlayColor1, tempOverlayOpacity1) }),
+                    mixBlendMode: 'normal'
+                  }}
+                />
+              )}
               {/* Paper Container Content */}
-              <div id="rsvp-content-wrapper" className="h-full flex flex-col items-center justify-start p-8 space-y-6 relative z-10">
+              <div id="rsvp-content-wrapper" className="h-full flex flex-col items-center justify-start p-8 space-y-6 relative z-40">
                 {/* RSVP Heading */}
                 <h2
                   className="text-3xl font-bold text-center"
@@ -1773,6 +1899,30 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   }}
                 />
                 
+                {/* Usher/Usherette Instruction */}
+                {(() => {
+                  const entGuest = entourageGuestNames.find(g => g.name.toLowerCase() === selectedGuest?.name.toLowerCase());
+                  const entDetails = data.rsvpEntourageGuestDetails?.[selectedGuest?.name || ""];
+                  if (entGuest && (entGuest.title === "Ushers" || entGuest.title === "Usherettes") && entDetails?.instruction) {
+                    const sentences = entDetails.instruction.match(/[^.!?]+[.!?]+/g) || [entDetails.instruction];
+                    return (
+                      <div
+                        className="text-center text-sm mt-4"
+                        style={{
+                          color: data.rsvpPaperTextColor || data.mainColor2,
+                          fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                          opacity: 0.8,
+                        }}
+                      >
+                        {sentences.map((sentence, i) => (
+                          <p key={i}>{sentence.trim()}</p>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                
                 {/* Response Display or Form */}
                 {existingResponse ? (
                   /* Guest has already responded - show thank you message */
@@ -1827,8 +1977,9 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         <div
                           className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
                           style={{
-                            borderColor: data.rsvpPaperTextColor || data.mainColor2,
-                            backgroundColor: selectedAttendance === 'celebrate' ? (data.rsvpPaperTextColor || data.mainColor2) : 'transparent'
+                            color: data.rsvpPaperTextColor || data.mainColor2,
+                            borderColor: 'currentColor',
+                            backgroundColor: selectedAttendance === 'celebrate' ? 'currentColor' : 'transparent'
                           }}
                         >
                           {selectedAttendance === 'celebrate' && (
@@ -1863,8 +2014,9 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         <div
                           className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
                           style={{
-                            borderColor: data.rsvpPaperTextColor || data.mainColor2,
-                            backgroundColor: selectedAttendance === 'toast' ? (data.rsvpPaperTextColor || data.mainColor2) : 'transparent'
+                            color: data.rsvpPaperTextColor || data.mainColor2,
+                            borderColor: 'currentColor',
+                            backgroundColor: selectedAttendance === 'toast' ? 'currentColor' : 'transparent'
                           }}
                         >
                           {selectedAttendance === 'toast' && (
@@ -1892,7 +2044,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
 
                     {/* Message Input + Submit Button - wrapped for print removal */}
                     <div data-rsvp-message-box className="space-y-3">
-                      <div className="w-3/4 mx-auto relative">
+                      <div className="w-full mx-auto relative">
                         <textarea
                           id="rsvp-message-input"
                           value={guestMessage}
@@ -1930,19 +2082,21 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                       `}</style>
 
                       {/* Submit Button */}
-                      <button
-                        onClick={handleLightboxSubmit}
-                        disabled={isSubmitting || submitSuccess || !selectedAttendance}
-                        className="px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-                        style={{
-                          backgroundColor: data.rsvpPaperTextColor || data.mainColor2,
-                          color: '#ffffff',
-                          fontFamily: `${data.bodyFont}, serif`,
-                          opacity: (isSubmitting || submitSuccess || !selectedAttendance) ? 0.7 : 1
-                        }}
-                      >
-                        {isSubmitting ? 'Submitting...' : submitSuccess ? 'Submitted!' : 'Submit'}
-                      </button>
+                      <div className="flex justify-center">
+                        <button
+                          onClick={handleLightboxSubmit}
+                          disabled={isSubmitting || submitSuccess || !selectedAttendance}
+                          className="px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+                          style={{
+                            backgroundColor: data.rsvpPaperTextColor || data.mainColor2,
+                            color: '#ffffff',
+                            fontFamily: `${data.bodyFont}, serif`,
+                            opacity: (isSubmitting || submitSuccess || !selectedAttendance) ? 0.7 : 1
+                          }}
+                        >
+                          {isSubmitting ? 'Submitting...' : submitSuccess ? 'Submitted!' : 'Submit'}
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -2250,22 +2404,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                 >
                                   {data.rsvpCardHeadingText || "RSVP"}
                                 </h2>
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                                <div
+                                  className="flex items-center justify-center shrink-0"
                                   style={{
-                                    color: data.rsvpPaperTextColor || data.mainColor2,
-                                    opacity: 0.6
+                                    width: '24px',
+                                    height: '24px',
+                                    minWidth: '24px',
+                                    minHeight: '24px',
+                                    borderRadius: '50%',
+                                    backgroundColor: accentColor,
+                                    opacity: 0.7
                                   }}
                                 >
-                                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                </svg>
+                                  <svg
+                                    className="w-3 h-3"
+                                    style={{ color: '#ffffff' }}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                    />
+                                  </svg>
+                                </div>
                               </button>
                               {data.rsvpDeadline && (
                                 <button
@@ -2323,22 +2488,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                       );
                                     }
                                   })()}
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
                                     style={{
-                                      color: data.rsvpPaperTextColor || data.mainColor2,
-                                      opacity: 0.6
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
                                     }}
                                   >
-                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                  </svg>
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
                                 </button>
                               )}
                               <div className="h-8" />
@@ -2365,22 +2541,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                       return showHonorific ? "M. " : "";
                                     })()}Guest Name
                                   </span>
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
                                     style={{
-                                      color: data.rsvpPaperTextColor || data.mainColor2,
-                                      opacity: 0.6
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
                                     }}
                                   >
-                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                  </svg>
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
                                 </button>
                               </div>
                               <button
@@ -2402,22 +2589,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                 >
                                   {data.rsvpReservedText || "We have reserve a seat in your honor."}
                                 </p>
-                                <svg
-                                  width="10"
-                                  height="10"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                                <div
+                                  className="flex items-center justify-center shrink-0"
                                   style={{
-                                    color: data.rsvpPaperTextColor || data.mainColor2,
-                                    opacity: 0.6
+                                    width: '24px',
+                                    height: '24px',
+                                    minWidth: '24px',
+                                    minHeight: '24px',
+                                    borderRadius: '50%',
+                                    backgroundColor: accentColor,
+                                    opacity: 0.7
                                   }}
                                 >
-                                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                </svg>
+                                  <svg
+                                    className="w-3 h-3"
+                                    style={{ color: '#ffffff' }}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                    />
+                                  </svg>
+                                </div>
                               </button>
                               <div className="w-full flex justify-center">
                                 <button
@@ -2457,22 +2655,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                       return attendanceText.attending;
                                     })()}
                                   </span>
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
                                     style={{
-                                      color: data.rsvpPaperTextColor || data.mainColor2,
-                                      opacity: 0.6
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
                                     }}
                                   >
-                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                  </svg>
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
                                 </div>
                                 <div className="flex items-center justify-center gap-2 opacity-50">
                                   <div
@@ -2651,20 +2860,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   >
                                     {data.rsvpAttendingThankYouText || "Thank you for attending!"}
                                   </p>
-                                  <svg
-                                    className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    style={{ color: data.rsvpPaperTextColor || data.mainColor2 }}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
+                                    }}
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                    />
-                                  </svg>
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
                                 </button>
                               </div>
                             </div>
@@ -2810,20 +3032,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   >
                                     {data.rsvpNotAttendingThankYouText || "Thank you for letting us know."}
                                   </p>
-                                  <svg
-                                    className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    style={{ color: data.rsvpPaperTextColor || data.mainColor2 }}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
+                                    }}
                                   >
-                                    <path
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                       strokeWidth={2}
                                       d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                                     />
-                                  </svg>
+                                    </svg>
+                                  </div>
                                 </button>
                               </div>
                             </div>
@@ -2969,20 +3204,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   >
                                     {data.rsvpNotAttendingWithMessageThankYouText || "Thank You For Your Well Wishes"}
                                   </p>
-                                  <svg
-                                    className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    style={{ color: data.rsvpPaperTextColor || data.mainColor2 }}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
+                                    }}
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                    />
-                                  </svg>
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
                                 </button>
                               </div>
                             </div>
@@ -3047,20 +3295,33 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                       >
                                         {replaceTitlePlaceholder(item.message, item.title)}
                                       </p>
-                                      <svg
-                                        className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        style={{ color: data.rsvpPaperTextColor || data.mainColor2 }}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                                      <div
+                                        className="flex items-center justify-center shrink-0"
+                                        style={{
+                                          width: '24px',
+                                          height: '24px',
+                                          minWidth: '24px',
+                                          minHeight: '24px',
+                                          borderRadius: '50%',
+                                          backgroundColor: accentColor,
+                                          opacity: 0.7
+                                        }}
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                        />
-                                      </svg>
+                                        <svg
+                                          className="w-3 h-3"
+                                          style={{ color: '#ffffff' }}
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                          />
+                                        </svg>
+                                      </div>
                                     </button>
                                   </div>
                                 ))}
@@ -3861,20 +4122,22 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
         </>
       )}
 
-      {/* Print Settings Panel - only show in non-builder mode */}
-      {!editMode && showPrintSettings && (
+      {/* Print Settings Panel */}
+      {showPrintSettings && (
         <>
           {/* Backdrop */}
-          {!isPrintSettingsClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={handleClosePrintSettings} onWheel={handleClosePrintSettings} />}
+          {!isPrintSettingsClosing && <div className="fixed inset-0 bg-transparent z-40" onMouseDown={showPrePrintToast} onWheel={showPrePrintToast} />}
 
           {/* Sheet */}
           <div
-            className={`fixed z-50 shadow-2xl flex flex-col backdrop-blur-xl bg-white dark:bg-gray-900 border border-white/20 dark:border-gray-700/20 ${
+            className={`fixed z-50 shadow-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"} border ${isDarkMode ? "border-gray-700" : "border-gray-200"} ${
               desktopMode 
                 ? `top-0 bottom-0 ${panelPosition === "left" ? "left-0 border-r" : "right-0 border-l"} ${isPrintSettingsClosing ? (panelPosition === "left" ? "animate-slide-out-side" : "animate-slide-out-side-right") : (panelPosition === "left" ? "animate-slide-in-side" : "animate-slide-in-side-right")}`
                 : `bottom-0 left-0 right-0 rounded-t-3xl ${isPrintSettingsClosing ? "animate-slide-down" : "animate-slide-up"}`
             }`}
             style={desktopMode ? { width: "400px" } : { maxWidth: 480, margin: "0 auto", maxHeight: "50vh" }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
           >
             {/* Handle bar - only show in mobile mode */}
             {!desktopMode && (
@@ -3895,6 +4158,26 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10 space-y-6">
+              <p className={`text-xs text-center ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                ADJUST TO FIT ON YOUR PRINT. ADJUSTMENTS ARE TEMPORARY AND WILL REVERT ONCE PANEL IS CLOSED.
+              </p>
+
+              {/* Temporary Remove Background Toggle */}
+              <div className="flex items-center justify-between">
+                <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  Temporary Remove Background
+                </label>
+                <button
+                  onClick={() => setTempRemoveBackground(!tempRemoveBackground)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ tempRemoveBackground ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: tempRemoveBackground ? accentColor : undefined }}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ tempRemoveBackground ? "translate-x-6" : "translate-x-1" }`}
+                  />
+                </button>
+              </div>
+
               {/* Remove Round Corners Toggle */}
               <div className="flex items-center justify-between">
                 <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
@@ -3902,7 +4185,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 </label>
                 <button
                   onClick={() => setRemoveRoundCorners(!removeRoundCorners)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeRoundCorners ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeRoundCorners ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removeRoundCorners ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeRoundCorners ? "translate-x-6" : "translate-x-1" }`}
@@ -3917,7 +4201,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 </label>
                 <button
                   onClick={() => setRemoveShadows(!removeShadows)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeShadows ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeShadows ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removeShadows ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeShadows ? "translate-x-6" : "translate-x-1" }`}
@@ -3932,7 +4217,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 </label>
                 <button
                   onClick={() => setRemovePageNumber(!removePageNumber)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removePageNumber ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removePageNumber ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removePageNumber ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removePageNumber ? "translate-x-6" : "translate-x-1" }`}
@@ -3947,7 +4233,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 </label>
                 <button
                   onClick={() => setChangeNameToBlank(!changeNameToBlank)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ changeNameToBlank ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ changeNameToBlank ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: changeNameToBlank ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ changeNameToBlank ? "translate-x-6" : "translate-x-1" }`}
@@ -3955,14 +4242,15 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 </button>
               </div>
 
-              {/* Seat Number to Underscores Toggle */}
+              {/* Change Seat # to Blank Toggle */}
               <div className="flex items-center justify-between">
                 <label className={`text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  Seat Number to Underscores
+                  Change Seat # to Blank
                 </label>
                 <button
                   onClick={() => setSeatNumberToUnderscores(!seatNumberToUnderscores)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ seatNumberToUnderscores ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ seatNumberToUnderscores ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: seatNumberToUnderscores ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ seatNumberToUnderscores ? "translate-x-6" : "translate-x-1" }`}
@@ -3977,7 +4265,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 </label>
                 <button
                   onClick={() => setRemoveMessageBox(!removeMessageBox)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeMessageBox ? "bg-[#B88A78]" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ removeMessageBox ? "" : (isDarkMode ? "bg-gray-600" : "bg-gray-200") }`}
+                  style={{ backgroundColor: removeMessageBox ? accentColor : undefined }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ removeMessageBox ? "translate-x-6" : "translate-x-1" }`}
@@ -3999,48 +4288,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   onChange={(e) => setTempTextResize(Number(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                   style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
-                  }}
-                />
-              </div>
-
-              {/* Temporary Background Zoom Slider */}
-              <div className="space-y-2">
-                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  <span>Temporary Background Zoom:</span>
-                  <span>{tempBackgroundZoom}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="150"
-                  value={tempBackgroundZoom}
-                  onChange={(e) => setTempBackgroundZoom(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                  style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempBackgroundZoom - 50) / 100 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundZoom - 50) / 100 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
-                  }}
-                />
-              </div>
-
-              {/* Temporary Background Y-Position Slider */}
-              <div className="space-y-2">
-                <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  <span>Temporary Background Y-Position:</span>
-                  <span>{tempBackgroundYPosition}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="-50"
-                  max="150"
-                  value={tempBackgroundYPosition}
-                  onChange={(e) => setTempBackgroundYPosition(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                  style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempBackgroundYPosition + 50) / 200 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundYPosition + 50) / 200 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                    accentColor: accentColor,
+                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempTextResize - 20) / 180 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
                   }}
                 />
               </div>
@@ -4059,10 +4308,240 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   onChange={(e) => setTempAdjustHeight(Number(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                   style={{ 
-                    accentColor: "#B88A78",
-                    background: `linear-gradient(to right, #B88A78 0%, #B88A78 ${(tempAdjustHeight - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempAdjustHeight - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                    accentColor: accentColor,
+                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(tempAdjustHeight - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempAdjustHeight - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
                   }}
                 />
+              </div>
+
+              {/* TEXT COLOR */}
+              <ColorControl
+                label="TEXT COLOR"
+                value={tempTextColor ?? ""}
+                onChange={(value) => setTempTextColor(value || null)}
+                isDarkMode={isDarkMode}
+                accentColor={accentColor}
+                predefinedColors={predefinedSectionColors.map(c => c.value)}
+              />
+
+              {/* LOGO TRANSPARENCY */}
+              <div className="space-y-2">
+                <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-300" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>LOGO TRANSPARENCY</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={tempLogoTransparency}
+                  onChange={(e) => setTempLogoTransparency(parseInt(e.target.value))}
+                  className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`}
+                  style={{
+                    accentColor: accentColor,
+                    background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempLogoTransparency}%, ${isDarkMode ? "#374151" : "#e5e7eb"} ${tempLogoTransparency}%, ${isDarkMode ? "#374151" : "#e5e7eb"} 100%)`
+                  }}
+                />
+                <div className={`text-xs text-center ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  {tempLogoTransparency}%
+                </div>
+              </div>
+
+              <div className={`my-2 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} />
+
+              {/* ADDITIONAL BACKGROUND OVERLAY */}
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-300" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>ADDITIONAL BACKGROUND OVERLAY</label>
+                  <button
+                    onClick={() => setTempColorOverlayEnabled((prev) => !prev)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      tempColorOverlayEnabled ? '' : (isDarkMode ? "bg-gray-600" : "bg-gray-200")
+                    }`}
+                    style={{ backgroundColor: tempColorOverlayEnabled ? accentColor : undefined }}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        tempColorOverlayEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {tempColorOverlayEnabled && (
+                  <>
+                    {/* Additional Background */}
+                    <button
+                      onClick={handleOpenTempBackgroundPicker}
+                      className={`w-full py-3 border-2 border-dashed rounded-lg font-medium transition-colors ${isDarkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"}`}
+                      style={{ borderColor: accentColor, color: accentColor, fontFamily: "Inter, sans-serif" }}
+                    >
+                      Additional Background
+                    </button>
+
+                    {/* Background Transparency */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>BACKGROUND TRANSPARENCY</label>
+                        <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                          {Math.round(tempBackgroundOpacity * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={tempBackgroundOpacity}
+                        onChange={(e) => setTempBackgroundOpacity(parseFloat(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempBackgroundOpacity * 100}%, rgba(255,255,255,0.3) ${tempBackgroundOpacity * 100}%, rgba(255,255,255,0.3) 100%)`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Temporary Background Zoom Slider */}
+                    <div className="space-y-2">
+                      <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        <span>Temporary Background Zoom:</span>
+                        <span>{tempBackgroundZoom}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="200"
+                        value={tempBackgroundZoom}
+                        onChange={(e) => setTempBackgroundZoom(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        style={{
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(tempBackgroundZoom - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${(tempBackgroundZoom - 50) / 150 * 100}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    {/* Adjust UP - DOWN Slider */}
+                    <div className="space-y-2">
+                      <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        <span>Adjust UP - DOWN</span>
+                        <span>{tempBackgroundYPosition}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-50"
+                        max="50"
+                        value={tempBackgroundYPosition}
+                        onChange={(e) => setTempBackgroundYPosition(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        style={{ 
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempBackgroundYPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${tempBackgroundYPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    {/* Adjust LEFT - RIGHT Slider */}
+                    <div className="space-y-2">
+                      <div className={`flex justify-between items-center text-sm font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        <span>Adjust LEFT - RIGHT</span>
+                        <span>{tempBackgroundXPosition}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-50"
+                        max="50"
+                        value={tempBackgroundXPosition}
+                        onChange={(e) => setTempBackgroundXPosition(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        style={{ 
+                          accentColor: accentColor,
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempBackgroundXPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} ${tempBackgroundXPosition + 50}%, ${isDarkMode ? '#374151' : '#e5e7eb'} 100%)`
+                        }}
+                      />
+                    </div>
+
+                    {/* Overlay Type */}
+                    <div className="space-y-1">
+                      <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Overlay Type</label>
+                      <select
+                        value={tempOverlayType}
+                        onChange={(e) => setTempOverlayType(e.target.value as "solid" | "gradient")}
+                        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                        style={{ ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }), fontFamily: "Inter, sans-serif" }}
+                      >
+                        <option value="solid">Solid Color</option>
+                        <option value="gradient">Gradient</option>
+                      </select>
+                    </div>
+
+                    {/* Overlay Color 1 */}
+                    <ColorControl
+                      label="Overlay Color 1"
+                      value={tempOverlayColor1 ?? ""}
+                      onChange={(value) => setTempOverlayColor1(value || null)}
+                      isDarkMode={isDarkMode}
+                      accentColor={accentColor}
+                      predefinedColors={predefinedSectionColors.map(c => c.value)}
+                    />
+
+                    {/* Transparency for Color 1 */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Transparency</label>
+                        <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                          {Math.round(tempOverlayOpacity1 * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={tempOverlayOpacity1}
+                        onChange={(e) => setTempOverlayOpacity1(parseFloat(e.target.value))}
+                        className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempOverlayOpacity1 * 100}%, rgba(255,255,255,0.3) ${tempOverlayOpacity1 * 100}%, rgba(255,255,255,0.3) 100%)`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Overlay Color 2 - only for gradient */}
+                    {tempOverlayType === "gradient" && (
+                      <ColorControl
+                        label="Overlay Color 2"
+                        value={tempOverlayColor2 ?? ""}
+                        onChange={(value) => setTempOverlayColor2(value || null)}
+                        isDarkMode={isDarkMode}
+                        accentColor={accentColor}
+                        predefinedColors={predefinedSectionColors.map(c => c.value)}
+                      />
+                    )}
+
+                    {/* Transparency for Color 2 - only for gradient */}
+                    {tempOverlayType === "gradient" && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>Transparency</label>
+                          <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                            {Math.round(tempOverlayOpacity2 * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={tempOverlayOpacity2}
+                          onChange={(e) => setTempOverlayOpacity2(parseFloat(e.target.value))}
+                          className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${tempOverlayOpacity2 * 100}%, rgba(255,255,255,0.3) ${tempOverlayOpacity2 * 100}%, rgba(255,255,255,0.3) 100%)`,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -4074,12 +4553,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   className={`flex-1 px-4 py-3 rounded-lg transition-colors ${isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-gray-300" : "bg-gray-200 hover:bg-gray-300 text-gray-700"}`}
                   style={{ fontFamily: "Inter, sans-serif" }}
                 >
-                  Cancel
+                  CLOSE
                 </button>
                 <button
                   onClick={handleBeginPrinting}
-                  className="flex-1 px-4 py-3 rounded-lg transition-colors bg-[#B88A78] text-white hover:bg-[#9a7666]"
-                  style={{ fontFamily: "Inter, sans-serif" }}
+                  className="flex-1 px-4 py-3 rounded-lg transition-colors text-white hover:brightness-90"
+                  style={{ fontFamily: "Inter, sans-serif", backgroundColor: accentColor }}
                 >
                   Begin Printing
                 </button>
@@ -4087,6 +4566,25 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
             </div>
           </div>
         </>
+      )}
+
+      {/* Temporary background picker */}
+      {showTempBackgroundPicker && createPortal(
+        <PhotoGalleryPicker
+          galleryImages={data.galleryImages || []}
+          selectedUrl={tempBackgroundImage || ""}
+          isDarkMode={isDarkMode}
+          accentColor={accentColor}
+          desktopMode={desktopMode}
+          panelPosition={panelPosition}
+          isClosing={isTempBackgroundPickerClosing}
+          onSelect={(url) => {
+            setTempBackgroundImage(url || null);
+            handleCloseTempBackgroundPicker();
+          }}
+          onClose={handleCloseTempBackgroundPicker}
+        />,
+        document.body
       )}
     </section>
   );
