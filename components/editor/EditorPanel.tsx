@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import { debounce, buildInviteUrl } from "@/lib/utils";
 import { shareInviteLink } from "@/lib/utils/share";
 import { saveDemoInvitation } from "@/lib/demo/demo-data";
+import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import EventDetailsTab from "./tabs/EventDetailsTab";
 import SectionsTab from "./tabs/SectionsTab";
 import LiveEditView from "./live-edit/LiveEditView";
@@ -63,6 +64,10 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [localShowScreenDimensions, setLocalShowScreenDimensions] = useState(showScreenDimensions);
   const [demoToast, setDemoToast] = useState<string | null>(null);
   const [designHeader, setDesignHeader] = useState<{ title: string; description: string; onBack: () => void } | null>(null);
+
+  // Back gesture closes dialogs in editor panel
+  useBackHandler(showUnsavedDialog, () => setShowUnsavedDialog(false));
+  useBackHandler(showSaveConfirmationDialog, () => setShowSaveConfirmationDialog(false));
 
   // Show demo mode toast message
   const showDemoToast = (message: string) => {

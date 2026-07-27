@@ -9,6 +9,7 @@ import EditorPanel from "@/components/editor/EditorPanel";
 import { debounce, updateFavicon } from "@/lib/utils";
 import { registerPushNotifications } from "@/lib/utils/push";
 import { getStoredItem, setStoredItem } from "@/lib/utils/storage";
+import { useBackHandler } from "@/lib/hooks/useBackHandler";
 
 interface AppSettings {
   isDarkMode: boolean;
@@ -35,6 +36,9 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [showUnsavedToolsDialog, setShowUnsavedToolsDialog] = useState(false);
+
+  // Back gesture closes editor panel instead of minimizing app
+  useBackHandler(showEditorPanel, () => setShowEditorPanel(false));
 
   // Snapshot of invitation data for tools-level unsaved changes detection
   const savedDataSnapshot = useRef<string>("");

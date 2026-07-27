@@ -15,6 +15,7 @@ import { buildInviteUrl } from "@/lib/utils";
 import { shareInviteLink } from "@/lib/utils/share";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
+import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import { createPortal } from "react-dom";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
@@ -85,6 +86,16 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
   const [screenResponsiveness, setScreenResponsiveness] = useState<"desktop" | "mobile" | "tablet">("desktop");
   const [isResponsivenessMenuOpen, setIsResponsivenessMenuOpen] = useState(false);
   const prePrintToastRef = useRef<HTMLDivElement | null>(null);
+
+  // Back gesture closes panels/modals instead of minimizing app
+  useBackHandler(!!activeField, () => setActiveField(null));
+  useBackHandler(showSettingsPanel, () => setShowSettingsPanel(false));
+  useBackHandler(showLoginDialog, () => setShowLoginDialog(false));
+  useBackHandler(showUniversalDividerPanel, () => setShowUniversalDividerPanel(false));
+  useBackHandler(showAccentColorPanel, () => setShowAccentColorPanel(false));
+  useBackHandler(showPrePrintPanel, () => setShowPrePrintPanel(false));
+  useBackHandler(sectionPanelOpen, () => setSectionPanelOpen(false));
+  useBackHandler(sectionPrePrintOpen, () => setSectionPrePrintOpen(false));
   const { options: predefinedSectionColors } = usePredefinedOptions('section_colors');
   const { options: predefinedDivider1Images } = usePredefinedOptions('dividers_centeredsingle');
   const { options: predefinedDivider2Images } = usePredefinedOptions('dividers_splithorizontal');

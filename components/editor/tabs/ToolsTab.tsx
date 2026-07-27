@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
+import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import EntourageEditor from "./EntourageEditor";
 import GuestEditor from "./GuestEditor";
 import RSVPResponseEditor from "./RSVPResponseEditor";
@@ -89,6 +90,18 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isMobile, setIsMobile] = useState(false);
+
+  // Back gesture closes sub-views instead of minimizing app
+  useBackHandler(showEntourageEditor, () => setShowEntourageEditor(false));
+  useBackHandler(showGuestEditor, () => setShowGuestEditor(false));
+  useBackHandler(showRSVPResponseEditor, () => setShowRSVPResponseEditor(false));
+  useBackHandler(showMediaEditor, () => setShowMediaEditor(false));
+  useBackHandler(showSettingsEditor, () => setShowSettingsEditor(false));
+  useBackHandler(showChecklistEditor, () => setShowChecklistEditor(false));
+  useBackHandler(showBudgetEditor, () => setShowBudgetEditor(false));
+  useBackHandler(showTableMapEditor, () => setShowTableMapEditor(false));
+  useBackHandler(showWeddingProgramEditor, () => setShowWeddingProgramEditor(false));
+  useBackHandler(showStoryTimelineEditor, () => setShowStoryTimelineEditor(false));
 
   // Snapshot of data for change detection at tools level
   const dataSnapshot = useRef(JSON.stringify(data));
