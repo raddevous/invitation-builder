@@ -37,13 +37,25 @@ export async function registerPushNotifications(invitationId: string): Promise<v
     PushNotifications.addListener("pushNotificationReceived", async (notification) => {
       console.log("[Push] Notification received in foreground:", notification);
       try {
+        await LocalNotifications.createChannel({
+          id: "rsvp-notifications",
+          name: "RSVP Notifications",
+          description: "Notifications for new RSVP responses",
+          importance: 5,
+          visibility: 1,
+          sound: "default",
+        });
+
         await LocalNotifications.schedule({
           notifications: [
             {
               id: Math.floor(Math.random() * 2147483647),
               title: notification.title || "New RSVP",
               body: notification.body || "",
+              channelId: "rsvp-notifications",
               schedule: { at: new Date() },
+              smallIcon: "ic_stat_icon_config_sample",
+              iconColor: "#6998EE",
             },
           ],
         });
