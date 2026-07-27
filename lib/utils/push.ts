@@ -40,7 +40,7 @@ export async function registerPushNotifications(invitationId: string): Promise<v
         await LocalNotifications.schedule({
           notifications: [
             {
-              id: Date.now(),
+              id: Math.floor(Math.random() * 2147483647),
               title: notification.title || "New RSVP",
               body: notification.body || "",
               schedule: { at: new Date() },
