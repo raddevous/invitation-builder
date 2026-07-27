@@ -42,26 +42,6 @@ export async function registerPushNotifications(invitationId: string): Promise<v
       console.error("[Push] Registration error:", err);
     });
 
-    PushNotifications.addListener("pushNotificationReceived", async (notification) => {
-      try {
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: Math.floor(Math.random() * 2147483647),
-              title: notification.title || "New RSVP",
-              body: notification.body || "",
-              channelId: "rsvp-notifications",
-              schedule: { at: new Date() },
-              smallIcon: "ic_stat_icon_config_sample",
-              iconColor: "#6998EE",
-            },
-          ],
-        });
-      } catch {
-        // best-effort
-      }
-    });
-
     await PushNotifications.register();
   } catch {
     // best-effort
