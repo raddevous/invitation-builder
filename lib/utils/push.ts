@@ -1,6 +1,5 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, Token } from "@capacitor/push-notifications";
-import { LocalNotifications } from "@capacitor/local-notifications";
 
 let currentToken: string | null = null;
 
@@ -13,16 +12,6 @@ export async function registerPushNotifications(invitationId: string): Promise<v
       permStatus = await PushNotifications.requestPermissions();
     }
     if (permStatus.receive !== "granted") return;
-
-    // Create notification channel for foreground notifications
-    await LocalNotifications.createChannel({
-      id: "rsvp-notifications",
-      name: "RSVP Notifications",
-      description: "Notifications for new RSVP responses",
-      importance: 5,
-      visibility: 1,
-      sound: "default",
-    });
 
     PushNotifications.addListener("registration", async (token: Token) => {
       currentToken = token.value;
