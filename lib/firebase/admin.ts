@@ -9,8 +9,6 @@ function initFirebase() {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
-  console.log("[Firebase] Init check:", { projectId: !!projectId, clientEmail: !!clientEmail, privateKey: !!privateKey });
-
   if (projectId && clientEmail && privateKey) {
     initializeApp({
       credential: cert({
@@ -20,9 +18,6 @@ function initFirebase() {
       }),
     });
     initialized = true;
-    console.log("[Firebase] Initialized successfully");
-  } else {
-    console.error("[Firebase] Missing env vars — push notifications will not work");
   }
 }
 

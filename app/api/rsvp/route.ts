@@ -42,42 +42,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Send push notification to the host (best-effort, non-blocking)
-    const pushDebug: string[] = [];
     try {
-      const { data: tokens, error: tokenError } = await supabaseAdmin
+      const { data: tokens } = await supabaseAdmin
         .from("push_tokens")
         .select("token")
         .eq("invitation_id", invitationId);
-
-      pushDebug.push(`tokens: ${tokens?.length ?? 0}, error: ${tokenError?.message ?? "none"}`);
 
       if (tokens && tokens.length > 0) {
         const attendanceLabel = attendance === "attending" ? "attending" : "not attending";
         const messageBody = `${guestName} is ${attendanceLabel}${guestCount > 1 ? ` (+${guestCount - 1})` : ""}`;
 
-        const results = await Promise.all(
+        await Promise.all(
           tokens.map(({ token }) =>
             sendPushNotification(
               token,
               "New RSVP",
               messageBody,
               { invitationId, guestName, attendance }
-            ).then(() => "ok")
-            .catch((err) => {
-              pushDebug.push(`push error: ${err instanceof Error ? err.message : String(err)}`);
-              return err;
-            })
+            ).catch(() => {})
           )
         );
-        pushDebug.push(`results: ${JSON.stringify(results)}`);
-      } else {
-        pushDebug.push(`no tokens for invitation: ${invitationId}`);
       }
-    } catch (pushErr) {
-      pushDebug.push(`block error: ${pushErr instanceof Error ? pushErr.message : String(pushErr)}`);
+    } catch {
+      // push notification failure should not affect RSVP save
     }
 
-    return NextResponse.json({ success: true, id: data.id, pushDebug });
+    return NextResponse.json({ success: true, id: data.id });
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, Token } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 export async function registerPushNotifications(invitationId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
@@ -33,8 +34,22 @@ export async function registerPushNotifications(invitationId: string): Promise<v
       console.error("[Push] Registration error:", err);
     });
 
-    PushNotifications.addListener("pushNotificationReceived", (notification) => {
-      console.log("[Push] Notification received:", notification);
+    PushNotifications.addListener("pushNotificationReceived", async (notification) => {
+      console.log("[Push] Notification received in foreground:", notification);
+      try {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: Date.now(),
+              title: notification.title || "New RSVP",
+              body: notification.body || "",
+              schedule: { at: new Date() },
+            },
+          ],
+        });
+      } catch (err) {
+        console.error("[Push] Local notification failed:", err);
+      }
     });
 
     await PushNotifications.register();
