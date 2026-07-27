@@ -42,19 +42,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Send push notification to the host (best-effort, non-blocking)
+    const pushDebug: string[] = [];
     try {
       const { data: tokens, error: tokenError } = await supabaseAdmin
         .from("push_tokens")
         .select("token")
         .eq("invitation_id", invitationId);
 
-      console.log("[RSVP] Push tokens query:", { tokens: tokens?.length, error: tokenError });
+      pushDebug.push(`tokens: ${tokens?.length ?? 0}, error: ${tokenError?.message ?? "none"}`);
 
       if (tokens && tokens.length > 0) {
         const attendanceLabel = attendance === "attending" ? "attending" : "not attending";
         const messageBody = `${guestName} is ${attendanceLabel}${guestCount > 1 ? ` (+${guestCount - 1})` : ""}`;
-
-        console.log("[RSVP] Sending push to", tokens.length, "tokens");
 
         const results = await Promise.all(
           tokens.map(({ token }) =>
@@ -63,21 +62,22 @@ export async function POST(request: NextRequest) {
               "New RSVP",
               messageBody,
               { invitationId, guestName, attendance }
-            ).catch((err) => {
-              console.error("[RSVP] Push failed for token:", token.slice(0, 20), err);
+            ).then(() => "ok")
+            .catch((err) => {
+              pushDebug.push(`push error: ${err instanceof Error ? err.message : String(err)}`);
               return err;
             })
           )
         );
-        console.log("[RSVP] Push results:", results);
+        pushDebug.push(`results: ${JSON.stringify(results)}`);
       } else {
-        console.log("[RSVP] No push tokens found for invitation:", invitationId);
+        pushDebug.push(`no tokens for invitation: ${invitationId}`);
       }
     } catch (pushErr) {
-      console.error("[RSVP] Push notification block error:", pushErr);
+      pushDebug.push(`block error: ${pushErr instanceof Error ? pushErr.message : String(pushErr)}`);
     }
 
-    return NextResponse.json({ success: true, id: data.id });
+    return NextResponse.json({ success: true, id: data.id, pushDebug });
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },
