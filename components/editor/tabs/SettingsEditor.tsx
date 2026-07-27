@@ -5,8 +5,7 @@ import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
 import LoginDialog from "@/components/editor/LoginDialog";
 import QRCode from "qrcode";
 import { Capacitor } from "@capacitor/core";
-import { Filesystem, Directory } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
+import { Media } from "@capacitor-community/media";
 import { buildInviteUrl } from "@/lib/utils";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
@@ -97,22 +96,27 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
     if (Capacitor.isNativePlatform()) {
       try {
-        const base64 = qrDataUrl.split(',')[1];
-        const fileName = `qr-${slug || 'invitation'}.png`;
-        const result = await Filesystem.writeFile({
-          path: fileName,
-          data: base64,
-          directory: Directory.Cache,
-          recursive: true,
+        const fileName = `qr-${slug || 'invitation'}`;
+        const albums = await Media.getAlbums();
+        const album = albums.albums.find(a => a.name === 'InstaVow') || albums.albums[0];
+
+        await Media.savePhoto({
+          path: qrDataUrl,
+          albumIdentifier: album?.identifier,
+          fileName,
         });
-        await Share.share({
-          title: 'QR Code',
-          text: 'Save or share your invitation QR code',
-          url: result.uri,
-          dialogTitle: 'Save QR Code',
-        });
+
+        // Show success toast
+        const toast = document.createElement('div');
+        toast.textContent = 'QR code saved to gallery';
+        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:24px;font-size:14px;font-family:Inter,sans-serif;z-index:99999;pointer-events:none;transition:opacity 0.3s;';
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          setTimeout(() => toast.remove(), 300);
+        }, 2000);
       } catch (error) {
-        console.error('Error saving QR code:', error);
+        console.error('Error saving QR code to gallery:', error);
       }
     } else {
       const link = document.createElement("a");
