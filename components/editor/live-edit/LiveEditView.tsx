@@ -14,6 +14,7 @@ import { clearDemoInvitation } from "@/lib/demo/demo-data";
 import { buildInviteUrl } from "@/lib/utils";
 import { shareInviteLink } from "@/lib/utils/share";
 import { unregisterPushNotifications } from "@/lib/utils/push";
+import { removeStoredItem } from "@/lib/utils/storage";
 import { createPortal } from "react-dom";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
@@ -1031,8 +1032,8 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                   <button
                     onClick={async () => {
                       await unregisterPushNotifications();
-                      localStorage.removeItem('invitation');
-                      localStorage.removeItem('appSettings');
+                      await removeStoredItem('invitation');
+                      await removeStoredItem('appSettings');
                       localStorage.removeItem('weddingChecklist');
                       localStorage.removeItem('weddingBudget');
                       window.location.href = '/tools';

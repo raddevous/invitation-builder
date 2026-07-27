@@ -6,6 +6,7 @@ import LoginDialog from "@/components/editor/LoginDialog";
 import QRCode from "qrcode";
 import { buildInviteUrl } from "@/lib/utils";
 import { unregisterPushNotifications } from "@/lib/utils/push";
+import { removeStoredItem } from "@/lib/utils/storage";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -730,8 +731,8 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           <button
             onClick={async () => {
               await unregisterPushNotifications();
-              localStorage.removeItem('invitation');
-              localStorage.removeItem('appSettings');
+              await removeStoredItem('invitation');
+              await removeStoredItem('appSettings');
               localStorage.removeItem('weddingChecklist');
               localStorage.removeItem('weddingBudget');
               window.location.href = '/tools';

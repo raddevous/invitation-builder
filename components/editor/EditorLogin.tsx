@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Invitation } from "@/lib/types/invitation";
+import { setStoredItem } from "@/lib/utils/storage";
 
 interface EditorLoginProps {
   onLogin: (invitation: Invitation) => void;
@@ -33,11 +34,11 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
         return;
       }
 
-      // Persist to localStorage so login survives app restarts
+      // Persist to native storage so login survives app restarts
       const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
-      localStorage.setItem("invitation", JSON.stringify({ ...data.invitation, data: invitationData }));
+      await setStoredItem("invitation", JSON.stringify({ ...data.invitation, data: invitationData }));
       if (isDarkMode !== undefined || accentColor !== undefined) {
-        localStorage.setItem("appSettings", JSON.stringify({
+        await setStoredItem("appSettings", JSON.stringify({
           isDarkMode: isDarkMode ?? true,
           accentColor: accentColor ?? "#6998EE",
         }));
