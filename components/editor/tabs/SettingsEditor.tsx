@@ -731,6 +731,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           <button
             onClick={async () => {
               await unregisterPushNotifications();
+              await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
               await removeStoredItem('invitation');
               await removeStoredItem('appSettings');
               localStorage.removeItem('weddingChecklist');

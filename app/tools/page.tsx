@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Invitation } from "@/lib/types/invitation";
 import EditorLogin from "@/components/editor/EditorLogin";
-import { getStoredItem, setStoredItem } from "@/lib/utils/storage";
+import { getStoredItem, setStoredItem, removeStoredItem } from "@/lib/utils/storage";
 
 export default function ToolsLandingPage() {
   const router = useRouter();
@@ -53,7 +53,9 @@ export default function ToolsLandingPage() {
     autoLogin();
   }, [router]);
 
-  const handleTryDemo = () => {
+  const handleTryDemo = async () => {
+    await removeStoredItem('invitation');
+    await removeStoredItem('appSettings');
     router.push("/demo");
   };
 
