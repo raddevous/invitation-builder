@@ -65,7 +65,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [demoToast, setDemoToast] = useState<string | null>(null);
   const [designHeader, setDesignHeader] = useState<{ title: string; description: string; onBack: () => void } | null>(null);
 
-  // Back gesture closes dialogs in editor panel
+  // Back gesture closes dialogs in editor panel (registered after handleBack is defined below)
   useBackHandler(showUnsavedDialog, () => setShowUnsavedDialog(false));
   useBackHandler(showSaveConfirmationDialog, () => setShowSaveConfirmationDialog(false));
 
@@ -611,6 +611,9 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       onBack?.();
     }
   };
+
+  // Back gesture on editor panel checks for unsaved changes before closing
+  useBackHandler(true, handleBack);
 
   const handleDiscardChanges = () => {
     setShowUnsavedDialog(false);

@@ -37,8 +37,8 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [showUnsavedToolsDialog, setShowUnsavedToolsDialog] = useState(false);
 
-  // Back gesture closes editor panel instead of minimizing app
-  useBackHandler(showEditorPanel, () => setShowEditorPanel(false));
+  // Back gesture closes unsaved tools dialog
+  useBackHandler(showUnsavedToolsDialog, () => setShowUnsavedToolsDialog(false));
 
   // Snapshot of invitation data for tools-level unsaved changes detection
   const savedDataSnapshot = useRef<string>("");
