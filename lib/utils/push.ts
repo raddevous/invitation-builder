@@ -9,23 +9,36 @@ export async function registerPushNotifications(invitationId: string): Promise<v
     if (permStatus.receive === "prompt") {
       permStatus = await PushNotifications.requestPermissions();
     }
-    if (permStatus.receive !== "granted") return;
+    if (permStatus.receive !== "granted") {
+      console.log("[Push] Permission not granted");
+      return;
+    }
 
     PushNotifications.addListener("registration", async (token: Token) => {
+      console.log("[Push] Registration token:", token.value);
       try {
-        await fetch("/api/push-token", {
+        const res = await fetch("/api/push-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ invitationId, token: token.value }),
         });
-      } catch {
-        // silently fail — token registration is best-effort
+        console.log("[Push] Token save response:", res.status, await res.text());
+      } catch (err) {
+        console.error("[Push] Token save failed:", err);
       }
     });
 
+    PushNotifications.addListener("registrationError", (err) => {
+      console.error("[Push] Registration error:", err);
+    });
+
+    PushNotifications.addListener("pushNotificationReceived", (notification) => {
+      console.log("[Push] Notification received:", notification);
+    });
+
     await PushNotifications.register();
-  } catch {
-    // silently fail
+  } catch (err) {
+    console.error("[Push] Setup failed:", err);
   }
 }
