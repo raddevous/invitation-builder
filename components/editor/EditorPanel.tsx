@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { Invitation, InvitationData } from "@/lib/types/invitation";
 import { supabase } from "@/lib/supabase/client";
 import { debounce, buildInviteUrl } from "@/lib/utils";
+import { shareInviteLink } from "@/lib/utils/share";
 import { saveDemoInvitation } from "@/lib/demo/demo-data";
 import EventDetailsTab from "./tabs/EventDetailsTab";
 import SectionsTab from "./tabs/SectionsTab";
@@ -29,13 +30,15 @@ interface EditorPanelProps {
 
 export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false, isDemoMode = false }: EditorPanelProps) {
   const [invitation, setInvitation] = useState<Invitation>(initial);
-  const [activeTab, setActiveTab] = useState<TabId>("live");
+  const [activeTab, setActiveTab] = useState<TabId>(
+    typeof window !== 'undefined' && window.innerWidth >= 1024 ? "sections" : "live"
+  );
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [hasEverSaved, setHasEverSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [accentColor, setAccentColor] = useState("#2563EB");
+  const [accentColor, setAccentColor] = useState("#6998EE");
   const [desktopMode, setDesktopMode] = useState(false);
   const [panelPosition, setPanelPosition] = useState<"left" | "right">(initial.data.editorPanelPosition ?? "left");
   const [panelExpanded, setPanelExpanded] = useState(initial.data.editorPanelExpanded ?? false);
@@ -59,6 +62,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [localShowScreenDimensions, setLocalShowScreenDimensions] = useState(showScreenDimensions);
   const [demoToast, setDemoToast] = useState<string | null>(null);
+  const [designHeader, setDesignHeader] = useState<{ title: string; description: string; onBack: () => void } | null>(null);
 
   // Show demo mode toast message
   const showDemoToast = (message: string) => {
@@ -89,6 +93,35 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     return () => clearTimeout(timer);
   }, []);
 
+  // Disable right-click in build mode (covers all tabs, not just Live)
+  useEffect(() => {
+    const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener('contextmenu', preventContextMenu);
+    return () => document.removeEventListener('contextmenu', preventContextMenu);
+  }, []);
+
+  // Hide mobile browser URL bar on mount (only on mobile)
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth >= 1024) return;
+
+    // Small scroll on mount to hide URL bar
+    window.scrollTo(0, 1);
+
+    let urlBarHidden = false;
+    const handleScroll = () => {
+      if (window.scrollY > 0 && !urlBarHidden) {
+        // User scrolled down even slightly — help hide the URL bar
+        urlBarHidden = true;
+        window.scrollTo(0, window.scrollY + 80);
+      } else if (window.scrollY <= 1) {
+        // Back at top — URL bar shows again, allow re-hiding on next scroll
+        urlBarHidden = false;
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // Load settings from localStorage on mount
   useEffect(() => {
     const storedSettings = localStorage.getItem('appSettings');
@@ -96,7 +129,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       try {
         const parsed = JSON.parse(storedSettings);
         setIsDarkMode(parsed.isDarkMode ?? true);
-        setAccentColor(parsed.accentColor ?? "#2563EB");
+        setAccentColor(parsed.accentColor ?? "#6998EE");
         setHideSaveConfirmationDialog(parsed.hideSaveConfirmationDialog ?? false);
         setHideInstructions(parsed.hideInstructions ?? false);
         setLocalShowScreenDimensions(parsed.showScreenDimensions ?? false);
@@ -121,6 +154,9 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     const checkScreenSize = () => {
       const isDesktop = window.innerWidth >= 1024;
       setDesktopMode(isDesktop);
+      if (isDesktop && activeTab === "live") {
+        setActiveTab("sections");
+      }
     };
 
     // Check on mount
@@ -133,7 +169,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [activeTab]);
 
   // Trigger opening animation when panel reopens
   useEffect(() => {
@@ -303,6 +339,13 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         setHasEverSaved(true);
         // Clear pending changes now that they are committed
         setPendingChanges({});
+
+        // Update localStorage so the builder reloads the latest data after refresh
+        try {
+          localStorage.setItem('invitation', JSON.stringify({ id, slug, data: dataToSave }));
+        } catch (e) {
+          console.error('[EditorPanel] Failed to update localStorage:', e);
+        }
       } catch (error) {
         console.error('[EditorPanel] Save error:', error);
         setSaveStatus("error");
@@ -412,6 +455,13 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       setSaveStatus("saved");
       setHasUnsavedChanges(false);
       setHasEverSaved(true);
+
+      // Update localStorage so the builder reloads the latest data after refresh
+      try {
+        localStorage.setItem('invitation', JSON.stringify({ ...invitation, data: dataToSave }));
+      } catch (e) {
+        console.error('[EditorPanel] Failed to update localStorage:', e);
+      }
     } catch (error) {
       console.error('[EditorPanel] Immediate save error:', error);
       setSaveStatus("error");
@@ -578,16 +628,17 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     onBack?.();
   };
 
-  const copyInviteLink = () => {
+  const copyInviteLink = async () => {
     if (isDemoMode) {
       showDemoToast("Sharing is available after you sign up and purchase your invitation.");
       return;
     }
     const url = buildInviteUrl(invitation.slug);
-    navigator.clipboard.writeText(url).then(() => {
+    const result = await shareInviteLink(url, "Invitation");
+    if (result === "copied") {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }
   };
 
   const inviteUrl = buildInviteUrl(invitation.slug);
@@ -609,7 +660,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       case "details":
         return "Fill in the important wedding information to display on your website";
       case "design":
-        return "Choose your welcome screen, default typography and color";
+        return "Welcome screen, typography, color";
       case "sections":
         return "Choose what invitation feature to show on your website";
       case "live":
@@ -643,7 +694,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const panelWidth = panelExpanded ? "400px" : "350px";
 
   return (
-    <div className={`flex h-screen w-full bg-transparent relative ${desktopMode ? "" : "flex-col"}`} style={desktopMode ? {} : { maxWidth: "100%", margin: "0 auto" }}>
+    <div className={`flex w-full bg-transparent relative ${desktopMode ? "h-screen" : "flex-col min-h-screen"} ${isDarkMode ? "dark" : ""}`} style={desktopMode ? {} : { maxWidth: "100%", margin: "0 auto" }}>
       {/* Screen dimensions overlay - global */}
       {localShowScreenDimensions && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[80] no-print bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full pointer-events-none">
@@ -683,11 +734,11 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       {!desktopMode && activeTab !== "live" && (
         <div className={`p-4 border-b shrink-0 ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
           <div className="flex items-center gap-3">
-            {onBack && (
+            {(activeTab === "design" && designHeader ? true : !!onBack) && (
               <button
-                onClick={handleBack}
+                onClick={activeTab === "design" && designHeader ? designHeader.onBack : handleBack}
                 className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
-                title="Back to Tools"
+                title={activeTab === "design" && designHeader ? "Back to Design" : "Back to Tools"}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -696,10 +747,10 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
             )}
             <div>
               <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
-                Wedding Website
+                {activeTab === "design" && designHeader ? designHeader.title : "Wedding Website"}
               </h2>
               <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                {getTabDescription(activeTab)}
+                {activeTab === "design" && designHeader ? designHeader.description : getTabDescription(activeTab)}
               </p>
             </div>
           </div>
@@ -717,18 +768,27 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         }`} style={{ width: panelWidth, order: panelPosition === "left" ? 0 : 2 }}>
           <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: isDarkMode ? "#374151" : "#e5e7eb" }}>
             <div className="flex items-center gap-3">
-              {onBack && (
+              {(activeTab === "design" && designHeader ? true : !!onBack) && (
                 <button
-                  onClick={handleBack}
+                  onClick={activeTab === "design" && designHeader ? designHeader.onBack : handleBack}
                   className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
-                  title="Back to Tools"
+                  title={activeTab === "design" && designHeader ? "Back to Design" : "Back to Tools"}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M19 12H5M12 19l-7-7 7-7" />
                   </svg>
                 </button>
               )}
-              <h2 className={`text-lg font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`} style={{ fontFamily: "Inter, sans-serif" }}>Editor</h2>
+              <div>
+                <h2 className={`text-lg font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  {activeTab === "design" && designHeader ? designHeader.title : "Editor"}
+                </h2>
+                {activeTab === "design" && designHeader && (
+                  <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                    {designHeader.description}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-1">
               {/* Toggle position button */}
@@ -791,7 +851,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           {/* Tab content in sidebar */}
           <div className={`flex-1 overflow-y-auto ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"} p-4`}>
             {activeTab === "design" && (
-              <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} />
+              <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
             )}
             {activeTab === "details" && (
               <EventDetailsTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} />
@@ -831,7 +891,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
                 onClick={() => handleTabChange(tab.id)}
                 className={`flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
                   activeTab === tab.id 
-                    ? "bg-[#b88a78]/10 text-[#b88a78]" 
+                    ? "bg-[#6998EE]/10 text-[#6998EE]" 
                     : (isDarkMode ? "text-gray-400 hover:bg-gray-700" : "text-gray-600 hover:bg-gray-50")
                 }`}
                 style={{ color: activeTab === tab.id ? accentColor : undefined }}
@@ -855,7 +915,8 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       )}
 
       {/* Main content area */}
-      <div className={`relative flex-1 ${activeTab === "live" ? "overflow-hidden" : "overflow-y-auto"} ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"}`} style={desktopMode ? { order: 1 } : {}}>
+      <div className={`relative flex-1 flex flex-col ${desktopMode ? "overflow-hidden" : ""} ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"}`} style={desktopMode ? { order: 1 } : { paddingBottom: "56px" }}>
+        <div className={`${activeTab === "live" || desktopMode ? "flex-1 min-h-0" : "hidden"} ${activeTab === "live" || (!desktopMode && activeTab === "design") ? "overflow-hidden" : ""}`}>
         <LiveEditView
           invitation={invitation}
           onChange={queueChange}
@@ -886,6 +947,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           onToggleScreenDimensions={handleToggleScreenDimensions}
           isDemoMode={isDemoMode}
         />
+        </div>
 
         {/* Universal Apply button - appears when there are pending changes */}
         {hasPendingChanges && (
@@ -915,11 +977,11 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           </button>
         )}
 
-        {!desktopMode && (
+        {!desktopMode && activeTab !== "live" && (
           /* Mobile tab content - scrollable */
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className={`${activeTab === "design" ? "overflow-hidden" : ""} ${activeTab === "design" ? "" : "p-4"}`}>
             {activeTab === "design" && (
-              <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} />
+              <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
             )}
             {activeTab === "details" && (
               <EventDetailsTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} />
@@ -955,14 +1017,14 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
       {/* Bottom navigation tabs - only show in mobile mode */}
       {!desktopMode && (
-        <nav className={`${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"} border-t shrink-0 no-print`}>
+        <nav className={`fixed bottom-0 left-0 right-0 z-50 ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"} border-t shrink-0 no-print`}>
           <div className="flex">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs transition-colors ${
-                  activeTab === tab.id ? "text-[#b88a78]" : (isDarkMode ? "text-gray-400" : "text-gray-400")
+                  activeTab === tab.id ? "text-[#6998EE]" : (isDarkMode ? "text-gray-400" : "text-gray-400")
                 }`}
                 style={{ color: activeTab === tab.id ? accentColor : undefined }}
               >

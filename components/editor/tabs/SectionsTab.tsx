@@ -1,6 +1,5 @@
-import type { InvitationData, InvitationSections, DividerType, StockAsset } from "@/lib/types/invitation";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { fetchAssets } from "@/lib/utils";
+import type { InvitationData, InvitationSections, DividerType } from "@/lib/types/invitation";
+import { useState, useEffect, useCallback } from "react";
 import QRUpload from "../QRUpload";
 import EditableZone from "@/components/invitation/EditableZone";
 import ColorControl from "@/components/shared/ColorControl";
@@ -22,7 +21,7 @@ function Toggle({
   checked,
   onToggle,
   isDarkMode = false,
-  accentColor = "#B88A78",
+  accentColor = "#6998EE",
 }: {
   label: string;
   description?: string;
@@ -82,7 +81,7 @@ const ALL_SECTIONS = [
   { key: "footer" as const, label: "Footer", description: "Couple name and venue at the bottom" },
 ];
 
-export default function SectionsTab({ data, onChange, isDarkMode = false, accentColor = "#B88A78", onPendingEntourageChange, onLocalVisibleSectionsChange, invitationId }: SectionsTabProps) {
+export default function SectionsTab({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onPendingEntourageChange, onLocalVisibleSectionsChange, invitationId }: SectionsTabProps) {
   const defaultSectionOrder = ["hero", "event-details", "gallery", "map", "rsvp", "timeline", "countdown", "dresscode", "giftguide", "wedding-directory", "entourage", "footer"];
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   const [localVisibleSections, setLocalVisibleSections] = useState(data.entourage?.visibleSections || {});
@@ -98,37 +97,6 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
   const { options: predefinedSectionColors } = usePredefinedOptions('section_colors');
   const [isMobileBackgroundMode, setIsMobileBackgroundMode] = useState(false);
   const [showBgImagePicker, setShowBgImagePicker] = useState(false);
-  const [bgStockAssets, setBgStockAssets] = useState<StockAsset[]>([]);
-  const [bgUploading, setBgUploading] = useState(false);
-  const bgFileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetchAssets("backgrounds").then(setBgStockAssets);
-  }, []);
-
-  const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !invitationId) return;
-    setBgUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("field", "heroBackground");
-      fd.append("invitationId", invitationId);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("Upload failed");
-      const { url } = await res.json();
-      const field = isMobileBackgroundMode ? "heroBackgroundImagesMobile" : "heroBackgroundImages";
-      const currentImages = isMobileBackgroundMode ? (data.heroBackgroundImagesMobile || []) : (data.heroBackgroundImages || []);
-      onChange(field, [...currentImages, url]);
-      setShowBgImagePicker(false);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setBgUploading(false);
-      if (bgFileInputRef.current) bgFileInputRef.current.value = "";
-    }
-  };
 
   const handleBgSelect = (url: string) => {
     if (!url) return;
@@ -140,6 +108,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(data.collapsedSections ?? ["event-details", "gallery", "map", "rsvp", "timeline", "countdown", "dresscode", "giftguide", "wedding-directory", "entourage", "footer"]));
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
+  const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   // Notify parent of local visible sections changes
   useEffect(() => {
     onLocalVisibleSectionsChange?.(localVisibleSections);
@@ -368,6 +337,235 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
     onChange("sectionOrder", newOrder as unknown as string);
   };
 
+  const cycleIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  );
+
+  const cycleText = (predefined: string[], current: string): string => {
+    const currentIndex = predefined.indexOf(current);
+    const nextIndex = currentIndex === -1 || currentIndex === predefined.length - 1 ? 0 : currentIndex + 1;
+    return predefined[nextIndex];
+  };
+
+  const renderSectionHeadingMessage = (sectionId: string) => {
+    const config: Record<string, {
+      headingField: keyof InvitationData;
+      headingPlaceholder: string;
+      headingPredefined: string[];
+      messageField?: keyof InvitationData;
+      messagePlaceholder?: string;
+      messagePredefined?: string[];
+      messageEntourageField?: string;
+      messageEntouragePredefined?: string[];
+      topTextField?: keyof InvitationData;
+      topTextEntourageField?: string;
+      topTextPlaceholder?: string;
+      topTextPredefined?: string[];
+      topTextEntouragePredefined?: string[];
+      bottomTextLabel?: string;
+    }> = {
+      "event-details": {
+        headingField: "eventDetailsHeading", headingPlaceholder: "Event Details",
+        headingPredefined: ["Event Details", "Wedding Details", "Our Wedding Day", "Celebration Details", "The Big Day"],
+        messageField: "eventDetailsMessage", messagePlaceholder: "We're so excited to celebrate our special day with you...",
+        messagePredefined: ["We're so excited to celebrate our special day with you...", "We can't wait to share this moment with our favorite people. Here are all the details for our celebration.", "The day we've been dreaming of is almost here. We're honored to have you join us for our wedding.", "Our wedding day wouldn't be complete without you. Here's everything you need to know about the celebration.", "We're counting down the days until we say 'I do' in front of our loved ones. Here are the event details."],
+      },
+      gallery: {
+        headingField: "galleryHeading", headingPlaceholder: "Our Moments",
+        headingPredefined: ["Our Moments", "Photo Gallery", "Our Memories", "Picture Perfect", "Cherished Moments", "Wedding Gallery", "Special Moments"],
+        messageField: "galleryMessage", messagePlaceholder: "A collection of our favorite moments together...",
+        messagePredefined: ["A collection of our favorite moments together...", "These photos capture the beautiful memories we've shared. Each one tells a story of our journey.", "Moments frozen in time, memories that will last forever. Here's our story in pictures.", "A glimpse into our life together - the laughter, the love, and all the beautiful moments in between.", "These photos represent the journey that brought us here and the love that keeps us together."],
+      },
+      map: {
+        headingField: "mapHeading", headingPlaceholder: "Location",
+        headingPredefined: ["Location", "Venue", "Where We'll Celebrate", "Find Us Here", "The Venue", "Celebration Venue", "Reception Location"],
+        messageField: "mapMessage", messagePlaceholder: "We look forward to celebrating with you at this beautiful venue...",
+        messagePredefined: ["We look forward to celebrating with you at this beautiful venue...", "Join us at this stunning location for our special day. Your presence will make our celebration complete.", "We've chosen this beautiful venue to celebrate our love. We can't wait to share this special moment with you.", "Please join us at this beautiful location as we begin our journey together. Your presence means the world to us.", "We're thrilled to celebrate our wedding at this wonderful venue. Thank you for being part of our special day."],
+      },
+      rsvp: {
+        headingField: "rsvpHeaderCustom", headingPlaceholder: "RSVP",
+        headingPredefined: ["RSVP", "Kindly reply", "Please respond", "Your response", "RSVP request"],
+        topTextField: "rsvpTopTextCustom", topTextPlaceholder: "Confirm your attendance",
+        topTextPredefined: ["Confirm your attendance", "Reserve your spot", "Lock in your seat", "Verify your attendance", "Secure your invitation", "Register for this event", "Claim your ticket", "Let us know you're coming"],
+        messageField: "rsvpBottomTextCustom", messagePlaceholder: "Please respond by...",
+        bottomTextLabel: "Bottom Text",
+      },
+      timeline: {
+        headingField: "timelineHeading", headingPlaceholder: "Our Story",
+        headingPredefined: ["Our Story", "Love Story", "Our Journey", "How We Met", "Our Path Together", "Our Love Journey"],
+        messageField: "timelineMessage", messagePlaceholder: "From our first meeting to this special day, here's our journey together...",
+        messagePredefined: ["From our first meeting to this special day, here's our journey together...", "Every moment we've shared has led us here. This is our love story in milestones.", "Our journey began with a single moment and has grown into a beautiful adventure. Here are the highlights.", "Each milestone in our journey has been a step toward forever. Here's our story.", "The path that led us to this day has been filled with love, laughter, and unforgettable moments."],
+      },
+      countdown: {
+        headingField: "countdownHeading", headingPlaceholder: "Countdown",
+        headingPredefined: ["Counting Down", "Countdown", "Time Until", "Almost There", "Coming Soon", "Days Until"],
+        messageField: "countdownMessage", messagePlaceholder: "Counting down to our special day...",
+        messagePredefined: ["Counting down the days until our special moment together...", "Every moment brings us closer to our special day. We can't wait to celebrate with you!", "The countdown to our wedding has begun. We're so excited to share this day with you.", "As we count down to our wedding day, we're filled with joy and anticipation. See you soon!", "Our special day is approaching fast. We're counting down the moments until we celebrate with you."],
+      },
+      dresscode: {
+        headingField: "dresscodeHeading", headingPlaceholder: "Dress Code",
+        headingPredefined: ["Dress Code", "Dress to Celebrate", "Our Wedding Vision", "Palette & Presentation", "Wedding Attire", "What to Wear"],
+        messageField: "dresscodeBody", messagePlaceholder: "We look forward to seeing everyone dressed in their finest!",
+        messagePredefined: ["We look forward to seeing everyone dressed in their finest!\nDetails below:", "Dress code details can be found below.", "Find our look book details below.", "Friendly & Casual", "Please see our attire guide below.", "See below for wardrobe details."],
+      },
+      giftguide: {
+        headingField: "giftguideHeading", headingPlaceholder: "Gift Guide",
+        headingPredefined: ["Gift Guide", "For Those Who Wish", "Gifting Information", "Wedding Gifts", "Registry & Gifts", "With Gratitude"],
+        messageField: "giftMessage", messagePlaceholder: "Your love, presence, and prayers mean the world to us...",
+        messagePredefined: ["Your love and support are the greatest gifts we could ever receive. If you would like to honor us with a gift, a contribution toward building our new life together would be sincerely appreciated and deeply cherished.", "As we begin this beautiful new chapter, your presence and blessings mean everything to us. Should you wish to bless us with a gift, a contribution toward our future home and dreams would be most warmly appreciated.", "Celebrating our wedding day with you is our highest joy. For those who wish to honor us with a token of love, a contribution toward our journey ahead would be a wonderful blessing to our new family.", "Your love and prayers mean the world to us as we marry. If you would like to honor us with a gift, a contribution toward our honeymoon and setting up our future home would be a beautiful blessing.", "We are incredibly grateful for the love that surrounds us. If you wish to bless us with a gift, we kindly ask for a contribution toward our future goals, helping us build a foundation for the life ahead."],
+      },
+      "wedding-directory": {
+        headingField: "weddingDirectoryHeading", headingPlaceholder: "Wedding Directory",
+        headingPredefined: ["Wedding Directory", "Our Directory", "Wedding Contacts", "Meet the Team", "The People", "Meet the Family"],
+        messageField: "weddingDirectoryMessage", messagePlaceholder: "A special place for our wedding details and contacts...",
+        messagePredefined: ["A special place for our wedding details and contacts...", "Here you'll find all the important people and details for our wedding day.", "Meet the wonderful people helping make our day special.", "We're so happy to share this directory with you.", "A guide to the people and details that make our day special."],
+      },
+      entourage: {
+        headingField: "entourageHeading", headingPlaceholder: "Wedding Entourage",
+        headingPredefined: ["Wedding Entourage", "Our Entourage", "The Wedding Party", "Our Wedding Party", "Our Special People"],
+        topTextEntourageField: "topTextCustom", topTextPlaceholder: "Those who stand with Groom & Bride",
+        topTextEntouragePredefined: [
+          `Those who stand with ${data.hisName || "Groom"} & ${data.herName || "Bride"}`,
+          `The chosen family of ${data.hisName || "Groom"} & ${data.herName || "Bride"}`,
+          `With love and gratitude from ${data.hisName || "Groom"} & ${data.herName || "Bride"}`,
+          `${data.hisName || "Groom"} & ${data.herName || "Bride"}'s Wedding Squad`,
+          `The I Do Crew of ${data.hisName || "Groom"} & ${data.herName || "Bride"}`,
+        ],
+        messageEntourageField: "bottomTextCustom", messagePlaceholder: "Honoring those who share in our joy",
+        messageEntouragePredefined: ["Honoring those who share in our joy", "Forever grateful for your love and guidance", "Our biggest inspirations and guides", "With us for a lifetime", "Rooted in love and friendship", "For your endless support and laughter", "Celebrating the love that surrounds us", "With deepest gratitude for your presence", "Our ultimate support system", "The anchors of our lives"],
+        bottomTextLabel: "Bottom Text",
+      },
+    };
+
+    const cfg = config[sectionId];
+    if (!cfg) return null;
+
+    const headingValue = (data[cfg.headingField] as string) ?? "";
+    const topTextValue = cfg.topTextEntourageField
+      ? ((pendingEntourageChanges as any)?.[cfg.topTextEntourageField] as string ?? "")
+      : cfg.topTextField ? ((data[cfg.topTextField] as string) ?? "") : "";
+    const messageValue = cfg.messageEntourageField
+      ? ((pendingEntourageChanges as any)?.[cfg.messageEntourageField] as string ?? "")
+      : cfg.messageField ? ((data[cfg.messageField] as string) ?? "") : "";
+
+    const rsvpBottomPredefined = (() => {
+      const deadline = data.rsvpDeadline || "November 30, 2026";
+      return [
+        `Kindly reply by ${deadline}`,
+        `RSVP requested by ${deadline}`,
+        `Please respond by ${deadline}`,
+        `Kindly confirm by ${deadline}`,
+        `Responses due by ${deadline}`,
+        `Please RSVP by ${deadline}`,
+        `Kindly advise by ${deadline}`,
+        `Reply requested: ${deadline}`,
+        `Confirm attendance by ${deadline}`,
+      ];
+    })();
+
+    return (
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Heading Text</label>
+          <div className="relative">
+            <input
+              type="text"
+              value={headingValue}
+              onChange={(e) => onChange(cfg.headingField, e.target.value)}
+              placeholder={cfg.headingPlaceholder}
+              className={`w-full px-3 py-2.5 pr-8 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+              style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+            />
+            <button
+              type="button"
+              onClick={() => onChange(cfg.headingField, cycleText(cfg.headingPredefined, headingValue))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              title="Generate heading"
+            >
+              {cycleIcon}
+            </button>
+          </div>
+        </div>
+        {(cfg.topTextField || cfg.topTextEntourageField) && (
+          <div className="space-y-1">
+            <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Top Text</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={topTextValue}
+                onChange={(e) => {
+                  if (cfg.topTextEntourageField) {
+                    updateEntourageField(cfg.topTextEntourageField, e.target.value);
+                  } else if (cfg.topTextField) {
+                    onChange(cfg.topTextField, e.target.value);
+                  }
+                }}
+                placeholder={cfg.topTextPlaceholder}
+                className={`w-full px-3 py-2.5 pr-8 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const predefined = cfg.topTextEntouragePredefined || cfg.topTextPredefined || [];
+                  if (cfg.topTextEntourageField) {
+                    updateEntourageField(cfg.topTextEntourageField, cycleText(predefined, topTextValue));
+                  } else if (cfg.topTextField) {
+                    onChange(cfg.topTextField, cycleText(predefined, topTextValue));
+                  }
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                title="Generate text"
+              >
+                {cycleIcon}
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="space-y-1">
+          <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{cfg.bottomTextLabel ?? "Message Text"}</label>
+          <div className="relative">
+            <textarea
+              value={messageValue}
+              onChange={(e) => {
+                if (cfg.messageEntourageField) {
+                  updateEntourageField(cfg.messageEntourageField, e.target.value);
+                } else if (cfg.messageField) {
+                  onChange(cfg.messageField, e.target.value);
+                }
+              }}
+              placeholder={cfg.messagePlaceholder}
+              rows={3}
+              className={`w-full px-3 py-2.5 pr-8 border rounded-lg text-sm focus:outline-none transition-colors resize-none ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+              style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const predefined = cfg.messageEntouragePredefined || cfg.messagePredefined || (sectionId === "rsvp" ? rsvpBottomPredefined : []);
+                if (cfg.messageEntourageField) {
+                  updateEntourageField(cfg.messageEntourageField, cycleText(predefined, messageValue));
+                } else if (cfg.messageField) {
+                  onChange(cfg.messageField, cycleText(predefined, messageValue));
+                }
+              }}
+              className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+              title="Generate text"
+            >
+              {cycleIcon}
+            </button>
+          </div>
+        </div>
+        <div className={`border-t pt-4 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
+      </div>
+    );
+  };
+
   return (
     <div className={`flex flex-col h-full ${isDarkMode ? "bg-gray-800" : ""}`}>
       {/* Scrollable content area */}
@@ -399,9 +597,12 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             onDragLeave={handleDragLeave}
             onDragEnd={handleDragEnd}
             onDrop={(e) => handleDrop(e, index)}
-            className={`border rounded-xl overflow-hidden transition-all duration-300 ${isDarkMode ? "border-gray-700" : "border-gray-200"} ${isArrangeMode && !isLocked ? "cursor-move" : ""} ${draggedIndex === index ? "opacity-50 scale-95" : ""} ${dragOverIndex === index ? "border-2" : ""} ${highlightedSection === sectionId ? "ring-2 ring-offset-2" : ""}`}
+            onMouseEnter={() => setHoveredSection(sectionId)}
+            onMouseLeave={() => setHoveredSection(null)}
+            className={`border rounded-xl overflow-hidden transition-all duration-300 ${isArrangeMode && !isLocked ? "cursor-move" : ""} ${draggedIndex === index ? "opacity-50 scale-95" : ""} ${dragOverIndex === index ? "border-2" : ""} ${highlightedSection === sectionId ? "ring-2 ring-offset-2" : ""}`}
             style={{
               backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+              borderColor: hoveredSection === sectionId ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
               ...(dragOverIndex === index ? {
                 borderColor: accentColor,
                 backgroundColor: isDarkMode 
@@ -416,7 +617,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
               } : {})
             }}
           >
-            <div className="flex items-center gap-3 p-4">
+            <div className={`flex items-center gap-3 p-4 ${!isArrangeMode && (isHero || isEventDetails || (isFooter && (data.sections.footer ?? true)) || (isEntourage && (data.sections.entourage ?? true)) || (!isFooter && !isEntourage && data.sections[section.key as keyof typeof data.sections])) ? `cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}` : ""}`}>
               {/* Drag handle in arrange mode for non-locked sections, or checkbox for reorderable sections, or lock icon for locked sections */}
               {isArrangeMode && !isLocked ? (
                 <div className="flex items-center justify-center w-6 h-6 shrink-0 cursor-grab active:cursor-grabbing">
@@ -441,7 +642,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                   type="checkbox"
                   checked={section.id === "event-details" ? (data.sections.eventdetails ?? true) : (data.sections[section.key!] ?? (section.key === "footer" || section.key === "entourage" ? true : false))}
                   onChange={() => handleCheckboxChange(section.id === "event-details" ? "eventdetails" : section.key!)}
-                  className="w-5 h-5 rounded border-gray-300 text-[#B88A78] focus:ring-[#B88A78] cursor-pointer shrink-0"
+                  className="w-5 h-5 rounded border-gray-300 text-[#6998EE] focus:ring-[#6998EE] cursor-pointer shrink-0"
                   style={{ accentColor: accentColor }}
                 />
               )}
@@ -494,7 +695,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                       }
                     }
                   }}
-                  className="flex-1 flex items-center justify-between text-left cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors"
+                  className="flex-1 flex items-center justify-between text-left cursor-pointer rounded-lg px-2 py-1 -mx-2 -my-1"
                 >
                   <div>
                     <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>{section.label}</p>
@@ -633,34 +834,6 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                       </div>
                       <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10">
                         <div className="grid grid-cols-3 gap-3">
-                          {/* Upload slot */}
-                          <button
-                            onClick={() => bgFileInputRef.current?.click()}
-                            disabled={bgUploading}
-                            className="aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-all active:scale-95"
-                            style={{ borderColor: `${accentColor}66`, backgroundColor: isDarkMode ? "transparent" : "#fff8f3" }}
-                          >
-                            {bgUploading ? (
-                              <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: accentColor, borderTopColor: "transparent" }} />
-                            ) : (
-                              <>
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="1.5">
-                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                  <polyline points="17 8 12 3 7 8" />
-                                  <line x1="12" y1="3" x2="12" y2="15" />
-                                </svg>
-                                <span className="text-[10px] font-semibold tracking-wide" style={{ color: accentColor }}>Upload</span>
-                              </>
-                            )}
-                          </button>
-                          <input
-                            ref={bgFileInputRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleBgUpload}
-                          />
-
                           {/* Gallery images */}
                           {(data.galleryImages || []).filter(Boolean).map((url, i) => (
                             <button
@@ -672,111 +845,18 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                             </button>
                           ))}
 
-                          {/* Stock background assets */}
-                          {bgStockAssets.filter(a => a.url).map((asset) => (
-                            <button
-                              key={asset.id}
-                              onClick={() => handleBgSelect(asset.url)}
-                              className="aspect-square rounded-2xl border-2 border-transparent overflow-hidden transition-all active:scale-95 hover:border-gray-300"
-                            >
-                              <img src={asset.thumbnail || asset.url} alt={asset.label} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
-
                           {/* Empty state */}
-                          {(data.galleryImages || []).filter(Boolean).length === 0 && bgStockAssets.filter(a => a.url).length === 0 && (
+                          {(data.galleryImages || []).filter(Boolean).length === 0 && (
                             <div className="col-span-3 text-center py-8 text-gray-400 text-sm">
                               No images available.
                               <br />
-                              Upload your own above.
+                              Add photos in Tools &gt; Media &gt; Photo Gallery.
                             </div>
                           )}
                         </div>
                       </div>
                     </div>
                   </>
-                )}
-
-                {/* Background Color Overlay */}
-                <div className="space-y-1">
-                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Background Color Overlay</label>
-                  <select
-                    value={data.heroBackgroundOverlay ?? "solid"}
-                    onChange={(e) => onChange("heroBackgroundOverlay", e.target.value as "solid" | "gradient")}
-                    className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-      style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                  >
-                    <option value="solid">Solid Color</option>
-                    <option value="gradient">Gradient</option>
-                  </select>
-                </div>
-
-                {/* Overlay Color 1 */}
-                <ColorControl
-                  label="Overlay Color 1"
-                  value={data.heroOverlayColor1 ?? ""}
-                  onChange={(value: string) => onChange("heroOverlayColor1", value)}
-                  isDarkMode={isDarkMode}
-                  accentColor={accentColor}
-                  predefinedColors={predefinedSectionColors.map(c => c.value)}
-                />
-
-                {/* Transparency for Top Color */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs tracking-wide uppercase text-gray-500">Transparency</label>
-                    <span className="text-xs text-gray-500">
-                      {Math.round((data.heroOverlayOpacity1 ?? 0.7) * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={data.heroOverlayOpacity1 ?? 0.7}
-                    onChange={(e) => onChange("heroOverlayOpacity1", parseFloat(e.target.value))}
-                    className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((data.heroOverlayOpacity1 ?? 0.7) * 100)}%, rgba(255,255,255,0.3) ${((data.heroOverlayOpacity1 ?? 0.7) * 100)}%, rgba(255,255,255,0.3) 100%)`,
-                    }}
-                  />
-                </div>
-
-                {/* Overlay Color 2 - only for gradient */}
-                {(data.heroBackgroundOverlay ?? "solid") === "gradient" && (
-                <ColorControl
-                  label="Overlay Color 2"
-                  value={data.heroOverlayColor2 ?? ""}
-                  onChange={(value: string) => onChange("heroOverlayColor2", value)}
-                  isDarkMode={isDarkMode}
-                  accentColor={accentColor}
-                  predefinedColors={predefinedSectionColors.map(c => c.value)}
-                />
-                )}
-
-                {/* Transparency for Overlay Color 2 - only for gradient */}
-                {(data.heroBackgroundOverlay ?? "solid") === "gradient" && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs tracking-wide uppercase text-gray-500">Transparency</label>
-                    <span className="text-xs text-gray-500">
-                      {Math.round((data.heroOverlayOpacity2 ?? 0.7) * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={data.heroOverlayOpacity2 ?? 0.7}
-                    onChange={(e) => onChange("heroOverlayOpacity2", parseFloat(e.target.value))}
-                    className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${((data.heroOverlayOpacity2 ?? 0.7) * 100)}%, rgba(255,255,255,0.3) ${((data.heroOverlayOpacity2 ?? 0.7) * 100)}%, rgba(255,255,255,0.3) 100%)`,
-                    }}
-                  />
-                </div>
                 )}
 
               </div>
@@ -786,55 +866,16 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             {!isArrangeMode && isEventDetails && !collapsedSections.has("event-details") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
               </div>
             )}
 
 
-            {/* Nested settings only in normal mode when section is expanded */}
-            {!isArrangeMode && !collapsedSections.has(sectionId) && !isDresscode && !isGallery && !isMap && !isRsvp && !isTimeline && !isCountdown && !isGiftguide && !isHero && !isEventDetails && !isEntourage && (
+            {/* Wedding Directory nested settings */}
+            {!isArrangeMode && isWeddingDirectory && !collapsedSections.has("wedding-directory") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
-                {!isFooter && (
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="block text-xs tracking-wide uppercase text-gray-500">Section Heading</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={
-                            isGallery ? data.galleryHeading ?? ""
-                            : isMap ? data.mapHeading ?? ""
-                            : isRsvp ? data.rsvpHeading ?? ""
-                            : isTimeline ? data.timelineHeading ?? ""
-                            : isCountdown ? data.countdownHeading ?? ""
-                            : isDresscode ? data.dresscodeHeading ?? ""
-                            : isGiftguide ? data.giftguideHeading ?? ""
-                            : isWeddingDirectory ? data.weddingDirectoryHeading ?? ""
-                            : ""
-                          }
-                          onChange={(e) => onChange(`${section.key}Heading` as keyof InvitationData, e.target.value)}
-                          placeholder={section.label}
-                          className={`w-full px-3 py-2.5 pr-8 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                      style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                        />
-                      </div>
-                    </div>
-
-                    {isWeddingDirectory && (
-                      <div className="space-y-1">
-                        <label className="block text-xs tracking-wide uppercase text-gray-500">Message</label>
-                        <textarea
-                          value={data.weddingDirectoryMessage ?? ""}
-                          onChange={(e) => onChange("weddingDirectoryMessage", e.target.value)}
-                          placeholder="A special place for our wedding details and contacts..."
-                          rows={3}
-                          className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none transition-colors resize-none ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
+                {renderSectionHeadingMessage(sectionId)}
               </div>
             )}
 
@@ -843,6 +884,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             {!isArrangeMode && isRsvp && !collapsedSections.has("rsvp") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
                 <div className="space-y-1">
                   <label className="block text-xs tracking-wide uppercase text-gray-500">RSVP Deadline</label>
                   <input
@@ -862,6 +904,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             {!isArrangeMode && isDresscode && !collapsedSections.has("dresscode") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
                 {/* Dress Code Categories */}
                 <div className="space-y-3">
                   <label className="block text-xs tracking-wide uppercase text-gray-500">Dress Code Categories</label>
@@ -870,10 +913,15 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                     style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                       <div className="flex items-center gap-2">
                         <select
-                          value={category.label}
+                          value={category.label === "Custom Category" ? "Custom Category" : category.label}
                           onChange={(e) => {
                             const newCategories = [...(data.dressCodeCategories || [])];
-                            newCategories[index] = { ...category, label: e.target.value };
+                            const selected = e.target.value;
+                            if (selected === "Custom Category") {
+                              newCategories[index] = { ...category, label: "Custom Category", customLabel: "" };
+                            } else {
+                              newCategories[index] = { ...category, label: selected, customLabel: undefined };
+                            }
                             onChange("dressCodeCategories", newCategories as unknown as string);
                           }}
                           className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 bg-white"}`}
@@ -882,7 +930,8 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                           <option value="Entourage">Entourage</option>
                           <option value="Immediate Family">Immediate Family</option>
                           <option value="Usher and Usherettes">Usher and Usherettes</option>
-                          <option value="Visitors">Visitors</option>
+                          <option value="Guests">Guests</option>
+                          <option value="Custom Category">Custom Category</option>
                         </select>
                         {index > 0 && (
                           <button
@@ -900,10 +949,24 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                           </button>
                         )}
                       </div>
+                      {category.label === "Custom Category" && (
+                        <input
+                          type="text"
+                          value={(category as any).customLabel || ""}
+                          onChange={(e) => {
+                            const newCategories = [...(data.dressCodeCategories || [])];
+                            newCategories[index] = { ...category, customLabel: e.target.value };
+                            onChange("dressCodeCategories", newCategories as unknown as string);
+                          }}
+                          placeholder="Name this category"
+                          className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 bg-white"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        />
+                      )}
                     </div>
                   ))}
 
-                  {(data.dressCodeCategories || []).length < 4 && (
+                  {(data.dressCodeCategories || []).length < 5 && (
                     <button
                       type="button"
                       onClick={() => {
@@ -917,6 +980,26 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                     </button>
                   )}
                 </div>
+
+                {/* Groom & Bride Colors */}
+                <div className="space-y-3 pt-2">
+                  <ColorControl
+                    label="Groom"
+                    value={(data as any).groomColor || "#1A2B55"}
+                    onChange={(value) => onChange("groomColor", value)}
+                    isDarkMode={isDarkMode}
+                    accentColor={data.accentColor || "#6998EE"}
+                    predefinedColors={predefinedSectionColors.map(opt => opt.value)}
+                  />
+                  <ColorControl
+                    label="Bride"
+                    value={(data as any).brideColor || "#FFFFFF"}
+                    onChange={(value) => onChange("brideColor", value)}
+                    isDarkMode={isDarkMode}
+                    accentColor={data.accentColor || "#6998EE"}
+                    predefinedColors={predefinedSectionColors.map(opt => opt.value)}
+                  />
+                </div>
               </div>
             )}
 
@@ -926,146 +1009,24 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             {!isArrangeMode && isGallery && !collapsedSections.has("gallery") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
               </div>
             )}
 
 
-            {/* Map nested settings */}
+            {/* Map nested settings - heading & message only (venue images managed in Tools tab - Media) */}
             {!isArrangeMode && isMap && !collapsedSections.has("map") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
-                <div className="space-y-2">
-                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Venue Images (Optional)</label>
-                  <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-400"}`}>Add venue images to show instead of map. Multiple images will slideshow. Maximum 5 images.</p>
-                  {(data.venueImages || []).map((imageUrl, index) => (
-                    <div key={index} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={imageUrl}
-                        onChange={(e) => {
-                          const newImages = [...(data.venueImages || [])];
-                          newImages[index] = e.target.value;
-                          onChange("venueImages", newImages as unknown as string);
-                        }}
-                        placeholder="https://example.com/venue-image.jpg"
-                        className={`flex-1 px-3 py-2.5 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                      />
-                      {index === 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if ((data.venueImages || []).length < 5) {
-                              const newImages = [...(data.venueImages || []), ""];
-                              onChange("venueImages", newImages as unknown as string);
-                            }
-                          }}
-                          disabled={(data.venueImages || []).length >= 5}
-                          className="w-10 h-10 flex items-center justify-center rounded-full text-white transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                          style={{ backgroundColor: accentColor }}
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newImages = (data.venueImages || []).filter((_, i) => i !== index);
-                            onChange("venueImages", newImages as unknown as string);
-                          }}
-                          className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {(data.venueImages || []).length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onChange("venueImages", [""] as unknown as string);
-                      }}
-                      className="w-10 h-10 flex items-center justify-center rounded-full text-white transition-colors"
-                      style={{ backgroundColor: accentColor }}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                {renderSectionHeadingMessage(sectionId)}
               </div>
             )}
 
-
-            {/* Timeline nested settings */}
+            {/* Timeline nested settings - heading & message only (timeline events managed in Story Timeline tab) */}
             {!isArrangeMode && isTimeline && !collapsedSections.has("timeline") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
-                <div className="space-y-3">
-                  <label className="block text-xs tracking-wide uppercase text-gray-500">Timeline Events</label>
-                  {Array.from({ length: 4 }).map((_, index) => {
-                    const defaultTitles = ["Where We Met", "First Date", "The Proposal", "The Wedding"];
-                    const event = (data.timelineEvents || [])[index] || { title: "", description: "" };
-                    return (
-                      <div key={index} className={`space-y-2 p-3 rounded-lg border ${isDarkMode ? "border-gray-700" : "bg-white border-gray-200"}`}
-                      style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={event.title}
-                            onChange={(e) => {
-                              const newEvents = [...(data.timelineEvents || [])];
-                              while (newEvents.length <= index) newEvents.push({ title: "", description: "" });
-                              newEvents[index] = { ...newEvents[index], title: e.target.value };
-                              onChange("timelineEvents", newEvents as unknown as string);
-                            }}
-                            placeholder="Event title"
-                            className={`w-full px-3 py-2 pr-8 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                          />
-                          {event.title && event.title !== defaultTitles[index] && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newEvents = [...(data.timelineEvents || [])];
-                                while (newEvents.length <= index) newEvents.push({ title: "", description: "" });
-                                newEvents[index] = { ...newEvents[index], title: defaultTitles[index] };
-                                onChange("timelineEvents", newEvents as unknown as string);
-                              }}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                                <path d="M3 3v5h5" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <textarea
-                          value={event.description}
-                          onChange={(e) => {
-                            const newEvents = [...(data.timelineEvents || [])];
-                            while (newEvents.length <= index) newEvents.push({ title: "", description: "" });
-                            newEvents[index] = { ...newEvents[index], description: e.target.value };
-                            onChange("timelineEvents", newEvents as unknown as string);
-                          }}
-                          placeholder="Event description"
-                          rows={2}
-                          className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors resize-none ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                    style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                {renderSectionHeadingMessage(sectionId)}
               </div>
             )}
 
@@ -1074,6 +1035,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             {!isArrangeMode && isCountdown && !collapsedSections.has("countdown") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
                 <Toggle
                   label="Show the date"
                   checked={data.countdownShowDate ?? false}
@@ -1089,6 +1051,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
             {!isArrangeMode && isGiftguide && !collapsedSections.has("giftguide") && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
                 <div className="space-y-3">
                   <label className="block text-xs tracking-wide uppercase text-gray-500">Bank & Wallet Accounts</label>
                   
@@ -1211,7 +1174,13 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
 
 
 
-            {/* Entourage section editor - moved to Tools Tab */}
+            {/* Entourage nested settings */}
+            {!isArrangeMode && isEntourage && !collapsedSections.has("entourage") && (
+              <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
+              style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                {renderSectionHeadingMessage(sectionId)}
+              </div>
+            )}
           </div>
         );
       })}
