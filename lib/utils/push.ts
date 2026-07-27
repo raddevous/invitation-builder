@@ -11,8 +11,6 @@ export async function registerPushNotifications(invitationId: string): Promise<v
     }
     if (permStatus.receive !== "granted") return;
 
-    await PushNotifications.register();
-
     PushNotifications.addListener("registration", async (token: Token) => {
       try {
         await fetch("/api/push-token", {
@@ -25,6 +23,8 @@ export async function registerPushNotifications(invitationId: string): Promise<v
         // silently fail — token registration is best-effort
       }
     });
+
+    await PushNotifications.register();
   } catch {
     // silently fail
   }
