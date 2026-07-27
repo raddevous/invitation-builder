@@ -82,21 +82,47 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     checkSlug();
   }, [slug]);
 
-  // Auto-load invitation from localStorage to skip second login
+  // Auto-load invitation from localStorage or auth cookie to skip login
   useEffect(() => {
-    if (slugValid) {
-      const stored = localStorage.getItem('invitation');
-      if (stored) {
-        try {
-          const parsed: Invitation = JSON.parse(stored);
-          if (parsed.slug === slug) {
-            loadInvitation(parsed);
-          }
-        } catch {
-          // ignore invalid stored data
+    if (!slugValid) return;
+
+    // Try localStorage first (fast path)
+    const stored = localStorage.getItem('invitation');
+    if (stored) {
+      try {
+        const parsed: Invitation = JSON.parse(stored);
+        if (parsed.slug === slug) {
+          loadInvitation(parsed);
+          return;
         }
+      } catch {
+        // ignore invalid stored data
       }
     }
+
+    // Fallback: verify auth cookie and fetch from server
+    async function verifyAndLoad() {
+      try {
+        const res = await fetch("/api/auth/verify", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.authenticated && data.invitation && data.invitation.slug === slug) {
+          const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
+          const inv = { ...data.invitation, data: invitationData };
+          localStorage.setItem("invitation", JSON.stringify(inv));
+          if (isDarkMode !== undefined || accentColor !== undefined) {
+            localStorage.setItem("appSettings", JSON.stringify({
+              isDarkMode: isDarkMode ?? true,
+              accentColor: accentColor ?? "#6998EE",
+            }));
+          }
+          loadInvitation(inv);
+        }
+      } catch {
+        // not authenticated
+      }
+    }
+    verifyAndLoad();
   }, [slugValid, slug]);
 
   // Fetch invitation by access code (called from EditorLogin)
