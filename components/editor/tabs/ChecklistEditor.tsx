@@ -357,6 +357,7 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                 strokeDasharray={`${2 * Math.PI * 20}`}
                 strokeDashoffset={`${2 * Math.PI * 20 * (1 - getPercentage() / 100)}`}
                 strokeLinecap="round"
+                style={{ transition: "stroke-dashoffset 0.5s ease-in-out" }}
               />
             </svg>
             <span className={`absolute inset-0 flex items-center justify-center text-xs font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`} style={{ fontFamily: "Inter, sans-serif" }}>
