@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import FloatingAddButton from "../shared/FloatingAddButton";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -607,30 +608,17 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
 
         <div className="h-8"></div>
         
-        {/* Edit/Add Checklist button */}
+        {/* Edit/Done button */}
         {isEditMode ? (
-          <div className="space-y-2">
-            <button
-              onClick={addContainer}
-              className="w-full py-3 text-sm font-medium text-center rounded-xl transition-colors border-2 border-dashed"
-              style={{ 
-                color: accentColor, 
-                borderColor: accentColor,
-                backgroundColor: isDarkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)" 
-              }}
-            >
-              + Add Checklist
-            </button>
-            <button
-              onClick={() => setIsEditMode(false)}
-              className="w-full py-3 text-sm font-medium text-center rounded-xl transition-colors text-white"
-              style={{ 
-                backgroundColor: accentColor
-              }}
-            >
-              Done Edit
-            </button>
-          </div>
+          <button
+            onClick={() => setIsEditMode(false)}
+            className="w-full py-3 text-sm font-medium text-center rounded-xl transition-colors text-white"
+            style={{ 
+              backgroundColor: accentColor
+            }}
+          >
+            Done Edit
+          </button>
         ) : (
           <button
             onClick={() => setIsEditMode(true)}
@@ -645,6 +633,11 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
           </button>
         )}
       </div>
+
+      {/* Floating Add button - only in edit mode */}
+      {isEditMode && (
+        <FloatingAddButton onClick={addContainer} accentColor={accentColor} label="Add Checklist" />
+      )}
 
       {/* Saving overlay */}
       {saveStatus !== "idle" && (
