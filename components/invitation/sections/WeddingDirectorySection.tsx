@@ -121,6 +121,119 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const [builderInstructionIndex, setBuilderInstructionIndex] = useState(0);
   const [hideInstructions, setHideInstructions] = useState(false);
 
+  // Heading drag-to-resize state
+  type HeadingDragData = {
+    timer: ReturnType<typeof setTimeout> | null;
+    triggered: boolean;
+    pointerId: number;
+    element: HTMLHeadingElement | null;
+    startX: number;
+    startY: number;
+    startSize: number;
+  };
+  type DragToastSegment = { label: string; value: number; atLimit: boolean };
+  const [headingDragging, setHeadingDragging] = useState(false);
+  const [localHeadingSize, setLocalHeadingSize] = useState<number | null>(null);
+  const [dragToast, setDragToast] = useState<DragToastSegment[] | null>(null);
+  const headingDragRef = useRef<HeadingDragData | null>(null);
+  const isHeadingDragging = useRef(false);
+
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isHeadingDragging.current) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => document.removeEventListener('touchmove', handleTouchMove);
+  }, []);
+
+  const handleHeadingPointerDown = (e: React.PointerEvent<HTMLHeadingElement>) => {
+    const isTouchLike = e.pointerType === 'touch' || e.pointerType === 'pen';
+    if (!editMode || (!isTouchLike && e.button !== 0)) return;
+    if (mergedData.weddingDirectoryUseMainColor !== false) return;
+    const element = e.currentTarget as HTMLHeadingElement;
+    headingDragRef.current = {
+      timer: setTimeout(() => {
+        const d = headingDragRef.current;
+        if (!d) return;
+        d.timer = null;
+        d.triggered = true;
+        isHeadingDragging.current = true;
+        setHeadingDragging(true);
+        try { d.element?.setPointerCapture(d.pointerId); } catch {}
+      }, 350),
+      triggered: false,
+      pointerId: e.pointerId,
+      element,
+      startX: e.clientX,
+      startY: e.clientY,
+      startSize: mergedData.weddingDirectoryHeadingFontSize ?? 100,
+    };
+  };
+
+  const handleHeadingPointerMove = (e: React.PointerEvent<HTMLHeadingElement>) => {
+    const d = headingDragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    if (!d.triggered) {
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (Math.hypot(dx, dy) > 10) {
+        if (d.timer) clearTimeout(d.timer);
+        headingDragRef.current = null;
+      }
+      return;
+    }
+    e.preventDefault();
+    const deltaY = e.clientY - d.startY;
+    const newSize = Math.max(50, Math.min(150, d.startSize - deltaY * 0.5));
+    setLocalHeadingSize(Math.round(newSize));
+    setDragToast([
+      { label: 'Size', value: Math.round(newSize), atLimit: newSize <= 50 || newSize >= 150 },
+    ]);
+  };
+
+  const handleHeadingPointerUp = (e: React.PointerEvent<HTMLHeadingElement>) => {
+    const d = headingDragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    if (d.timer) clearTimeout(d.timer);
+    try { d.element?.releasePointerCapture(d.pointerId); } catch {}
+    setHeadingDragging(false);
+    isHeadingDragging.current = false;
+    setDragToast(null);
+    if (localHeadingSize !== null) {
+      handleChange('weddingDirectoryHeadingFontSize', localHeadingSize);
+      setLocalHeadingSize(null);
+    }
+    setTimeout(() => { headingDragRef.current = null; }, 100);
+  };
+
+  const handleHeadingPointerCancel = (e: React.PointerEvent<HTMLHeadingElement>) => {
+    const d = headingDragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    if (d.timer) clearTimeout(d.timer);
+    headingDragRef.current = null;
+    isHeadingDragging.current = false;
+    setHeadingDragging(false);
+    setDragToast(null);
+    setLocalHeadingSize(null);
+  };
+
+  const renderHeadingArrowOverlay = (size: number) => (
+    <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+      {size < 150 && (
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 wd-heading-arrow-up" style={{ color: accentColor, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+        </div>
+      )}
+      {size > 50 && (
+        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 wd-heading-arrow-down" style={{ color: accentColor, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+        </div>
+      )}
+    </div>
+  );
+
   useEffect(() => {
     const loadHideInstructions = () => {
       const storedSettings = localStorage.getItem('appSettings');
@@ -1454,6 +1567,8 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   };
 
   const mergedData = { ...data, ...pendingChanges };
+
+  const headingSize = localHeadingSize ?? (mergedData.weddingDirectoryHeadingFontSize ?? 100);
 
   const hisInitial = mergedData.hisName?.charAt(0).toUpperCase() || "";
   const herInitial = mergedData.herName?.charAt(0).toUpperCase() || "";
@@ -3094,19 +3209,56 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
           user-select: none !important;
         }
       `}</style>
+      {dragToast && createPortal(
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2 rounded-lg bg-black/80 text-white text-sm font-medium pointer-events-none backdrop-blur-sm shadow-lg whitespace-nowrap" style={{ fontFamily: 'Inter, sans-serif' }}>
+          {dragToast.map((seg, i) => (
+            <span key={i}>
+              {i > 0 && '  |  '}
+              <span style={{ color: seg.atLimit ? '#ef4444' : 'white', transition: 'color 0.15s' }}>{seg.label}: {seg.value}%</span>
+            </span>
+          ))}
+        </div>,
+        document.body
+      )}
+      <style>{`
+        @keyframes wd-heading-arrow-up-anim {
+          0% { transform: translateX(-50%) translateY(0); opacity: 0; }
+          20% { opacity: 0.5; }
+          60% { opacity: 0.5; }
+          100% { transform: translateX(-50%) translateY(-18px); opacity: 0; }
+        }
+        @keyframes wd-heading-arrow-down-anim {
+          0% { transform: translateX(-50%) translateY(0); opacity: 0; }
+          20% { opacity: 0.5; }
+          60% { opacity: 0.5; }
+          100% { transform: translateX(-50%) translateY(18px); opacity: 0; }
+        }
+        .wd-heading-arrow-up { animation: wd-heading-arrow-up-anim 1.2s ease-in-out infinite; }
+        .wd-heading-arrow-down { animation: wd-heading-arrow-down-anim 1.2s ease-in-out infinite; }
+      `}</style>
       <h2
         className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
         style={{
           color: mergedData.weddingDirectoryUseMainColor !== false ? data.mainColor2 : (mergedData.weddingDirectoryHeadingColor || data.mainColor2),
           fontFamily: mergedData.weddingDirectoryUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.weddingDirectoryHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.weddingDirectoryHeadingFontSize || 100) * 3}%`,
+          fontSize: `${headingSize * 3}%`,
           lineHeight: '1.2',
-          marginTop: '-60px'
-        }}
+          marginTop: '-60px',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        onPointerDown={editMode ? handleHeadingPointerDown : undefined}
+        onPointerMove={editMode ? handleHeadingPointerMove : undefined}
+        onPointerUp={editMode ? handleHeadingPointerUp : undefined}
+        onPointerCancel={editMode ? handleHeadingPointerCancel : undefined}
+        onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
       >
+        {headingDragging && renderHeadingArrowOverlay(headingSize)}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDragRef.current?.triggered) { e.stopPropagation(); headingDragRef.current = null; return; }
             setShowTypographyPanel(true);
             const element = document.getElementById('wedding-directory-cssid');
             if (element) {
