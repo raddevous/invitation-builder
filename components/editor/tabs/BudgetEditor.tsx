@@ -544,9 +544,8 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                           value={container.items[0]?.budget || ""}
                           onChange={(e) => updateItemBudget(container.id, container.items[0]?.id || "", e.target.value)}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : {}}
+                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
                           placeholder="Expected cost"
-                          disabled={!isEditMode}
                         />
                       </div>
                       <div>
@@ -556,9 +555,8 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                           value={container.items[0]?.cost || ""}
                           onChange={(e) => updateItemCost(container.id, container.items[0]?.id || "", e.target.value)}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : {}}
+                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
                           placeholder="Actual cost"
-                          disabled={!isEditMode}
                         />
                       </div>
                     </div>
@@ -570,21 +568,18 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                           value={container.items[0]?.paid || ""}
                           onChange={(e) => updateItemPaid(container.id, container.items[0]?.id || "", e.target.value)}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : {}}
+                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
                           placeholder="Amount paid"
-                          disabled={!isEditMode}
                         />
                       </div>
                       <div>
                         <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>DUE</label>
                         <input
-                          type="text"
+                          type="date"
                           value={container.items[0]?.due || ""}
                           onChange={(e) => updateItemDue(container.id, container.items[0]?.id || "", e.target.value)}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : {}}
-                          placeholder="Deadline"
-                          disabled={!isEditMode}
+                          style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", colorScheme: isDarkMode ? "dark" : "light" }}
                         />
                       </div>
                     </div>
