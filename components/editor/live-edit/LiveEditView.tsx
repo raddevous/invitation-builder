@@ -246,20 +246,29 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
 
   // Reset scroll to top when entering the tab (no auto-scroll)
   useEffect(() => {
-    if (!isActive || !scrollContainerRef.current) return;
+    if (!isActive) return;
+    // Reset window/document scroll (mobile may use document-level scrolling)
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+
     const el = scrollContainerRef.current;
-    // Reset immediately
-    el.scrollTop = 0;
-    scrollPositionRef.current = 0;
+    if (el) {
+      el.scrollTop = 0;
+      scrollPositionRef.current = 0;
+    }
+
     // Reset again after content (images/fonts) finishes laying out
     const raf2 = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        el.scrollTop = 0;
+        window.scrollTo(0, 0);
+        if (el) el.scrollTop = 0;
       });
     });
     // And once more after a short delay for late-loading images
     const timeout = setTimeout(() => {
-      el.scrollTop = 0;
+      window.scrollTo(0, 0);
+      if (el) el.scrollTop = 0;
     }, 300);
     return () => {
       cancelAnimationFrame(raf2);

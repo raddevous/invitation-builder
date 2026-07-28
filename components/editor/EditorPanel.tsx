@@ -702,7 +702,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const panelWidth = panelExpanded ? "400px" : "350px";
 
   return (
-    <div className={`flex w-full bg-transparent relative ${desktopMode ? "h-screen" : "flex-col min-h-screen"} ${isDarkMode ? "dark" : ""}`} style={desktopMode ? {} : { maxWidth: "100%", margin: "0 auto" }}>
+    <div className={`flex w-full bg-transparent relative ${desktopMode ? "h-screen" : `flex-col ${activeTab === "live" ? "h-screen overflow-hidden" : "min-h-screen"}`} ${isDarkMode ? "dark" : ""}`} style={desktopMode ? {} : { maxWidth: "100%", margin: "0 auto" }}>
       {/* Screen dimensions overlay - global */}
       {localShowScreenDimensions && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[80] no-print bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full pointer-events-none">
