@@ -344,10 +344,11 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
         {/* Progress bar */}
         <div className="w-full h-2 rounded-full overflow-hidden mb-3" style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB" }}>
           <div 
-            className="h-full rounded-full transition-all duration-300"
+            className="h-full rounded-full"
             style={{ 
               width: `${getProgressPercentage()}%`,
-              backgroundColor: accentColor
+              backgroundColor: accentColor,
+              transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)"
             }}
           />
         </div>
