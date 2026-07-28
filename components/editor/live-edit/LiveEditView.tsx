@@ -246,10 +246,25 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
 
   // Reset scroll to top when entering the tab (no auto-scroll)
   useEffect(() => {
-    if (isActive && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-      scrollPositionRef.current = 0;
-    }
+    if (!isActive || !scrollContainerRef.current) return;
+    const el = scrollContainerRef.current;
+    // Reset immediately
+    el.scrollTop = 0;
+    scrollPositionRef.current = 0;
+    // Reset again after content (images/fonts) finishes laying out
+    const raf2 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollTop = 0;
+      });
+    });
+    // And once more after a short delay for late-loading images
+    const timeout = setTimeout(() => {
+      el.scrollTop = 0;
+    }, 300);
+    return () => {
+      cancelAnimationFrame(raf2);
+      clearTimeout(timeout);
+    };
   }, [isActive]);
 
   const openPicker = useCallback((editField: EditField) => {
