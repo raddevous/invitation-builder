@@ -151,7 +151,6 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const handleHeadingPointerDown = (e: React.PointerEvent<HTMLHeadingElement>) => {
     const isTouchLike = e.pointerType === 'touch' || e.pointerType === 'pen';
     if (!editMode || (!isTouchLike && e.button !== 0)) return;
-    if (mergedData.weddingDirectoryUseMainColor !== false) return;
     const element = e.currentTarget as HTMLHeadingElement;
     headingDragRef.current = {
       timer: setTimeout(() => {
