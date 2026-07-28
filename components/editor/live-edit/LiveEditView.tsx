@@ -244,10 +244,11 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
     }
   }, [isActive]);
 
-  // Restore scroll position when entering the tab
+  // Reset scroll to top when entering the tab (no auto-scroll)
   useEffect(() => {
     if (isActive && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+      scrollContainerRef.current.scrollTop = 0;
+      scrollPositionRef.current = 0;
     }
   }, [isActive]);
 
@@ -426,7 +427,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
         )}
 
         {/* Scrollable invitation preview */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto" style={{ scrollBehavior: 'auto' }}>
           {desktopMode && screenResponsiveness !== "desktop" ? (
             <DeviceFramePreview
               device={screenResponsiveness}
