@@ -465,8 +465,8 @@ export default function InvitationTemplate({
         <MusicPlayer data={localData} autoPlay={musicAutoPlay} />
       </div>
 
-      {/* Floating Wedding Directory bubble */}
-      {opened && sectionOrder.includes("wedding-directory") && localData.sections.weddingdirectory && (
+      {/* Floating Wedding Directory bubble - hidden in mobile edit mode */}
+      {opened && sectionOrder.includes("wedding-directory") && localData.sections.weddingdirectory && !(editMode && !desktopMode) && (
         <button
           type="button"
           onClick={() => {
