@@ -449,8 +449,13 @@ export default function WeddingProgramEditor({ isDarkMode = false, accentColor =
                   {/* Preview when collapsed */}
                   {!container.isExpanded && (
                     <div className={`text-xs mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                      {container.item.place && <span>• Place: {container.item.place}</span>}
-                      {container.item.time && <span className="ml-2">• Time: {container.item.time}</span>}
+                      {container.item.place && container.item.time
+                        ? <span>{container.item.place} at {container.item.time}</span>
+                        : container.item.place
+                          ? <span>{container.item.place}</span>
+                          : container.item.time
+                            ? <span>{container.item.time}</span>
+                            : null}
                     </div>
                   )}
                 </div>
