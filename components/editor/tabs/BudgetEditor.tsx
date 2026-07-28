@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import FloatingAddButton from "../shared/FloatingAddButton";
+import FloatingActionMenu from "../shared/FloatingActionMenu";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -601,37 +601,20 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
         )}
 
         <div className="h-8"></div>
-        
-        {/* Edit/Done button */}
-        {isEditMode ? (
-          <button
-            onClick={() => setIsEditMode(false)}
-            className="w-full py-3 text-sm font-medium text-center rounded-xl transition-colors text-white"
-            style={{ 
-              backgroundColor: accentColor
-            }}
-          >
-            Done Edit
-          </button>
-        ) : (
-          <button
-            onClick={() => setIsEditMode(true)}
-            className="w-full py-3 text-sm font-medium text-center rounded-xl transition-colors border-2 border-dashed"
-            style={{ 
-              color: accentColor, 
-              borderColor: accentColor,
-              backgroundColor: isDarkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)" 
-            }}
-          >
-            Edit Budget
-          </button>
-        )}
       </div>
 
-      {/* Floating Add button - only in edit mode */}
-      {isEditMode && (
-        <FloatingAddButton onClick={addContainer} accentColor={accentColor} label="Add Budget Item" />
-      )}
+      {/* Floating Action Menu */}
+      <FloatingActionMenu
+        accentColor={accentColor}
+        isDarkMode={isDarkMode}
+        options={isEditMode ? [
+          { label: "Add Budget", icon: "plus", onClick: addContainer },
+          { label: "Done Edit", icon: "done", onClick: () => setIsEditMode(false) },
+        ] : [
+          { label: "Add Budget", icon: "plus", onClick: addContainer },
+          { label: "Edit Budget", icon: "edit", onClick: () => setIsEditMode(true) },
+        ]}
+      />
 
       {/* Saving overlay */}
       {saveStatus !== "idle" && (
