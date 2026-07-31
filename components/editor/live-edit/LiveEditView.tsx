@@ -16,6 +16,7 @@ import { shareInviteLink } from "@/lib/utils/share";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
+import { apiUrl } from "@/lib/utils/api";
 import { createPortal } from "react-dom";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
@@ -351,10 +352,16 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
   };
 
   const handleOpenLink = () => {
-    const shareUrl = buildInviteUrl(invitation.slug);
     setIsShareMenuOpen(false);
     setShowSettingsPanel(false);
-    window.open(shareUrl, '_blank');
+    if (isDemoMode) {
+      // Demo edits live in this origin's localStorage, so navigate in-app
+      // (same WebView, same origin) rather than an external browser. This
+      // works both online and offline and correctly shows the current edits.
+      window.location.href = "/invite/demo";
+      return;
+    }
+    window.open(buildInviteUrl(invitation.slug), '_blank');
   };
 
   const handleOpenMainInvitationPrint = useCallback(() => {
@@ -986,13 +993,15 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                     >
                       Open Link
                     </button>
-                    <button
-                      onClick={handleCopyLink}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${isDarkMode ? "hover:bg-gray-600 text-gray-200" : "hover:bg-gray-200 text-gray-700"}`}
-                      style={{ fontFamily: "Inter, sans-serif" }}
-                    >
-                      Copy Link
-                    </button>
+                    {!isDemoMode && (
+                      <button
+                        onClick={handleCopyLink}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${isDarkMode ? "hover:bg-gray-600 text-gray-200" : "hover:bg-gray-200 text-gray-700"}`}
+                        style={{ fontFamily: "Inter, sans-serif" }}
+                      >
+                        Copy Link
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1068,7 +1077,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                   <button
                     onClick={async () => {
                       await unregisterPushNotifications();
-                      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+                      await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
                       await removeStoredItem('invitation');
                       await removeStoredItem('appSettings');
                       localStorage.removeItem('weddingChecklist');

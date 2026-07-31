@@ -5,9 +5,12 @@ import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
 import LoginDialog from "@/components/editor/LoginDialog";
 import QRCode from "qrcode";
 import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { buildInviteUrl } from "@/lib/utils";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
+import { apiUrl } from "@/lib/utils/api";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -23,10 +26,11 @@ interface SettingsEditorProps {
   isDarkMode?: boolean;
   accentColor?: string;
   onClose: () => void;
-  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideSaveConfirmationDialog?: boolean; hideInstructions?: boolean; showScreenDimensions?: boolean }) => void;
+  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideSaveConfirmationDialog?: boolean; hideInstructions?: boolean; showScreenDimensions?: boolean; isPreviewDetached?: boolean }) => void;
   hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
+  isPreviewDetached?: boolean;
   invitationId?: string;
   isDemoMode?: boolean;
   slug?: string;
@@ -45,7 +49,7 @@ const ACCENT_COLORS = [
   "#D946EF", // Orchid Purple
 ];
 
-export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#6998EE", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, invitationId, isDemoMode = false, slug }: SettingsEditorProps) {
+export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#6998EE", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, isPreviewDetached = false, invitationId, isDemoMode = false, slug }: SettingsEditorProps) {
   const [backupExists, setBackupExists] = useState(false);
   const [backupDate, setBackupDate] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -95,28 +99,22 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
     if (Capacitor.isNativePlatform()) {
       try {
-        const { Media } = await import("@capacitor-community/media");
-        const fileName = `qr-${slug || 'invitation'}`;
-        const albums = await Media.getAlbums();
-        const album = albums.albums.find(a => a.name === 'InstaVow') || albums.albums[0];
-
-        await Media.savePhoto({
-          path: qrDataUrl,
-          albumIdentifier: album?.identifier,
-          fileName,
+        const base64 = qrDataUrl.split(',')[1];
+        const fileName = `qr-${slug || 'invitation'}.png`;
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+          recursive: true,
         });
-
-        // Show success toast
-        const toast = document.createElement('div');
-        toast.textContent = 'QR code saved to gallery';
-        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:24px;font-size:14px;font-family:Inter,sans-serif;z-index:99999;pointer-events:none;transition:opacity 0.3s;';
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = '0';
-          setTimeout(() => toast.remove(), 300);
-        }, 2000);
+        await Share.share({
+          title: 'QR Code',
+          text: 'Save or share your invitation QR code',
+          url: result.uri,
+          dialogTitle: 'Save QR Code',
+        });
       } catch (error) {
-        console.error('Error saving QR code to gallery:', error);
+        console.error('Error saving QR code:', error);
       }
     } else {
       const link = document.createElement("a");
@@ -131,7 +129,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
   const fetchExpiration = async () => {
     if (!invitationId) return;
     try {
-      const res = await fetch(`/api/invitation/${invitationId}`);
+      const res = await fetch(apiUrl(`/api/invitation/${invitationId}`));
       const data = await res.json();
       if (data.invitation?.expires_at) {
         setExpiresAt(data.invitation.expires_at);
@@ -146,7 +144,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       const userId = localStorage.getItem('invitation') ? JSON.parse(localStorage.getItem('invitation')!).id : null;
       if (!userId) return;
 
-      const res = await fetch(`/api/backup?user_id=${userId}`);
+      const res = await fetch(apiUrl(`/api/backup?user_id=${userId}`));
       const data = await res.json();
       if (data.exists) {
         setBackupExists(true);
@@ -185,7 +183,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
         weddingBudget,
       };
 
-      const res = await fetch('/api/backup', {
+      const res = await fetch(apiUrl('/api/backup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, backup_data: backupData }),
@@ -216,7 +214,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       const userId = localStorage.getItem('invitation') ? JSON.parse(localStorage.getItem('invitation')!).id : null;
       if (!userId) return;
 
-      const res = await fetch(`/api/backup?user_id=${userId}&download=true`);
+      const res = await fetch(apiUrl(`/api/backup?user_id=${userId}&download=true`));
       const data = await res.json();
 
       if (data.exists && data.data) {
@@ -250,60 +248,37 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
   const handleDarkModeToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode: !isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions });
+      onSettingsChange({ isDarkMode: !isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleAccentColorChange = (color: string) => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor: color, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions });
+      onSettingsChange({ isDarkMode, accentColor: color, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleHideSaveConfirmationDialogToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: !hideSaveConfirmationDialog, hideInstructions, showScreenDimensions });
+      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: !hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleHideInstructionsToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions: !hideInstructions, showScreenDimensions });
+      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions: !hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleScreenDimensionsToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions: !showScreenDimensions });
+      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions: !showScreenDimensions, isPreviewDetached });
     }
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
-      {/* Header - fixed, not scrollable */}
-      <div className={`flex items-center gap-3 p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
-        <button
-          onClick={onClose}
-          className={`p-2 rounded-lg transition-colors ${
-            isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"
-          }`}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <div>
-          <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
-            Settings
-          </h2>
-          <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-            Customize your preferences
-          </p>
-        </div>
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ fontFamily: "Inter, sans-serif" }}>
+    <div className={`w-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+      <div className="p-4 space-y-6" style={{ fontFamily: "Inter, sans-serif" }}>
         {/* Dark Mode Toggle */}
         <div
           className={`border rounded-xl overflow-hidden transition-all duration-300`}
@@ -760,7 +735,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           <button
             onClick={async () => {
               await unregisterPushNotifications();
-              await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+              await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
               await removeStoredItem('invitation');
               await removeStoredItem('appSettings');
               localStorage.removeItem('weddingChecklist');

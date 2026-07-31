@@ -10,6 +10,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 import { EVENT_DETAILS_EMPTY_MESSAGES, getNextMessage } from "@/lib/constants/heroMessages";
 
 interface DetailsSectionProps {
@@ -163,6 +164,37 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
 
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingChanges };
+
+  const predefinedMessages = [
+    "We're so excited to celebrate our special day with you...",
+    "We can't wait to share this moment with our favorite people. Here are all the details for our celebration.",
+    "The day we've been dreaming of is almost here. We're honored to have you join us for our wedding.",
+    "Thank you for being part of our journey. We're looking forward to celebrating with you on our special day.",
+    "Our wedding day wouldn't be complete without you. Here's everything you need to know about the celebration.",
+    "We're counting down the days until we say 'I do' in front of our loved ones. Here are the event details."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.eventDetailsMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleChange("eventDetailsMessage", predefinedMessages[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.eventDetailsHeadingFontSizeMobile ?? mergedData.eventDetailsHeadingFontSize ?? 100) : (mergedData.eventDetailsHeadingFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'eventDetailsHeadingFontSizeMobile' : 'eventDetailsHeadingFontSize', size),
+    arrowClassPrefix: 'event-details',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.eventDetailsMessageFontSizeMobile ?? mergedData.eventDetailsMessageFontSize ?? 100) : (mergedData.eventDetailsMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'eventDetailsMessageFontSizeMobile' : 'eventDetailsMessageFontSize', size),
+    arrowClassPrefix: 'event-details-msg',
+  });
 
   // Timeline color based on Event Details heading color
   const timelineColor = mergedData.eventDetailsUseMainColor !== false
@@ -369,18 +401,26 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
           onColorBlendChange={(value) => onChange?.("eventDetailsDividerColorBlend", value)}
         />
       )}
+      {headingDrag.renderArrowStyles()}
+      {headingDrag.renderDragToast()}
       <h2
-        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.eventDetailsUseMainColor !== false ? data.mainColor2 : (mergedData.eventDetailsHeadingColor || data.mainColor2),
           fontFamily: mergedData.eventDetailsUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.eventDetailsHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.eventDetailsHeadingFontSize || 100) * 3}%`,
-          lineHeight: '1.2'
-        }}
+          fontSize: `${headingDrag.effectiveSize * 3}%`,
+          lineHeight: '1.2',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...headingDrag.headingDragProps}
       >
+        {headingDrag.dragging && headingDrag.renderArrowOverlay()}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDrag.clickGuard(e)) return;
             setShowTypographyPanel(true);
             const element = document.getElementById('event-details-cssid');
             if (element) {
@@ -393,17 +433,34 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
       </h2>
 
       {mergedData.eventDetailsMessage && (
-        <p
-          className="text-center mb-8 leading-relaxed scale-[0.7] md:scale-100"
+        <>
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
+          className="text-center mb-8 leading-relaxed scale-[0.7] md:scale-100 select-none"
           style={{
             color: mergedData.eventDetailsUseMainColor !== false ? data.neutralColor1 : (mergedData.eventDetailsMessageColor || data.neutralColor1),
             fontFamily: mergedData.eventDetailsUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.eventDetailsMessageTypography || data.bodyFont, "body"),
-            fontSize: `${mergedData.eventDetailsMessageFontSize || 100}%`,
-            opacity: 0.85
-          }}
+            fontSize: `${messageDrag.effectiveSize}%`,
+            opacity: 0.85,
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
-          {mergedData.eventDetailsMessage}
-        </p>
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+          <span
+            className={editMode ? "cursor-pointer" : ""}
+            onClick={editMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleMessage();
+            } : undefined}
+          >
+            {mergedData.eventDetailsMessage}
+          </span>
+        </div>
+        </>
       )}
 
       {/* Empty state message when no wedding program entries */}

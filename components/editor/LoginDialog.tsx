@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { openSignup } from "@/lib/utils/signup";
+import { apiUrl } from "@/lib/utils/api";
 
 const hexToRgba = (hex: string, alpha: number): string => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -31,7 +32,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
     setError("");
 
     try {
-      const res = await fetch("/api/auth/access-code", {
+      const res = await fetch(apiUrl("/api/auth/access-code"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode: accessCode.trim() }),
@@ -44,12 +45,12 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
         return;
       }
 
-      const { isDarkMode: invDarkMode, accentColor: invAccentColor, ...invitationData } = data.invitation.data;
+      const { isDarkMode: invDarkMode, accentColor: invAccentColor, ...invitationData } = data.invitation;
       const invitationToStore = { ...data.invitation, data: invitationData };
       localStorage.setItem("invitation", JSON.stringify(invitationToStore));
       localStorage.setItem("appSettings", JSON.stringify({
-        isDarkMode: invDarkMode ?? true,
-        accentColor: invAccentColor ?? "#6998EE",
+        isDarkMode: isDarkMode ?? invDarkMode,
+        accentColor: accentColor ?? invAccentColor,
       }));
 
       router.push(`/tools/${data.invitation.slug}`);
@@ -124,9 +125,8 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
           </div>
         </div>
 
-        <Link
-          href="/signup"
-          onClick={onClose}
+        <button
+          onClick={() => openSignup(router).then(onClose)}
           className="block w-full py-3 rounded-2xl text-center font-medium tracking-wide transition-all active:scale-95 border-2"
           style={{
             borderColor: isDarkMode ? "#e5e5e5" : accentColor,
@@ -136,7 +136,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
           }}
         >
           SIGN UP
-        </Link>
+        </button>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 
 interface MapSectionProps {
   data: InvitationData;
@@ -99,6 +100,37 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
 
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingChanges };
+
+  const predefinedMessages = [
+    "We look forward to celebrating with you at this beautiful venue...",
+    "Join us at this stunning location for our special day. Your presence will make our celebration complete.",
+    "We've chosen this beautiful venue to celebrate our love. We can't wait to share this special moment with you.",
+    "The ceremony and reception will take place at this lovely venue. We're excited to celebrate with you!",
+    "Please join us at this beautiful location as we begin our journey together. Your presence means the world to us.",
+    "We're thrilled to celebrate our wedding at this wonderful venue. Thank you for being part of our special day."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.mapMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleChange("mapMessage", predefinedMessages[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.mapHeadingFontSizeMobile ?? mergedData.mapHeadingFontSize ?? 100) : (mergedData.mapHeadingFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'mapHeadingFontSizeMobile' : 'mapHeadingFontSize', size),
+    arrowClassPrefix: 'map-section',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.mapMessageFontSizeMobile ?? mergedData.mapMessageFontSize ?? 100) : (mergedData.mapMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'mapMessageFontSizeMobile' : 'mapMessageFontSize', size),
+    arrowClassPrefix: 'map-msg',
+  });
 
   // Set default values when background type changes
   useEffect(() => {
@@ -308,18 +340,26 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
           if (element) element.scrollIntoView({ behavior: 'smooth' });
         } : undefined}
       />
+      {headingDrag.renderArrowStyles()}
+      {headingDrag.renderDragToast()}
       <h2
-        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.mapUseMainColor !== false ? data.mainColor2 : (mergedData.mapHeadingColor || data.mainColor2),
           fontFamily: mergedData.mapUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.mapHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.mapHeadingFontSize || 100) * 3}%`,
-          lineHeight: '1.2'
-        }}
+          fontSize: `${headingDrag.effectiveSize * 3}%`,
+          lineHeight: '1.2',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...headingDrag.headingDragProps}
       >
+        {headingDrag.dragging && headingDrag.renderArrowOverlay()}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDrag.clickGuard(e)) return;
             setShowTypographyPanel(true);
             const element = document.getElementById('map-cssid');
             if (element) {
@@ -332,17 +372,34 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
       </h2>
 
       {mergedData.mapMessage && (
-        <p
-          className="text-center mb-6 leading-relaxed scale-[0.7] md:scale-100"
+        <>
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
+          className="text-center mb-6 leading-relaxed scale-[0.7] md:scale-100 select-none"
           style={{
             color: mergedData.mapUseMainColor !== false ? data.neutralColor1 : (mergedData.mapMessageColor || data.neutralColor1),
             fontFamily: mergedData.mapUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.mapMessageTypography || data.bodyFont, "body"),
-            fontSize: `${mergedData.mapMessageFontSize || 100}%`,
-            opacity: 0.85
-          }}
+            fontSize: `${messageDrag.effectiveSize}%`,
+            opacity: 0.85,
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
-          {mergedData.mapMessage}
-        </p>
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+          <span
+            className={editMode ? "cursor-pointer" : ""}
+            onClick={editMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleMessage();
+            } : undefined}
+          >
+            {mergedData.mapMessage}
+          </span>
+        </div>
+        </>
       )}
 
       <div className="mt-4 mb-6">

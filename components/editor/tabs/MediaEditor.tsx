@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
+import ProgressCircle from "../shared/ProgressCircle";
+import { getMediaItemProgress } from "@/lib/utils/progressCalculator";
+import { apiUrl } from "@/lib/utils/api";
 
 interface MediaEditorProps {
   data: InvitationData;
@@ -126,6 +129,14 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     );
   }, [pendingBackgroundMusic, pendingBackgroundMusicFileNames, data.backgroundMusic, data.backgroundMusicFileNames]);
 
+  // Live data for real-time progress calculation (merges pending local state)
+  const liveData = useMemo<InvitationData>(() => ({
+    ...data,
+    heroIcon: pendingLogo,
+    galleryImages: pendingGallery,
+    venueImages: pendingVenue,
+  }), [data, pendingLogo, pendingGallery, pendingVenue]);
+
   // Prevent page scroll during image drag-and-drop reordering
   useEffect(() => {
     const handleTouchMove = (e: TouchEvent) => {
@@ -219,7 +230,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       formData.append("field", `backgroundMusic-${index}`);
       formData.append("invitationId", invitationId);
 
-      const response = await fetch("/api/upload", {
+      const response = await fetch(apiUrl("/api/upload"), {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -282,7 +293,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       formData.append("field", type === 'heading' ? 'customHeadingFont' : 'customBodyFont');
       formData.append("invitationId", invitationId);
 
-      const response = await fetch("/api/upload", {
+      const response = await fetch(apiUrl("/api/upload"), {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -322,7 +333,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     if (url) {
       const pathMatch = url.match(/\/user-uploads\/(.+)$/);
       if (pathMatch && invitationId) {
-        fetch("/api/delete-file", {
+        fetch(apiUrl("/api/delete-file"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -362,7 +373,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       const pathMatch = url.match(/\/user-uploads\/(.+)$/);
       if (pathMatch) {
         try {
-          await fetch("/api/delete-file", {
+          await fetch(apiUrl("/api/delete-file"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -378,7 +389,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Drag indicator toast */}
       {dragToast && (
         <div
@@ -415,7 +426,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div>
+        <div className="flex-1">
           <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
             Media
           </h2>
@@ -449,16 +460,21 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                 <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>{item.label}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{item.description}</p>
               </div>
-              <div className="shrink-0 text-gray-400 ml-2">
-                {collapsedSections.has(item.id) ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 15l-6-6-6 6" />
-                  </svg>
-                )}
+              <div className="shrink-0 ml-2">
+                {(() => {
+                  const progress = getMediaItemProgress(liveData, item.id);
+                  if (progress !== null) {
+                    return (
+                      <ProgressCircle
+                        percentage={progress}
+                        accentColor={accentColor}
+                        isDarkMode={isDarkMode}
+                        size="compact"
+                      />
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
 

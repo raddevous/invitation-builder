@@ -7,9 +7,10 @@ import { getElement, getScreenDef } from "@/lib/welcome-screens";
 interface Props {
   data: InvitationData;
   onOpen: () => void;
+  contained?: boolean;
 }
 
-export default function Curtain({ data, onOpen }: Props) {
+export default function Curtain({ data, onOpen, contained = false }: Props) {
   const [opening, setOpening] = useState(false);
   const displayName = data.nameType === "couple" 
     ? `${data.hisName || ""} ${data.andText || "&"} ${data.herName || ""}`.trim()
@@ -31,7 +32,7 @@ export default function Curtain({ data, onOpen }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-40 cursor-pointer select-none overflow-hidden"
+      className={`${contained ? "absolute" : "fixed"} inset-0 z-40 cursor-pointer select-none overflow-hidden`}
       style={{ backgroundColor: data.mainColor1 }}
       onClick={handleTap}
     >

@@ -28,6 +28,118 @@ interface ChecklistEditorProps {
   onClose: () => void;
 }
 
+let idCounter = 0;
+const genId = () => `default-${idCounter++}`;
+
+function getDefaultChecklist(): ChecklistContainer[] {
+  const makeItems = (names: string[]): ChecklistItem[] =>
+    names.map((name) => ({ id: genId(), name, checked: false }));
+
+  return [
+    {
+      id: genId(),
+      title: "12+ Months Before",
+      items: makeItems([
+        "Set a budget",
+        "Choose a wedding date",
+        "Book the ceremony & reception venue",
+        "Hire a wedding planner (optional)",
+        "Send save-the-dates",
+        "Start guest list",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "8-12 Months Before",
+      items: makeItems([
+        "Book photographer/videographer",
+        "Book caterer",
+        "Book florist",
+        "Book entertainment/DJ/band",
+        "Choose wedding party (entourage)",
+        "Start dress shopping",
+        "Book officiant",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "6-8 Months Before",
+      items: makeItems([
+        "Order wedding invitations",
+        "Book transportation",
+        "Book honeymoon",
+        "Choose bridesmaid dresses",
+        "Choose groom/groomsmen attire",
+        "Book hair & makeup artist",
+        "Plan rehearsal dinner",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "4-6 Months Before",
+      items: makeItems([
+        "Mail invitations",
+        "Order wedding rings",
+        "Book wedding cake",
+        "Finalize menu & drinks",
+        "Arrange accommodations for out-of-town guests",
+        "Buy wedding favors",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "2-3 Months Before",
+      items: makeItems([
+        "Apply for marriage license",
+        "Finalize guest count",
+        "Create wedding day timeline",
+        "Confirm all vendors",
+        "Final dress fitting",
+        "Arrange seating plan",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "1 Month Before",
+      items: makeItems([
+        "Final headcount to caterer",
+        "Confirm honeymoon details",
+        "Pack for honeymoon",
+        "Prepare wedding day emergency kit",
+        "Confirm rehearsal dinner details",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "1 Week Before",
+      items: makeItems([
+        "Final vendor confirmations",
+        "Prepare payments/tips for vendors",
+        "Break in wedding shoes",
+        "Get marriage license",
+        "Confirm wedding party details",
+      ]),
+      isExpanded: false,
+    },
+    {
+      id: genId(),
+      title: "Day Before",
+      items: makeItems([
+        "Rehearsal & rehearsal dinner",
+        "Get beauty rest",
+        "Pack wedding day bag",
+      ]),
+      isExpanded: false,
+    },
+  ];
+}
+
 export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", onClose }: ChecklistEditorProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   // Initialize from localStorage directly
@@ -35,12 +147,12 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
     try {
       const stored = localStorage.getItem('weddingChecklist');
       if (stored) {
-        return JSON.parse(stored);
+        return JSON.parse(stored).map((c: ChecklistContainer) => ({ ...c, isExpanded: false }));
       }
     } catch (error) {
       console.error('Failed to load initial checklist:', error);
     }
-    return [];
+    return getDefaultChecklist();
   };
   const [containers, setContainers] = useState<ChecklistContainer[]>(getInitialContainers);
   const initialDataSnapshot = useRef(JSON.stringify(getInitialContainers()));
@@ -263,7 +375,7 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Drag indicator toast */}
       {dragToast && (
         <div
@@ -589,18 +701,16 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                     </div>
                   )}
                   
-                  {/* Add item button - always shown in edit mode */}
-                  {isEditMode && (
-                    <div className="flex justify-center mt-2">
-                      <button
-                        onClick={() => addItem(container.id)}
-                        className="px-4 py-2 text-sm text-center rounded-lg transition-colors"
-                        style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
-                      >
-                        + Add item
-                      </button>
-                    </div>
-                  )}
+                  {/* Add item button - always shown */}
+                  <div className="flex justify-center mt-2">
+                    <button
+                      onClick={() => addItem(container.id)}
+                      className="px-4 py-2 text-sm text-center rounded-lg transition-colors"
+                      style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
+                    >
+                      + Add item
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

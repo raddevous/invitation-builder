@@ -12,6 +12,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 
 interface GallerySectionProps {
   data: InvitationData;
@@ -153,6 +154,37 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
 
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingChanges };
+
+  const predefinedMessages = [
+    "A collection of our favorite moments together...",
+    "These photos capture the beautiful memories we've shared. Each one tells a story of our journey.",
+    "Moments frozen in time, memories that will last forever. Here's our story in pictures.",
+    "From our first meeting to this special day, every moment has been precious. These are our memories.",
+    "A glimpse into our life together - the laughter, the love, and all the beautiful moments in between.",
+    "These photos represent the journey that brought us here and the love that keeps us together."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.galleryMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleChange("galleryMessage", predefinedMessages[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.galleryHeadingFontSizeMobile ?? mergedData.galleryHeadingFontSize ?? 100) : (mergedData.galleryHeadingFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'galleryHeadingFontSizeMobile' : 'galleryHeadingFontSize', size),
+    arrowClassPrefix: 'gallery',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.galleryMessageFontSizeMobile ?? mergedData.galleryMessageFontSize ?? 100) : (mergedData.galleryMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'galleryMessageFontSizeMobile' : 'galleryMessageFontSize', size),
+    arrowClassPrefix: 'gallery-msg',
+  });
 
   const images = data.galleryImages || [];
 
@@ -476,18 +508,26 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
           onColorBlendChange={(value) => onChange?.("galleryDividerColorBlend", value)}
         />
       )}
+      {headingDrag.renderArrowStyles()}
+      {headingDrag.renderDragToast()}
       <h2
-        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.galleryUseMainColor !== false ? data.mainColor2 : (mergedData.galleryHeadingColor || data.mainColor2),
           fontFamily: mergedData.galleryUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.galleryHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.galleryHeadingFontSize || 100) * 3}%`,
-          lineHeight: '1.2'
-        }}
+          fontSize: `${headingDrag.effectiveSize * 3}%`,
+          lineHeight: '1.2',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...headingDrag.headingDragProps}
       >
+        {headingDrag.dragging && headingDrag.renderArrowOverlay()}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDrag.clickGuard(e)) return;
             setShowTypographyPanel(true);
             const element = document.getElementById('gallery-cssid');
             if (element) {
@@ -501,17 +541,32 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
 
       {mergedData.galleryMessage && (
         <div className="max-w-2xl mx-auto">
-          <p
-            className="text-center text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+          {messageDrag.renderArrowStyles()}
+          {messageDrag.renderDragToast()}
+          <div
+            className="text-center text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 select-none"
             style={{
               color: mergedData.galleryUseMainColor !== false ? data.neutralColor1 : (mergedData.galleryMessageColor || data.neutralColor1),
               fontFamily: mergedData.galleryUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.galleryMessageTypography || data.bodyFont, "body"),
-              fontSize: `${mergedData.galleryMessageFontSize || 100}%`,
-              opacity: 0.85
-            }}
+              fontSize: `${messageDrag.effectiveSize}%`,
+              opacity: 0.85,
+              position: 'relative',
+              touchAction: editMode ? 'pan-y' : 'auto',
+              WebkitTouchCallout: 'none',
+            } as React.CSSProperties}
+            {...messageDrag.headingDragProps}
           >
-            {mergedData.galleryMessage}
-          </p>
+            {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+            <span
+              className={editMode ? "cursor-pointer" : ""}
+              onClick={editMode ? (e) => {
+                if (messageDrag.clickGuard(e)) return;
+                cycleMessage();
+              } : undefined}
+            >
+              {mergedData.galleryMessage}
+            </span>
+          </div>
         </div>
       )}
 

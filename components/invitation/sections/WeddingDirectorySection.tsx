@@ -13,6 +13,7 @@ import { getFontFamily } from "@/lib/utils/fonts";
 import PhotoGalleryPicker from "@/components/shared/PhotoGalleryPicker";
 import { useTheme } from "../ThemeContext";
 import { useMusic } from "../MusicContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 import { HOST_LINE_MESSAGES, CLOSING_SENTIMENT_MESSAGES, CUSTOM_CARD_MESSAGES, resolveCustomCardMessage, getNextMessage } from "@/lib/constants/heroMessages";
 
 const STAMP_TEXT_BLEND_MODES = [
@@ -167,7 +168,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       element,
       startX: e.clientX,
       startY: e.clientY,
-      startSize: mergedData.weddingDirectoryHeadingFontSize ?? 100,
+      startSize: desktopMode ? (mergedData.weddingDirectoryHeadingFontSizeMobile ?? mergedData.weddingDirectoryHeadingFontSize ?? 100) : (mergedData.weddingDirectoryHeadingFontSize ?? 100),
     };
   };
 
@@ -201,7 +202,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
     isHeadingDragging.current = false;
     setDragToast(null);
     if (localHeadingSize !== null) {
-      handleChange('weddingDirectoryHeadingFontSize', localHeadingSize);
+      handleChange(desktopMode ? 'weddingDirectoryHeadingFontSizeMobile' : 'weddingDirectoryHeadingFontSize', localHeadingSize);
       setLocalHeadingSize(null);
     }
     setTimeout(() => { headingDragRef.current = null; }, 100);
@@ -221,12 +222,12 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
   const renderHeadingArrowOverlay = (size: number) => (
     <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
       {size < 150 && (
-        <div className="absolute -top-8 left-1/2 -translate-x-1/2 wd-heading-arrow-up" style={{ color: accentColor, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 wd-heading-arrow-up" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
         </div>
       )}
       {size > 50 && (
-        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 wd-heading-arrow-down" style={{ color: accentColor, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>
+        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 wd-heading-arrow-down" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
         </div>
       )}
@@ -1567,7 +1568,29 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
 
   const mergedData = { ...data, ...pendingChanges };
 
-  const headingSize = localHeadingSize ?? (mergedData.weddingDirectoryHeadingFontSize ?? 100);
+  const predefinedMessages = [
+    "A special place for our wedding details and contacts...",
+    "Welcome to our wedding directory. Find everything you need here.",
+    "Our favorite people and moments, all in one place.",
+    "We're so happy to share this directory with you.",
+    "A guide to the people and details that make our day special."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.weddingDirectoryMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleChange("weddingDirectoryMessage", predefinedMessages[nextIndex]);
+  };
+
+  const headingSize = localHeadingSize ?? (desktopMode ? (mergedData.weddingDirectoryHeadingFontSizeMobile ?? mergedData.weddingDirectoryHeadingFontSize ?? 100) : (mergedData.weddingDirectoryHeadingFontSize ?? 100));
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.weddingDirectoryMessageFontSizeMobile ?? mergedData.weddingDirectoryMessageFontSize ?? 100) : (mergedData.weddingDirectoryMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => handleChange(isDesktop ? 'weddingDirectoryMessageFontSizeMobile' : 'weddingDirectoryMessageFontSize', size),
+    arrowClassPrefix: 'wd-msg',
+  });
 
   const hisInitial = mergedData.hisName?.charAt(0).toUpperCase() || "";
   const herInitial = mergedData.herName?.charAt(0).toUpperCase() || "";
@@ -3222,21 +3245,21 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       <style>{`
         @keyframes wd-heading-arrow-up-anim {
           0% { transform: translateX(-50%) translateY(0); opacity: 0; }
-          20% { opacity: 0.5; }
-          60% { opacity: 0.5; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
           100% { transform: translateX(-50%) translateY(-18px); opacity: 0; }
         }
         @keyframes wd-heading-arrow-down-anim {
           0% { transform: translateX(-50%) translateY(0); opacity: 0; }
-          20% { opacity: 0.5; }
-          60% { opacity: 0.5; }
+          20% { opacity: 0.85; }
+          60% { opacity: 0.85; }
           100% { transform: translateX(-50%) translateY(18px); opacity: 0; }
         }
         .wd-heading-arrow-up { animation: wd-heading-arrow-up-anim 1.2s ease-in-out infinite; }
         .wd-heading-arrow-down { animation: wd-heading-arrow-down-anim 1.2s ease-in-out infinite; }
       `}</style>
       <h2
-        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.weddingDirectoryUseMainColor !== false ? data.mainColor2 : (mergedData.weddingDirectoryHeadingColor || data.mainColor2),
           fontFamily: mergedData.weddingDirectoryUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.weddingDirectoryHeadingTypography || data.headingFont, "heading"),
@@ -3270,17 +3293,34 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
       </h2>
 
       {mergedData.weddingDirectoryMessage && (
-        <p
-          className="text-center text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+        <>
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
+          className="text-center text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 select-none"
           style={{
             color: mergedData.weddingDirectoryUseMainColor !== false ? data.neutralColor1 : (mergedData.weddingDirectoryMessageColor || data.neutralColor1),
             fontFamily: mergedData.weddingDirectoryUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.weddingDirectoryMessageTypography || data.bodyFont, "body"),
-            fontSize: `${mergedData.weddingDirectoryMessageFontSize || 100}%`,
-            opacity: 0.85
-          }}
+            fontSize: `${messageDrag.effectiveSize}%`,
+            opacity: 0.85,
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
-          {mergedData.weddingDirectoryMessage}
-        </p>
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+          <span
+            className={editMode ? "cursor-pointer" : ""}
+            onClick={editMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleMessage();
+            } : undefined}
+          >
+            {mergedData.weddingDirectoryMessage}
+          </span>
+        </div>
+        </>
       )}
 
       <style>{`

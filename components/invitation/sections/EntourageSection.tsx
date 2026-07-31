@@ -10,6 +10,7 @@ import DividerSettingsPanel from '@/components/shared/DividerSettingsPanel';
 import { usePredefinedOptions } from '@/lib/hooks/usePredefinedOptions';
 import { getFontFamily } from '@/lib/utils/fonts';
 import { useTheme } from '../ThemeContext';
+import { useHeadingDrag } from '@/lib/hooks/useHeadingDrag';
 
 interface EntourageSectionProps {
   data: InvitationData;
@@ -179,6 +180,26 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
   
   // Create merged entourage object for nested properties
   const mergedEntourage = { ...entourage, ...(mergedData.entourage as any) };
+
+  const predefinedTopTexts = [
+    `Those who stand with ${data.hisName || "Groom"} & ${data.herName || "Bride"}`,
+    "With Love, From Our Closest Friends",
+    "The Ones Who Brought Us Together",
+    "The Marriage Attendants",
+    "Gathered in Love by Our Side",
+    "The Foundation of Our Circle",
+    "The Co-Stars of Our Day",
+    "The Hearts Behind the Vows",
+    `${data.hisName || "Groom"} & ${data.herName || "Bride"}'s Wedding Squad`,
+    `The I Do Crew of ${data.hisName || "Groom"} & ${data.herName || "Bride"}`
+  ];
+
+  const cycleTopText = () => {
+    const currentText = mergedEntourage.topTextCustom || predefinedTopTexts[0];
+    const currentIndex = predefinedTopTexts.indexOf(currentText);
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedTopTexts.length - 1 ? 0 : currentIndex + 1;
+    handleEntourageChange("topTextCustom", predefinedTopTexts[nextIndex]);
+  };
   const [rearrangeMode, setRearrangeMode] = useState(false);
   const [tempSectionOrder, setTempSectionOrder] = useState<string[]>([]);
   const [draggedSection, setDraggedSection] = useState<string | null>(null);
@@ -187,6 +208,50 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
   const page1Ref = useRef<HTMLDivElement>(null);
   const [showDividerSettingsPanel, setShowDividerSettingsPanel] = useState(false);
   const [isDividerSettingsClosing, setIsDividerSettingsClosing] = useState(false);
+
+  const headingDrag = useHeadingDrag({
+    editMode: editMode && !rearrangeMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.entourageHeadingFontSizeMobile ?? mergedData.entourageHeadingFontSize ?? 100) : (mergedData.entourageHeadingFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'entourageHeadingFontSizeMobile' : 'entourageHeadingFontSize', size),
+    arrowClassPrefix: 'entourage',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode: editMode && !rearrangeMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.entourageTopTextFontSizeMobile ?? mergedData.entourageTopTextFontSize ?? 100) : (mergedData.entourageTopTextFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'entourageTopTextFontSizeMobile' : 'entourageTopTextFontSize', size),
+    arrowClassPrefix: 'entourage-msg',
+  });
+
+  const bottomTextDrag = useHeadingDrag({
+    editMode: editMode && !rearrangeMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.entourageBottomTextFontSizeMobile ?? mergedData.entourageBottomTextFontSize ?? 100) : (mergedData.entourageBottomTextFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'entourageBottomTextFontSizeMobile' : 'entourageBottomTextFontSize', size),
+    arrowClassPrefix: 'entourage-bottom-msg',
+  });
+
+  const predefinedBottomTexts = [
+    "Honoring those who share in our joy",
+    "Forever grateful for your love and guidance",
+    "Our biggest inspirations and guides",
+    "With us for a lifetime",
+    "Rooted in love and friendship",
+    "For your endless support and laughter",
+    "Celebrating the love that surrounds us",
+    "With deepest gratitude for your presence",
+    "Our ultimate support system",
+    "The anchors of our lives"
+  ];
+
+  const cycleBottomText = () => {
+    const currentText = mergedEntourage.bottomTextCustom || predefinedBottomTexts[0];
+    const currentIndex = predefinedBottomTexts.indexOf(currentText);
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedBottomTexts.length - 1 ? 0 : currentIndex + 1;
+    handleEntourageChange("bottomTextCustom", predefinedBottomTexts[nextIndex]);
+  };
 
   const handleCloseDividerSettingsPanel = () => {
     setIsDividerSettingsClosing(true);
@@ -1706,44 +1771,65 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       
       <div className="max-w-2xl mx-auto max-[682px]:max-w-none">
         {/* Top text - outside paper container */}
-        <p
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
           id="entourage-top-text"
-          className="text-center mb-1 md:mb-4 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
-          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.headingFont : (mergedData.entourageHeadingTypography || data.headingFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${(mergedData.entourageBottomTextFontSize || 100) / 100}rem` }}
+          className="text-center mb-1 md:mb-4 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 select-none"
+          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.headingFont : (mergedData.entourageHeadingTypography || data.headingFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${messageDrag.effectiveSize / 100}rem`, position: 'relative', touchAction: editMode && !rearrangeMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
           <span
             className={editMode && !rearrangeMode ? "cursor-pointer" : ""}
-            onClick={editMode && !rearrangeMode ? () => setShowTypographyPanel(true) : undefined}
+            onClick={editMode && !rearrangeMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleTopText();
+            } : undefined}
           >
             {renderTitle(`Those who stand with ${data.hisName || "Groom"} & ${data.herName || "Bride"}`, mergedEntourage.topTextCustom)}
           </span>
-        </p>
+        </div>
 
         {/* Header - outside paper container */}
+        {headingDrag.renderArrowStyles()}
+        {headingDrag.renderDragToast()}
         <h2
-          className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
-          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.headingFont : (mergedData.entourageHeadingTypography || data.headingFont), color: mergedData.entourageUseMainColor !== false ? data.mainColor2 : (mergedData.entourageHeadingColor || data.mainColor2), fontSize: `${(mergedData.entourageHeadingFontSize || 100) * 3}%`, lineHeight: '1.2' }}
+          className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
+          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.headingFont : (mergedData.entourageHeadingTypography || data.headingFont), color: mergedData.entourageUseMainColor !== false ? data.mainColor2 : (mergedData.entourageHeadingColor || data.mainColor2), fontSize: `${headingDrag.effectiveSize * 3}%`, lineHeight: '1.2', position: 'relative', touchAction: editMode && !rearrangeMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
+          {...headingDrag.headingDragProps}
         >
+          {headingDrag.dragging && headingDrag.renderArrowOverlay()}
           <span
-            className={editMode && !rearrangeMode ? "cursor-pointer" : ""}
-            onClick={editMode && !rearrangeMode ? () => setShowTypographyPanel(true) : undefined}
+            className={editMode && !rearrangeMode ? "cursor-pointer select-none" : ""}
+            onClick={editMode && !rearrangeMode ? (e) => {
+              if (headingDrag.clickGuard(e)) return;
+              setShowTypographyPanel(true);
+            } : undefined}
           >
             {mergedData.entourageHeading || "Wedding Entourage"}
           </span>
         </h2>
 
         {/* Bottom text - outside paper container */}
-        <p
-          className="text-center mb-6 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
-          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.bodyFont : (mergedData.entourageBottomTextTypography || data.bodyFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${(mergedData.entourageBottomTextFontSize || 100) / 100}rem` }}
+        {bottomTextDrag.renderArrowStyles()}
+        {bottomTextDrag.renderDragToast()}
+        <div
+          className="text-center mb-6 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm select-none"
+          style={{ fontFamily: mergedData.entourageUseMainColor !== false ? data.bodyFont : (mergedData.entourageBottomTextTypography || data.bodyFont), color: mergedData.entourageUseMainColor !== false ? data.neutralColor1 : (mergedData.entourageBottomTextColor || data.neutralColor1), fontSize: `${bottomTextDrag.effectiveSize / 100}rem`, position: 'relative', touchAction: editMode && !rearrangeMode ? 'pan-y' : 'auto', WebkitTouchCallout: 'none' } as React.CSSProperties}
+          {...bottomTextDrag.headingDragProps}
         >
+          {bottomTextDrag.dragging && bottomTextDrag.renderArrowOverlay()}
           <span
             className={editMode && !rearrangeMode ? "cursor-pointer" : ""}
-            onClick={editMode && !rearrangeMode ? () => setShowTypographyPanel(true) : undefined}
+            onClick={editMode && !rearrangeMode ? (e) => {
+              if (bottomTextDrag.clickGuard(e)) return;
+              cycleBottomText();
+            } : undefined}
           >
             {renderTitle("Honoring those who share in our joy", mergedEntourage.bottomTextCustom)}
           </span>
-        </p>
+        </div>
       </div>
 
       {/* Paper container - only show page 1 when currentPage is 1 */}

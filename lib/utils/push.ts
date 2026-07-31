@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, Token, PushNotificationSchema } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { apiUrl } from "./api";
 
 let currentToken: string | null = null;
 let foregroundListenerRegistered = false;
@@ -61,7 +62,7 @@ export async function registerPushNotifications(invitationId: string): Promise<v
     PushNotifications.addListener("registration", async (token: Token) => {
       currentToken = token.value;
       try {
-        await fetch("/api/push-token", {
+        await fetch(apiUrl("/api/push-token"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -87,7 +88,7 @@ export async function unregisterPushNotifications(): Promise<void> {
 
   try {
     if (currentToken) {
-      await fetch("/api/push-token", {
+      await fetch(apiUrl("/api/push-token"), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

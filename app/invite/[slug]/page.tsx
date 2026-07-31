@@ -5,6 +5,7 @@ import type { Invitation, InvitationData } from "@/lib/types/invitation";
 import { supabase } from "@/lib/supabase/client";
 import { updateFavicon } from "@/lib/utils";
 import InvitationTemplate from "@/components/invitation/InvitationTemplate";
+import { apiUrl } from "@/lib/utils/api";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export default function InvitePage({ params }: InvitePageProps) {
 
   useEffect(() => {
     async function load() {
-      const res = await fetch(`/api/invitation/${slug}`);
+      const res = await fetch(apiUrl(`/api/invitation/${slug}`));
       if (!res.ok) {
         setNotFound(true);
         setLoading(false);

@@ -2,9 +2,12 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
 import { USHER_INSTRUCTIONS, USHERETTE_INSTRUCTIONS, getNextMessage } from "@/lib/constants/heroMessages";
+import { supabase } from "@/lib/supabase/client";
+import FloatingActionMenu from "../shared/FloatingActionMenu";
 
 interface GuestEditorProps {
   data: InvitationData;
+  invitationId?: string;
   onChange: (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => void;
   isDarkMode?: boolean;
   accentColor?: string;
@@ -14,7 +17,17 @@ interface GuestEditorProps {
 
 type InviteeTitle = "M" | "Mr." | "Ms." | "Mrs.";
 
-export default function GuestEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave }: GuestEditorProps) {
+type GuestFilter = "all" | "pending" | "confirmed" | "declined";
+
+type RSVPResponse = {
+  guest_name: string;
+  attendance: string;
+  guest_count: number;
+  message: string | null;
+  submitted_at: string;
+};
+
+export default function GuestEditor({ data, invitationId, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave }: GuestEditorProps) {
   const [inviteeSort, setInviteeSort] = useState<"alphabetical" | "date-added">("date-added");
   const [inviteePage, setInviteePage] = useState(0);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
@@ -37,6 +50,36 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   const [editDialogHasChanges, setEditDialogHasChanges] = useState(false);
   const inviteeScrollRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const [guestFilter, setGuestFilter] = useState<GuestFilter>("all");
+  const [rsvpResponses, setRsvpResponses] = useState<RSVPResponse[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [messageDialogGuest, setMessageDialogGuest] = useState<{ name: string; message: string; submittedAt: string } | null>(null);
+  const [readMessages, setReadMessages] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("readRsvpMessages");
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Fetch RSVP responses from Supabase
+  useEffect(() => {
+    if (!invitationId) return;
+    const fetchResponses = async () => {
+      try {
+        const { data: responsesData, error } = await supabase
+          .from("rsvp_responses")
+          .select("*")
+          .eq("invitation_id", invitationId);
+        if (error) throw error;
+        setRsvpResponses(responsesData || []);
+      } catch (error) {
+        console.error("Error fetching RSVP responses:", error);
+      }
+    };
+    fetchResponses();
+  }, [invitationId]);
 
   // Detect changes between current and original guest data
   useEffect(() => {
@@ -76,6 +119,47 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   const [pendingGuestDetails, setPendingGuestDetails] = useState<Record<number, { plusOne: string; tableNumber: string }>>(data.rsvpGuestDetails || {});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [duplicateErrors, setDuplicateErrors] = useState<Record<number, boolean>>({});
+  const [showGuestCountDialog, setShowGuestCountDialog] = useState(false);
+  const [guestCountInput, setGuestCountInput] = useState(String(data.targetGuestCount || ""));
+
+  // Refs to track latest pending state for unmount cleanup
+  const pendingInviteesRef = useRef(pendingInvitees);
+  const pendingEntourageHonorificsRef = useRef(pendingEntourageHonorifics);
+  const pendingEntourageGuestDetailsRef = useRef(pendingEntourageGuestDetails);
+  const pendingGuestDetailsRef = useRef(pendingGuestDetails);
+  const duplicateErrorsRef = useRef(duplicateErrors);
+  const onChangeRef = useRef(onChange);
+  const hasAppliedRef = useRef(false);
+
+  useEffect(() => { pendingInviteesRef.current = pendingInvitees; }, [pendingInvitees]);
+  useEffect(() => { pendingEntourageHonorificsRef.current = pendingEntourageHonorifics; }, [pendingEntourageHonorifics]);
+  useEffect(() => { pendingEntourageGuestDetailsRef.current = pendingEntourageGuestDetails; }, [pendingEntourageGuestDetails]);
+  useEffect(() => { pendingGuestDetailsRef.current = pendingGuestDetails; }, [pendingGuestDetails]);
+  useEffect(() => { duplicateErrorsRef.current = duplicateErrors; }, [duplicateErrors]);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
+  // Apply pending changes on unmount (handles back gesture bypassing handleClose)
+  useEffect(() => {
+    return () => {
+      if (hasAppliedRef.current) return;
+      hasAppliedRef.current = true;
+      const hasDuplicates = Object.values(duplicateErrorsRef.current).some(error => error);
+      if (hasDuplicates) return;
+      const currentData = JSON.stringify({
+        invitees: pendingInviteesRef.current,
+        entourageHonorifics: pendingEntourageHonorificsRef.current,
+        entourageGuestDetails: pendingEntourageGuestDetailsRef.current,
+        guestDetails: pendingGuestDetailsRef.current
+      });
+      if (currentData !== initialSnapshotRef.current) {
+        const filteredInvitees = pendingInviteesRef.current.filter(invitee => invitee.name.trim() !== "");
+        onChangeRef.current("rsvpInvitees", filteredInvitees as unknown as InvitationData[keyof InvitationData]);
+        onChangeRef.current("rsvpEntourageHonorifics", pendingEntourageHonorificsRef.current as unknown as InvitationData[keyof InvitationData]);
+        onChangeRef.current("rsvpEntourageGuestDetails", pendingEntourageGuestDetailsRef.current as unknown as InvitationData[keyof InvitationData]);
+        onChangeRef.current("rsvpGuestDetails", pendingGuestDetailsRef.current as unknown as InvitationData[keyof InvitationData]);
+      }
+    };
+  }, []);
 
   // Snapshot of initial data for revert detection
   const initialGuestDataSnapshot = useRef(JSON.stringify({
@@ -95,6 +179,7 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     })(),
     guestDetails: data.rsvpGuestDetails || {}
   }));
+  const initialSnapshotRef = useRef(initialGuestDataSnapshot.current);
 
   // Revert detection: compare current pending state with initial snapshot
   useEffect(() => {
@@ -110,6 +195,14 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   // Auto-added guests from the Entourage list (excludes couple, groom's parents, bride's parents).
   // These are read-only here; edit/remove them from the Entourage List instead.
   const entourageGuests = useMemo(() => getEntourageGuestNames(data.entourage), [data.entourage]);
+
+  // Auto-prompt for guest count if no guests and no target set
+  useEffect(() => {
+    const totalGuests = pendingInvitees.filter(i => i.name.trim()).length + entourageGuests.length;
+    if (totalGuests === 0 && !data.targetGuestCount) {
+      setShowGuestCountDialog(true);
+    }
+  }, []); // Run once on mount
 
   // Special names that should not be added to the guest list (groom, bride, parents)
   const specialNames = useMemo(() => {
@@ -256,9 +349,18 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     onChange("rsvpGuestDetails", pendingGuestDetails as unknown as InvitationData[keyof InvitationData]);
   };
 
-  // Handle close - auto-apply pending changes, no save prompt
+  // Handle close - auto-apply pending changes only if something actually changed
   const handleClose = () => {
-    applyPendingChanges();
+    const currentData = JSON.stringify({
+      invitees: pendingInvitees,
+      entourageHonorifics: pendingEntourageHonorifics,
+      entourageGuestDetails: pendingEntourageGuestDetails,
+      guestDetails: pendingGuestDetails
+    });
+    if (currentData !== initialGuestDataSnapshot.current) {
+      applyPendingChanges();
+    }
+    hasAppliedRef.current = true;
     onClose();
   };
 
@@ -284,7 +386,7 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     }
 
     // Sort based on filter option
-    const allItems = [...entourageDisplayItems, ...displayInvitees];
+    let allItems = [...entourageDisplayItems, ...displayInvitees];
     
     if (filterSortOption === "name") {
       allItems.sort((a, b) => {
@@ -334,6 +436,18 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
       allItems.push(emptyItem);
     }
 
+    // Apply RSVP status filter
+    if (guestFilter !== "all") {
+      allItems = allItems.filter(item => {
+        const guestName = item.name.split('\n')[0].toLowerCase();
+        const response = rsvpResponses.find(r => r.guest_name.toLowerCase() === guestName);
+        if (guestFilter === "pending") return !response;
+        if (guestFilter === "confirmed") return response?.attendance === "attending";
+        if (guestFilter === "declined") return response?.attendance === "not-attending";
+        return true;
+      });
+    }
+
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -344,18 +458,58 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
     }
 
     return allItems;
-  }, [pendingInvitees, entourageGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, searchQuery]);
+  }, [pendingInvitees, entourageGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, searchQuery, guestFilter, rsvpResponses]);
+
+  // Compute guest counts per RSVP category
+  const guestCounts = useMemo(() => {
+    const allGuestNames = [
+      ...entourageGuests.map(g => g.name),
+      ...pendingInvitees.map(i => i.name)
+    ].filter(n => n.trim() !== "");
+
+    const findResponse = (name: string) => rsvpResponses.find(r => r.guest_name.toLowerCase() === name.toLowerCase());
+
+    return {
+      all: allGuestNames.length,
+      pending: allGuestNames.filter(n => !findResponse(n)).length,
+      confirmed: allGuestNames.filter(n => findResponse(n)?.attendance === "attending").length,
+      declined: allGuestNames.filter(n => findResponse(n)?.attendance === "not-attending").length,
+    };
+  }, [pendingInvitees, entourageGuests, rsvpResponses]);
+
+  // Get RSVP response for a specific guest name
+  const getGuestRsvp = (displayName: string) => {
+    const guestName = displayName.split('\n')[0].toLowerCase();
+    return rsvpResponses.find(r => r.guest_name.toLowerCase() === guestName);
+  };
+
+  // Mark a message as read
+  const markMessageRead = (guestName: string) => {
+    const key = guestName.toLowerCase();
+    setReadMessages(prev => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      try { localStorage.setItem("readRsvpMessages", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   // Pagination: 25 per page
   const itemsPerPage = 25;
   const totalPages = Math.ceil(combinedInvitees.length / itemsPerPage);
 
-  // Reset page if it's out of bounds (e.g., after deletions)
+  // Reset page if it's out of bounds (e.g., after deletions or filter change)
   useEffect(() => {
     if (inviteePage >= totalPages && totalPages > 0) {
       setInviteePage(totalPages - 1);
     }
   }, [inviteePage, totalPages]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setInviteePage(0);
+  }, [guestFilter]);
 
   // Update current page when scrolling
   useEffect(() => {
@@ -374,7 +528,7 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
   }, []);
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Header - fixed, not scrollable */}
       <div className={`flex items-center justify-between p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
         <div className="flex items-center gap-3">
@@ -396,86 +550,147 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <div className="relative" ref={filterMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              title="Filter guests"
+              className="p-1.5 rounded transition-colors"
+              style={{ filter: isDarkMode ? "brightness(0.7)" : "brightness(0.4)" }}
+            >
+              <img src="/assets/ico-filter.png" alt="Filter" width="16" height="16" />
+            </button>
+            
+            {showFilterMenu && (
+              <div className={`absolute right-0 top-full mt-2 w-48 rounded-lg shadow-lg z-50 ${isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("date")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "date" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Sort by Date
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("name")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "name" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Sort by Name
+                  </button>
+                  <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("ushers")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "ushers" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Ushers Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("usherettes")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "usherettes" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Usherettes Only
+                  </button>
+                  <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("entourage-only")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "entourage-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Entourage Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("normal-only")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "normal-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Normal Guest Only
+                  </button>
+                  <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
+                  <button
+                    type="button"
+                    onClick={() => setFilterSortOption("all")}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "all" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                  >
+                    Show All
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Guest list header - outside scrollable area */}
       <div className="px-4 py-2 space-y-3 shrink-0" style={{ fontFamily: "Inter, sans-serif" }}>
-        <div className="flex items-center justify-between">
-          <label className="block text-xs tracking-wide uppercase text-gray-500">
-            GUEST LIST ({combinedInvitees.filter(item => item.name.trim() !== "").length})
-          </label>
-          <div className="flex items-center gap-2">
-            <div className="relative" ref={filterMenuRef}>
+
+        {/* RSVP Status Tabs */}
+        <div className="flex gap-1.5 flex-wrap">
+          {([
+            { key: "all", label: "ALL", count: guestCounts.all, color: null, icon: "/assets/ico-all.png" },
+            { key: "pending", label: "PENDING", count: guestCounts.pending, color: "#f59e0b", icon: "/assets/ico-nores.png" },
+            { key: "confirmed", label: "CONFIRMED", count: guestCounts.confirmed, color: "#10b981", icon: "/assets/ico-conf.png" },
+            { key: "declined", label: "DECLINED", count: guestCounts.declined, color: "#ef4444", icon: "/assets/ico-decl.png" },
+          ] as { key: GuestFilter; label: string; count: number; color: string | null; icon: string | null }[]).map(tab => {
+            const isActive = guestFilter === tab.key;
+            const c = tab.color;
+            return (
               <button
-                type="button"
-                onClick={() => setShowFilterMenu(!showFilterMenu)}
-                title="Filter guests"
-                className="p-1.5 rounded transition-colors"
-                style={{ filter: isDarkMode ? "brightness(0.7)" : "brightness(0.4)" }}
+                key={tab.key}
+                onClick={() => setGuestFilter(tab.key)}
+                className={`flex-1 min-w-[60px] aspect-square flex flex-col items-center justify-center gap-1 px-1 rounded-lg transition-all`}
+                style={{
+                  fontFamily: "Inter, sans-serif",
+                  ...(c ? {
+                    backgroundColor: isActive ? `${c}22` : `${c}0d`,
+                    border: `1px solid ${c}${isActive ? "55" : "22"}`,
+                  } : {
+                    backgroundColor: isActive
+                      ? (isDarkMode ? "#9ca3af22" : "#6b728022")
+                      : (isDarkMode ? "#9ca3af0d" : "#6b72800d"),
+                    border: `1px solid ${isDarkMode ? "#9ca3af" : "#6b7280"}${isActive ? "55" : "22"}`,
+                  }),
+                }}
               >
-                <img src="/assets/ico-filter.png" alt="Filter" width="16" height="16" />
-              </button>
-              
-              {showFilterMenu && (
-                <div className={`absolute right-0 top-full mt-2 w-48 rounded-lg shadow-lg z-50 ${isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"}`}>
-                  <div className="py-1">
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("date")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "date" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Sort by Date
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("name")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "name" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Sort by Name
-                    </button>
-                    <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("ushers")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "ushers" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Ushers Only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("usherettes")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "usherettes" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Usherettes Only
-                    </button>
-                    <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("entourage-only")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "entourage-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Entourage Only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("normal-only")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "normal-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Normal Guest Only
-                    </button>
-                    <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
-                    <button
-                      type="button"
-                      onClick={() => setFilterSortOption("all")}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "all" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
-                    >
-                      Show All
-                    </button>
+                {tab.icon && (
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: c ?? (isDarkMode ? "#4b5563" : "#9ca3af") }}
+                  >
+                    <div
+                      className="w-3 h-3"
+                      style={{
+                        backgroundColor: "#fff",
+                        WebkitMaskImage: `url(${tab.icon})`,
+                        WebkitMaskSize: "contain",
+                        WebkitMaskPosition: "center",
+                        WebkitMaskRepeat: "no-repeat",
+                        maskImage: `url(${tab.icon})`,
+                        maskSize: "contain",
+                        maskPosition: "center",
+                        maskRepeat: "no-repeat",
+                      }}
+                    />
                   </div>
+                )}
+                <div
+                  className="text-[8px] tracking-wide"
+                  style={{ color: c ?? (isDarkMode ? "#9ca3af" : "#6b7280") }}
+                >
+                  {tab.label}
                 </div>
-              )}
-            </div>
-          </div>
+                <div
+                  className="text-sm font-bold"
+                  style={{ color: c ?? (isDarkMode ? "#e5e7eb" : "#1f2937") }}
+                >
+                  {tab.count}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Search Box */}
@@ -515,28 +730,28 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
-        <div className="space-y-2">
-          <div className="space-y-2">
-            <div
+      <div className="flex-1 overflow-hidden px-2 py-4">
+        <div className="h-full">
+          <div
               ref={inviteeScrollRef}
-              className="overflow-x-auto snap-x snap-mandatory scroll-smooth"
+              className="h-full overflow-x-auto snap-x snap-mandatory scroll-smooth guest-scroll-hide"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-              <div className="flex snap-x snap-mandatory" style={{ minWidth: '100%' }}>
+              <div className="flex h-full snap-x snap-mandatory" style={{ minWidth: '100%' }}>
                 {Array.from({ length: totalPages }).map((_, pageIndex) => (
                         <div
                           key={pageIndex}
-                          className="flex-col gap-2 shrink-0 w-full snap-start space-y-2"
+                          className="flex flex-col gap-2 shrink-0 w-full h-full snap-start overflow-y-auto space-y-2"
                           style={{ scrollSnapAlign: 'start' }}
                         >
                           {combinedInvitees
                             .slice(pageIndex * itemsPerPage, (pageIndex + 1) * itemsPerPage)
                             .map(({ name, originalIndex, readOnly, key, guestName, ...item }) => (
                               readOnly ? (
-                                <div key={key} className="flex items-center gap-2">
+                                <div key={key} className="flex items-center">
                                   <div
                                     onClick={() => {
+                                      if (!isEditMode) return;
                                       const guestDetails = pendingEntourageGuestDetails[guestName] || { plusOne: "", tableNumber: "" };
                                       const entTitle = (item as any).entourageTitle || "";
                                       setEditGuestData({ 
@@ -560,17 +775,55 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                                       setEditDialogHasChanges(false);
                                       setShowEditDialog(true);
                                     }}
-                                    className={`flex-1 px-3 py-2 border rounded-lg text-sm cursor-pointer transition-colors ${isDarkMode ? "border-gray-700 text-gray-300 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                                    className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between ${isEditMode ? "cursor-pointer" : ""} ${isDarkMode ? "border-gray-700 text-gray-300 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
                                     style={isDarkMode ? { backgroundColor: "#151B24", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#EDEEF1", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}
                                     title="Auto-added from Entourage List - Click to edit"
                                   >
-                                    {name}
+                                    <span>{name}</span>
+                                    {(() => {
+                                      const rsvp = getGuestRsvp(name);
+                                      if (!rsvp) return null;
+                                      const hasMessage = rsvp.message && rsvp.message.trim() !== "";
+                                      const isUnread = hasMessage && !readMessages.has(name.split('\n')[0].toLowerCase());
+                                      return (
+                                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                          {rsvp.attendance === "attending" && (
+                                            <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#10b981" }}>
+                                              <div className="w-3 h-3" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-conf.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-conf.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+                                            </div>
+                                          )}
+                                          {rsvp.attendance === "not-attending" && (
+                                            <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#ef4444" }}>
+                                              <div className="w-3 h-3" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-decl.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-decl.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+                                            </div>
+                                          )}
+                                          {hasMessage && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                markMessageRead(name);
+                                                setMessageDialogGuest({ name: name.split('\n')[0], message: rsvp.message!, submittedAt: rsvp.submitted_at });
+                                              }}
+                                              className="relative w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-transform hover:scale-110 active:scale-95"
+                                              style={{ backgroundColor: "#3b82f6" }}
+                                              title="View message"
+                                            >
+                                              <div className="w-3 h-3" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-msg.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-msg.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+                                              {isUnread && (
+                                                <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-white" />
+                                              )}
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                               ) : (
-                              <div key={key} className="flex items-center gap-2">
+                              <div key={key} className="flex items-center">
                                 <div
                                   onClick={() => {
+                                    if (!isEditMode) return;
                                     const guestDetails = pendingGuestDetails[originalIndex] || { plusOne: "", tableNumber: "" };
                                     setEditGuestData({ 
                                       isEntourage: false, 
@@ -590,10 +843,47 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                                     setEditDialogHasChanges(false);
                                     setShowEditDialog(true);
                                   }}
-                                  className={`flex-1 px-3 py-2 border rounded-lg text-sm cursor-pointer transition-colors ${isDarkMode ? "border-gray-700 text-gray-200 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                                  className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between ${isEditMode ? "cursor-pointer" : ""} ${isDarkMode ? "border-gray-700 text-gray-200 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
                                   style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
                                 >
-                                  {name}
+                                  <span>{name}</span>
+                                  {(() => {
+                                    const rsvp = getGuestRsvp(name);
+                                    if (!rsvp) return null;
+                                    const hasMessage = rsvp.message && rsvp.message.trim() !== "";
+                                    const isUnread = hasMessage && !readMessages.has(name.split('\n')[0].toLowerCase());
+                                    return (
+                                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                        {rsvp.attendance === "attending" && (
+                                          <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#10b981" }}>
+                                            <div className="w-3 h-3" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-conf.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-conf.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+                                          </div>
+                                        )}
+                                        {rsvp.attendance === "not-attending" && (
+                                          <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#ef4444" }}>
+                                            <div className="w-3 h-3" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-decl.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-decl.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+                                          </div>
+                                        )}
+                                        {hasMessage && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              markMessageRead(name);
+                                              setMessageDialogGuest({ name: name.split('\n')[0], message: rsvp.message!, submittedAt: rsvp.submitted_at });
+                                            }}
+                                            className="relative w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-transform hover:scale-110 active:scale-95"
+                                            style={{ backgroundColor: "#3b82f6" }}
+                                            title="View message"
+                                          >
+                                            <div className="w-3 h-3" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-msg.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-msg.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+                                            {isUnread && (
+                                              <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-white" />
+                                            )}
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                               )
@@ -602,13 +892,12 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                       ))}
                     </div>
                   </div>
-          </div>
         </div>
       </div>
 
       {/* Pagination dots - fixed outside scrollable area */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 py-3">
+        <div className="flex items-center justify-center gap-2 py-3 shrink-0">
           {Array.from({ length: totalPages }).map((_, idx) => (
             <button
               key={idx}
@@ -980,6 +1269,11 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
                   </button>
                 )}
               </div>
+              {editGuestData.isEntourage && (
+                <p className={`text-xs text-center pt-2 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                  To edit this guest name, go to Entourage list
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1048,6 +1342,141 @@ export default function GuestEditor({ data, onChange, isDarkMode = false, accent
           </div>
         </div>
       )}
+
+      {/* Floating Action Menu */}
+      <FloatingActionMenu
+        accentColor={accentColor}
+        isDarkMode={isDarkMode}
+        options={[
+          {
+            label: "Add Guest",
+            icon: "plus",
+            onClick: () => {
+              setNewGuestName("");
+              setNewGuestTitle("M");
+              setNewGuestPlusOne("");
+              setNewGuestTableNumber("");
+              setAddDialogHasChanges(false);
+              setAddDialogGuestNumberError(false);
+              setShowAddDialog(true);
+            },
+          },
+          {
+            label: isEditMode ? "Done Edit" : "Edit Guest",
+            icon: isEditMode ? "done" : "edit",
+            onClick: () => {
+              setIsEditMode(!isEditMode);
+            },
+            divider: true,
+          },
+          {
+            label: "Expected Guests",
+            icon: "target",
+            onClick: () => {
+              setGuestCountInput(String(data.targetGuestCount || ""));
+              setShowGuestCountDialog(true);
+            },
+          },
+        ]}
+      />
+
+      {/* Guest Count Dialog */}
+      {showGuestCountDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowGuestCountDialog(false)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Expected Guests
+            </h3>
+            <p className={`text-sm mb-4 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              How many guests are you planning to invite?
+            </p>
+            <input
+              type="number"
+              min="1"
+              value={guestCountInput}
+              onChange={(e) => setGuestCountInput(e.target.value)}
+              placeholder="e.g. 100"
+              className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none transition-colors mb-4 ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+              style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowGuestCountDialog(false)}
+                className={`flex-1 px-4 py-2 border rounded-lg text-sm transition-colors ${isDarkMode ? "border-gray-600 text-gray-300 hover:bg-gray-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                style={{ fontFamily: "Inter, sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const count = parseInt(guestCountInput) || 0;
+                  if (count > 0) {
+                    onChange("targetGuestCount", count as unknown as InvitationData[keyof InvitationData]);
+                  }
+                  setShowGuestCountDialog(false);
+                }}
+                disabled={!guestCountInput || parseInt(guestCountInput) <= 0}
+                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Message Dialog */}
+      {messageDialogGuest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setMessageDialogGuest(null)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                <div className="w-4 h-4" style={{ backgroundColor: "#fff", WebkitMaskImage: "url(/assets/ico-msg.png)", WebkitMaskSize: "contain", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", maskImage: "url(/assets/ico-msg.png)", maskSize: "contain", maskPosition: "center", maskRepeat: "no-repeat" }} />
+              </div>
+              <h3 className={`text-base font-semibold ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                Message from {messageDialogGuest.name}
+              </h3>
+            </div>
+            <div className={`rounded-lg p-4 mb-4 ${isDarkMode ? "bg-gray-700" : "bg-gray-50"}`}>
+              <p className={`text-sm whitespace-pre-wrap ${isDarkMode ? "text-gray-300" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                {messageDialogGuest.message}
+              </p>
+            </div>
+            {messageDialogGuest.submittedAt && (
+              <p className={`text-xs mb-4 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                {new Date(messageDialogGuest.submittedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+              </p>
+            )}
+            <button
+              onClick={() => setMessageDialogGuest(null)}
+              className="w-full px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+              style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .guest-scroll-hide::-webkit-scrollbar:horizontal {
+          display: none;
+        }
+        .guest-scroll-hide::-webkit-scrollbar-thumb:horizontal {
+          background: transparent;
+        }
+        .guest-scroll-hide::-webkit-scrollbar-track:horizontal {
+          background: transparent;
+        }
+      `}</style>
     </div>
   );
 }

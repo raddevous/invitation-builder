@@ -12,6 +12,8 @@ import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
+import { apiUrl } from "@/lib/utils/api";
 
 interface RSVPSectionProps {
   data: InvitationData;
@@ -463,7 +465,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
         ? selectedGuest.name 
         : `${selectedGuest.title} ${selectedGuest.name}`;
 
-      const res = await fetch('/api/rsvp', {
+      const res = await fetch(apiUrl('/api/rsvp'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -520,7 +522,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
             ? selectedGuest.name 
             : `${selectedGuest.title} ${selectedGuest.name}`;
           
-          const res = await fetch(`/api/rsvp?invitationId=${invitationId}`);
+          const res = await fetch(apiUrl(`/api/rsvp?invitationId=${invitationId}`));
           const data = await res.json();
           
           if (res.ok && data.responses) {
@@ -561,6 +563,69 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   if (!data.sections.rsvp) return null;
 
   const mergedData = { ...data, ...pendingChanges };
+
+  const predefinedTopTexts = [
+    "Confirm your attendance",
+    "Reserve your spot",
+    "Lock in your seat",
+    "Verify your attendance",
+    "Secure your invitation",
+    "Register for this event",
+    "Claim your ticket",
+    "Let us know you're coming"
+  ];
+
+  const cycleTopText = () => {
+    const currentText = mergedData.rsvpTopTextCustom || "";
+    const currentIndex = predefinedTopTexts.indexOf(currentText);
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedTopTexts.length - 1 ? 0 : currentIndex + 1;
+    handleChange("rsvpTopTextCustom", predefinedTopTexts[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.rsvpHeaderFontSizeMobile ?? mergedData.rsvpHeaderFontSize ?? 100) : (mergedData.rsvpHeaderFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'rsvpHeaderFontSizeMobile' : 'rsvpHeaderFontSize', size),
+    arrowClassPrefix: 'rsvp',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.rsvpTopTextFontSizeMobile ?? mergedData.rsvpTopTextFontSize ?? 100) : (mergedData.rsvpTopTextFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'rsvpTopTextFontSizeMobile' : 'rsvpTopTextFontSize', size),
+    arrowClassPrefix: 'rsvp-msg',
+  });
+
+  const bottomTextDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.rsvpBottomTextFontSizeMobile ?? mergedData.rsvpBottomTextFontSize ?? 100) : (mergedData.rsvpBottomTextFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'rsvpBottomTextFontSizeMobile' : 'rsvpBottomTextFontSize', size),
+    arrowClassPrefix: 'rsvp-bottom-msg',
+  });
+
+  const getBottomText = () => mergedData.rsvpBottomTextCustom || mergedData.rsvpBottomText || (data.rsvpDeadline ? `Please respond by ${data.rsvpDeadline}` : "We look forward to your response");
+
+  const predefinedBottomTexts = [
+    `Kindly reply by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `RSVP requested by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Please respond by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Kindly confirm by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Responses due by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Please RSVP by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Kindly advise by ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Reply requested: ${data.rsvpDeadline || "November 30, 2026"}`,
+    `Confirm attendance by ${data.rsvpDeadline || "November 30, 2026"}`
+  ];
+
+  const cycleBottomText = () => {
+    const currentText = mergedData.rsvpBottomTextCustom || "";
+    const currentIndex = predefinedBottomTexts.indexOf(currentText);
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedBottomTexts.length - 1 ? 0 : currentIndex + 1;
+    handleChange("rsvpBottomTextCustom", predefinedBottomTexts[nextIndex]);
+  };
 
   // Set default values when background type changes
   useEffect(() => {
@@ -636,7 +701,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     setError("");
 
     try {
-      const res = await fetch("/api/rsvp", {
+      const res = await fetch(apiUrl("/api/rsvp"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -663,9 +728,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     { value: "maybe", label: "Will Try to Attend" },
   ];
 
-  const getTopText = () => mergedData.rsvpTopTextCustom || mergedData.rsvpTopText || "";
+  const getTopText = () => mergedData.rsvpTopTextCustom || mergedData.rsvpTopText || predefinedTopTexts[0];
   const getHeader = () => mergedData.rsvpHeaderCustom || mergedData.rsvpHeader || "RSVP";
-  const getBottomText = () => mergedData.rsvpBottomTextCustom || mergedData.rsvpBottomText || (data.rsvpDeadline ? `Please respond by ${data.rsvpDeadline}` : "We look forward to your response");
 
   const [showDividerSettingsPanel, setShowDividerSettingsPanel] = useState(false);
   const [isDividerSettingsClosing, setIsDividerSettingsClosing] = useState(false);
@@ -1470,58 +1534,92 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
       {/* Section heading - clickable in edit mode */}
       <div className="max-w-2xl mx-auto max-[682px]:max-w-none">
         {getTopText() && (
-          <p
+          <>
+          {messageDrag.renderArrowStyles()}
+          {messageDrag.renderDragToast()}
+          <div
             id="rsvp-top-text"
-            className="text-center mb-1 md:mb-4 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+            className="text-center mb-1 md:mb-4 uppercase scale-[0.7] md:scale-100 max-[400px]:scale-100 select-none"
             style={{ 
               color: mergedData.rsvpUseMainColor !== false ? data.neutralColor1 : (mergedData.rsvpBottomTextColor || data.neutralColor1), 
               fontFamily: mergedData.rsvpUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.rsvpTopTextTypography || data.headingFont, "heading"),
-              fontSize: `${(mergedData.rsvpTopTextFontSize || 100) / 100}rem`
-            }}
+              fontSize: `${messageDrag.effectiveSize / 100}rem`,
+              position: 'relative',
+              touchAction: editMode ? 'pan-y' : 'auto',
+              WebkitTouchCallout: 'none',
+            } as React.CSSProperties}
+            {...messageDrag.headingDragProps}
           >
+            {messageDrag.dragging && messageDrag.renderArrowOverlay()}
             <span
               className={editMode ? "cursor-pointer" : ""}
-              onClick={() => editMode && setShowSettingsPanel(true)}
+              onClick={(e) => {
+                if (messageDrag.clickGuard(e)) return;
+                if (editMode) cycleTopText();
+              }}
             >
               {getTopText()}
             </span>
-          </p>
+          </div>
+          </>
         )}
         
+        {headingDrag.renderArrowStyles()}
+        {headingDrag.renderDragToast()}
         <h2
-          className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+          className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
           style={{ 
             color: mergedData.rsvpUseMainColor !== false ? data.mainColor2 : (mergedData.rsvpHeaderColor || data.mainColor2), 
             fontFamily: mergedData.rsvpUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.rsvpHeaderTypography || data.headingFont, "heading"),
-            fontSize: `${(mergedData.rsvpHeaderFontSize || 100) * 3}%`,
-            lineHeight: '1.2'
-          }}
+            fontSize: `${headingDrag.effectiveSize * 3}%`,
+            lineHeight: '1.2',
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...headingDrag.headingDragProps}
         >
+          {headingDrag.dragging && headingDrag.renderArrowOverlay()}
           <span
-            className={editMode ? "cursor-pointer" : ""}
-            onClick={() => editMode && setShowSettingsPanel(true)}
+            className={editMode ? "cursor-pointer select-none" : ""}
+            onClick={(e) => {
+              if (headingDrag.clickGuard(e)) return;
+              if (editMode) setShowSettingsPanel(true);
+            }}
           >
             {getHeader()}
           </span>
         </h2>
 
         {getBottomText() && (
-          <p
-            className="text-center mb-6 scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+          <>
+          {bottomTextDrag.renderArrowStyles()}
+          {bottomTextDrag.renderDragToast()}
+          <div
+            className="text-center mb-6 scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm select-none"
             style={{ 
               color: mergedData.rsvpUseMainColor !== false ? data.neutralColor1 : (mergedData.rsvpBottomTextColor || data.neutralColor1), 
               opacity: 0.7, 
               fontFamily: mergedData.rsvpUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.rsvpBottomTextTypography || data.bodyFont, "body"),
-              fontSize: `${(mergedData.rsvpBottomTextFontSize || 100) / 100}rem`
-            }}
+              fontSize: `${bottomTextDrag.effectiveSize / 100}rem`,
+              position: 'relative',
+              touchAction: editMode ? 'pan-y' : 'auto',
+              WebkitTouchCallout: 'none',
+            } as React.CSSProperties}
+            {...bottomTextDrag.headingDragProps}
           >
+            {bottomTextDrag.dragging && bottomTextDrag.renderArrowOverlay()}
             <span
               className={editMode ? "cursor-pointer" : ""}
-              onClick={() => editMode && setShowSettingsPanel(true)}
+              onClick={(e) => {
+                if (bottomTextDrag.clickGuard(e)) return;
+                if (editMode) cycleBottomText();
+              }}
             >
               {getBottomText()}
             </span>
-          </p>
+          </div>
+          </>
         )}
       </div>
 

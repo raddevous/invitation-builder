@@ -61,8 +61,7 @@ export default function EventDetailsTab({ data, onChange, isDarkMode = false, ac
   };
 
   return (
-    <div className={`flex flex-col h-full ${isDarkMode ? "bg-gray-800" : ""}`}>
-      <div className="flex-1 overflow-y-auto space-y-5 p-4">
+    <div className="space-y-5">
       <div className="space-y-2">
         <div className="flex gap-2">
           <button
@@ -296,7 +295,6 @@ export default function EventDetailsTab({ data, onChange, isDarkMode = false, ac
             </svg>
           </button>
         </div>
-      </div>
       </div>
     </div>
   );

@@ -3,20 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Invitation, InvitationData } from "@/lib/types/invitation";
 import { supabase } from "@/lib/supabase/client";
+import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
+import { setStoredItem } from "@/lib/utils/storage";
 import { debounce, buildInviteUrl } from "@/lib/utils";
 import { shareInviteLink } from "@/lib/utils/share";
 import { saveDemoInvitation } from "@/lib/demo/demo-data";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
-import EventDetailsTab from "./tabs/EventDetailsTab";
+import { apiUrl } from "@/lib/utils/api";
 import SectionsTab from "./tabs/SectionsTab";
 import LiveEditView from "./live-edit/LiveEditView";
 import DesignTab from "./tabs/DesignTab";
 import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
 
-type TabId = "details" | "sections" | "live" | "design";
+type TabId = "sections" | "live" | "design";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: "details", label: "Details", icon: "/assets/ico-inf.png" },
   { id: "design", label: "Design", icon: "/assets/ico-desn.png" },
   { id: "sections", label: "Sections", icon: "/assets/ico-sect.png" },
   { id: "live", label: "Live", icon: "/assets/ico-live.png" },
@@ -24,12 +25,13 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 interface EditorPanelProps {
   invitation: Invitation;
-  onBack?: () => void;
+  onBack?: (updatedInvitation?: Invitation) => void;
   showScreenDimensions?: boolean;
   isDemoMode?: boolean;
 }
 
 export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false, isDemoMode = false }: EditorPanelProps) {
+  const { mode: systemMode } = useSystemTheme();
   const [invitation, setInvitation] = useState<Invitation>(initial);
   const [activeTab, setActiveTab] = useState<TabId>(
     typeof window !== 'undefined' && window.innerWidth >= 1024 ? "sections" : "live"
@@ -38,8 +40,9 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [hasEverSaved, setHasEverSaved] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [accentColor, setAccentColor] = useState("#6998EE");
+  const [hasStoredSettings, setHasStoredSettings] = useState(false);
   const [desktopMode, setDesktopMode] = useState(false);
   const [panelPosition, setPanelPosition] = useState<"left" | "right">(initial.data.editorPanelPosition ?? "left");
   const [panelExpanded, setPanelExpanded] = useState(initial.data.editorPanelExpanded ?? false);
@@ -132,22 +135,26 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Load settings from localStorage on mount
+  // Load settings from localStorage on mount, or use system theme if none exist
   useEffect(() => {
     const storedSettings = localStorage.getItem('appSettings');
     if (storedSettings) {
       try {
         const parsed = JSON.parse(storedSettings);
-        setIsDarkMode(parsed.isDarkMode ?? true);
+        setIsDarkMode(parsed.isDarkMode ?? false);
         setAccentColor(parsed.accentColor ?? "#6998EE");
         setHideSaveConfirmationDialog(parsed.hideSaveConfirmationDialog ?? false);
         setHideInstructions(parsed.hideInstructions ?? false);
         setLocalShowScreenDimensions(parsed.showScreenDimensions ?? false);
+        setHasStoredSettings(true);
       } catch (error) {
         console.error('Failed to parse stored settings:', error);
+        setIsDarkMode(systemMode === "dark");
       }
+    } else {
+      setIsDarkMode(systemMode === "dark");
     }
-  }, []);
+  }, [systemMode]);
 
   // Track screen dimensions for overlay
   useEffect(() => {
@@ -333,7 +340,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           date: finalDataToSave.date,
           mainColor1: finalDataToSave.mainColor1
         });
-        const res = await fetch(`/api/invitation/${slug}`, {
+        const res = await fetch(apiUrl(`/api/invitation/${slug}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ invitationId: id, data: finalDataToSave }),
@@ -451,7 +458,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         return;
       }
 
-      const res = await fetch(`/api/invitation/${invitation.slug}`, {
+      const res = await fetch(apiUrl(`/api/invitation/${invitation.slug}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invitationId: invitation.id, data: finalDataToSave }),
@@ -613,7 +620,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     if (hasPendingChanges) {
       setShowUnsavedDialog(true);
     } else {
-      onBack?.();
+      onBack?.(invitation);
     }
   };
 
@@ -630,7 +637,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     setPendingHeroChanges({});
     setPendingEntourageChanges(null);
     setLocalVisibleSections({});
-    onBack?.();
+    onBack?.(initial);
   };
 
   const handleSaveAndExit = async () => {
@@ -638,12 +645,12 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     await handleImmediateSave();
     // Wait to show the save result before exiting
     await new Promise(resolve => setTimeout(resolve, 1500));
-    onBack?.();
+    onBack?.(invitation);
   };
 
   const copyInviteLink = async () => {
     if (isDemoMode) {
-      showDemoToast("Sharing is available after you sign up and purchase your invitation.");
+      window.open("/invite/demo", "_blank");
       return;
     }
     const url = buildInviteUrl(invitation.slug);
@@ -670,8 +677,6 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   // Tab descriptions for mobile header
   const getTabDescription = (tab: TabId): string => {
     switch (tab) {
-      case "details":
-        return "Fill in the important wedding information to display on your website";
       case "design":
         return "Welcome screen, typography, color";
       case "sections":
@@ -707,7 +712,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const panelWidth = panelExpanded ? "400px" : "350px";
 
   return (
-    <div className={`flex w-full bg-transparent relative ${desktopMode ? "h-screen" : "flex-col min-h-screen"} ${isDarkMode ? "dark" : ""}`} style={desktopMode ? {} : { maxWidth: "100%", margin: "0 auto" }}>
+    <div className={`flex w-full bg-transparent relative ${desktopMode ? "h-screen" : `flex-col ${isDemoMode ? "h-full overflow-hidden" : "min-h-screen"}`} ${isDarkMode ? "dark" : ""}`} style={desktopMode ? {} : { maxWidth: "100%", margin: "0 auto" }}>
       {/* Screen dimensions overlay - global */}
       {localShowScreenDimensions && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[80] no-print bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full pointer-events-none">
@@ -866,9 +871,6 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
             {activeTab === "design" && (
               <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
             )}
-            {activeTab === "details" && (
-              <EventDetailsTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} />
-            )}
             {activeTab === "sections" && (
               <SectionsTab 
                 data={{
@@ -928,7 +930,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       )}
 
       {/* Main content area */}
-      <div className={`relative flex-1 flex flex-col ${desktopMode ? "overflow-hidden" : ""} ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"}`} style={desktopMode ? { order: 1 } : { paddingBottom: "56px" }}>
+      <div className={`relative flex-1 flex flex-col ${isDemoMode ? "min-h-0" : ""} ${desktopMode ? "overflow-hidden" : ""} ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"}`} style={desktopMode ? { order: 1 } : { paddingBottom: "56px" }}>
         <div className={`${activeTab === "live" || desktopMode ? "flex-1 min-h-0" : "hidden"} ${activeTab === "live" || (!desktopMode && activeTab === "design") ? "overflow-hidden" : ""}`}>
         <LiveEditView
           invitation={invitation}
@@ -938,7 +940,11 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           isActive={activeTab === "live" || desktopMode}
           saveStatus={saveStatus}
           isDarkMode={isDarkMode}
-          onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+          onToggleDarkMode={() => {
+            const newMode = !isDarkMode;
+            setIsDarkMode(newMode);
+            setStoredItem("themeOverride", newMode ? "dark" : "light");
+          }}
           accentColor={accentColor}
           setAccentColor={setAccentColor}
           desktopMode={desktopMode}
@@ -992,12 +998,9 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
         {!desktopMode && activeTab !== "live" && (
           /* Mobile tab content - scrollable */
-          <div className={`${activeTab === "design" ? "overflow-hidden" : ""} ${activeTab === "design" ? "" : "p-4"}`}>
+          <div className={`${isDemoMode ? "flex-1 min-h-0 overflow-y-auto" : ""} ${!isDemoMode && activeTab === "design" ? "overflow-hidden" : ""} ${activeTab === "design" ? "" : "p-4"}`}>
             {activeTab === "design" && (
               <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
-            )}
-            {activeTab === "details" && (
-              <EventDetailsTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} />
             )}
             {activeTab === "sections" && (
               <SectionsTab 

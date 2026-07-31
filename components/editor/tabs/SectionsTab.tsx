@@ -105,7 +105,16 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
     onChange(field, [...currentImages, url]);
     setShowBgImagePicker(false);
   };
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(data.collapsedSections ?? ["event-details", "gallery", "map", "rsvp", "timeline", "countdown", "dresscode", "giftguide", "wedding-directory", "entourage", "footer"]));
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
+    const allSections = ["event-details", "gallery", "map", "rsvp", "timeline", "countdown", "dresscode", "giftguide", "wedding-directory", "entourage", "footer", "hero"];
+    const stored = data.collapsedSections;
+    if (stored && Array.isArray(stored)) {
+      const set = new Set(stored);
+      allSections.forEach(s => set.add(s));
+      return set;
+    }
+    return new Set(allSections);
+  });
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
@@ -802,7 +811,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                       </button>
                     )}
                     <p className="text-xs text-gray-400 text-center mt-2">
-                      {isMobileBackgroundMode ? "The couple or subject must be at the center. Use landscape image" : "Use a high quality landscape image"}
+                      {isMobileBackgroundMode ? "Use portrait images" : "Use  landscape images"}
                     </p>
                   </div>
                 </div>

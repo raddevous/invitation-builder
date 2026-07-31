@@ -6,13 +6,14 @@ import type { InvitationData } from "@/lib/types/invitation";
 interface Props {
   data: InvitationData;
   onOpen: () => void;
+  envelopeScale?: number;
 }
 
 const FLAP_DURATION_MS = 3000;
 const SLIDE_PAPER_DELAY_MS = 1200;
 const SLIDE_PAPER_DURATION_MS = 2500;
 
-export default function ClassicEnvelope({ data, onOpen }: Props) {
+export default function ClassicEnvelope({ data, onOpen, envelopeScale = 1 }: Props) {
   const [flapOpen, setFlapOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [showTopMessage, setShowTopMessage] = useState(true);
@@ -33,9 +34,13 @@ export default function ClassicEnvelope({ data, onOpen }: Props) {
       setMessageReady(true);
       return;
     }
+    if (envelopeScale !== 1) {
+      setMessageReady(true);
+      return;
+    }
     const timer = setTimeout(() => setMessageReady(true), totalDuration + 300 + 1000);
     return () => clearTimeout(timer);
-  }, [data.welcomeTopMessage, totalDuration]);
+  }, [data.welcomeTopMessage, totalDuration, envelopeScale]);
 
   const hisInitial = data.hisName?.charAt(0).toUpperCase() || "";
   const herInitial = data.herName?.charAt(0).toUpperCase() || "";
@@ -81,7 +86,7 @@ export default function ClassicEnvelope({ data, onOpen }: Props) {
       </div>
 
       {/* Envelope + content */}
-      <div className="relative z-10 flex flex-col items-center px-4 max-w-full">
+      <div className="relative z-10 flex flex-col items-center px-4 max-w-full" style={{ transform: envelopeScale !== 1 ? `scale(${envelopeScale})` : undefined, transformOrigin: "center center", marginTop: envelopeScale !== 1 ? "120px" : undefined }}>
         {/* Envelope image stack */}
         <div
           className="relative w-[min(360px,calc(100vw-2rem))] h-[min(257px,calc((100vw-2rem)*257/360))] md:w-[460px] md:h-[329px] lg:w-[540px] lg:h-[386px]"
@@ -357,26 +362,30 @@ export default function ClassicEnvelope({ data, onOpen }: Props) {
             style={{
               color: data.welcomeTopMessageColor || envelopeColor || data.mainColor1 || "#5c4a3a",
               fontFamily: data.welcomeTopMessageFont || "Playfair Display, serif",
-              fontSize: "clamp(18px, 5.5vmin, 38px)",
+              fontSize: envelopeScale !== 1 ? "clamp(10px, 2vmin, 16px)" : "clamp(18px, 5.5vmin, 38px)",
               textShadow: "-0.5px -0.5px 0 rgba(255, 255, 255, 0.5), 0.5px 0.5px 0 rgba(0, 0, 0, 0.4)",
               letterSpacing: "0.05em",
               opacity: showTopMessage ? 1 : 0,
               transition: "opacity 1000ms ease",
             }}
           >
-            {letters.map((char, i) => (
-              <span
-                key={i}
-                style={{
-                  display: "inline-block",
-                  opacity: 0,
-                  animation: `letterFadeIn 0.8s ease-out forwards`,
-                  animationDelay: `${i * letterDelay + 1000}ms`,
-                }}
-              >
-                {char === " " ? "\u00A0" : char}
-              </span>
-            ))}
+            {envelopeScale !== 1 ? (
+              <span>{data.welcomeTopMessage}</span>
+            ) : (
+              letters.map((char, i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-block",
+                    opacity: 0,
+                    animation: `letterFadeIn 0.8s ease-out forwards`,
+                    animationDelay: `${i * letterDelay + 1000}ms`,
+                  }}
+                >
+                  {char === " " ? "\u00A0" : char}
+                </span>
+              ))
+            )}
           </div>
         )}
       </div>

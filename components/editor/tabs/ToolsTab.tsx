@@ -3,15 +3,21 @@ import type { InvitationData } from "@/lib/types/invitation";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import EntourageEditor from "./EntourageEditor";
 import GuestEditor from "./GuestEditor";
-import RSVPResponseEditor from "./RSVPResponseEditor";
 import MediaEditor from "./MediaEditor";
 import SettingsEditor from "./SettingsEditor";
+import EventDetailsTab from "./EventDetailsTab";
 import ChecklistEditor from "./ChecklistEditor";
 import BudgetEditor from "./BudgetEditor";
 import TableMapEditor from "./TableMapEditor";
 import WeddingProgramEditor from "./WeddingProgramEditor";
 import StoryTimelineEditor from "./StoryTimelineEditor";
 import { getFontFamily } from "@/lib/utils/fonts";
+import { buildInviteUrl } from "@/lib/utils";
+import { getEntourageGuestNames } from "@/lib/utils/entourageGuests";
+import ProgressCircle from "@/components/editor/shared/ProgressCircle";
+import ProgressBar from "@/components/editor/shared/ProgressBar";
+import HalfCircleGauge from "@/components/editor/shared/HalfCircleGauge";
+import { getWeddingDetailsProgress, getWeddingDetailsWeight, getMediaOverallProgress, getMediaWeight, getEntourageProgress, getEntourageWeight, getStoryTimelineProgress, getStoryTimelineWeight, getWeddingProgramProgress, getWeddingProgramWeight, getWeightedProgress } from "@/lib/utils/progressCalculator";
 import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
 
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -29,11 +35,12 @@ interface ToolsTabProps {
   isDarkMode?: boolean;
   accentColor?: string;
   onOpenEditor?: () => void;
-  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideSaveConfirmationDialog?: boolean; hideInstructions?: boolean; showScreenDimensions?: boolean }) => void;
+  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideSaveConfirmationDialog?: boolean; hideInstructions?: boolean; showScreenDimensions?: boolean; isPreviewDetached?: boolean }) => void;
   onSave?: (updatedData: InvitationData) => Promise<void>;
   hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
+  isPreviewDetached?: boolean;
   isDemoMode?: boolean;
 }
 
@@ -54,7 +61,7 @@ function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#69
       onMouseLeave={() => setHovered(false)}
       className={`aspect-square flex flex-col items-center justify-center gap-3 p-6 rounded-xl transition-all duration-200 ${
         isDarkMode
-          ? "bg-gray-700 hover:bg-gray-600"
+          ? "bg-gray-900 hover:bg-gray-800"
           : "bg-gray-50 hover:bg-gray-100"
       }`}
       style={{ border: `1px solid ${hovered ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3)}` }}
@@ -77,31 +84,124 @@ function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#69
   );
 }
 
-export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#6998EE", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isDemoMode = false }: ToolsTabProps) {
+type ToolsNavTab = "dashboard" | "list" | "website" | "settings";
+
+const TOOLS_NAV_TABS: { id: ToolsNavTab; label: string; icon: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: "/assets/ico-dash.png" },
+  { id: "list", label: "List", icon: "/assets/ico-guest.png" },
+  { id: "website", label: "Website", icon: "/assets/ico-mail.png" },
+  { id: "settings", label: "Settings", icon: "/assets/ico-settings.png" },
+];
+
+export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#6998EE", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached = false, isDemoMode = false }: ToolsTabProps) {
   const [showEntourageEditor, setShowEntourageEditor] = useState(false);
   const [showGuestEditor, setShowGuestEditor] = useState(false);
-  const [showRSVPResponseEditor, setShowRSVPResponseEditor] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
-  const [showSettingsEditor, setShowSettingsEditor] = useState(false);
   const [showChecklistEditor, setShowChecklistEditor] = useState(false);
   const [showBudgetEditor, setShowBudgetEditor] = useState(false);
   const [showTableMapEditor, setShowTableMapEditor] = useState(false);
   const [showWeddingProgramEditor, setShowWeddingProgramEditor] = useState(false);
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
+  const [showEventDetails, setShowEventDetails] = useState(false);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isMobile, setIsMobile] = useState(false);
+  const [activeNavTab, setActiveNavTab] = useState<ToolsNavTab>("dashboard");
+  const [showWebBubbleMenu, setShowWebBubbleMenu] = useState(false);
+
+  const togglePreviewDetached = () => {
+    const next = !isPreviewDetached;
+    if (onSettingsChange) {
+      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached: next });
+    }
+  };
+
+  // Progress calculations
+  const weddingDetailsProgress = useMemo(() => {
+    return getWeddingDetailsProgress(data);
+  }, [data]);
+
+  const mediaProgress = useMemo(() => {
+    return getMediaOverallProgress(data);
+  }, [data]);
+
+  const websiteGaugeSegments = useMemo(() => {
+    const sections = data.sections || {};
+    const allSegments = [
+      { label: "Wedding Details", percentage: weddingDetailsProgress, weight: getWeddingDetailsWeight(data), color: "#F59E30", onClick: () => handleEventDetailsClick() },
+      { label: "Media Files", percentage: mediaProgress, weight: getMediaWeight(), color: "#A15BA2", onClick: () => handleMediaClick() },
+      { label: "Entourage List", percentage: getEntourageProgress(data), weight: getEntourageWeight(data), color: "#EE5348", onClick: () => handleEntourageListClick(), excluded: sections.entourage === false },
+      { label: "Story Timeline", percentage: getStoryTimelineProgress(data), weight: getStoryTimelineWeight(), color: "#3697D4", onClick: () => handleStoryTimelineClick(), excluded: sections.timeline === false },
+      { label: "Event Program", percentage: getWeddingProgramProgress(data), weight: getWeddingProgramWeight(), color: "#3ABD98", onClick: () => handleWeddingProgramClick(), excluded: sections.eventdetails === false },
+    ];
+    return allSegments.filter(s => !s.excluded).sort((a, b) => b.weight - a.weight);
+  }, [data, weddingDetailsProgress, mediaProgress, data.entourage, data.storyTimeline, data.weddingProgram, data.sections]);
+
+  const websiteOverallProgress = useMemo(() => {
+    return getWeightedProgress(websiteGaugeSegments);
+  }, [websiteGaugeSegments]);
+
+  const entourageProgress = useMemo(() => {
+    if (!data.entourage) return { percentage: 0, filled: 0, total: 0 };
+    const guests = getEntourageGuestNames(data.entourage);
+    const filled = guests.filter(g => g.name.trim()).length;
+    const total = guests.length;
+    if (total === 0) return { percentage: 0, filled: 0, total: 0 };
+    return { percentage: Math.round((filled / total) * 100), filled, total };
+  }, [data.entourage]);
+
+  const guestProgress = useMemo(() => {
+    const invitees = (data.rsvpInvitees || []).filter(i => {
+      const name = typeof i === 'string' ? i : i.name;
+      return name && name.trim();
+    });
+    const entourageGuests = getEntourageGuestNames(data.entourage);
+    const currentCount = invitees.length + entourageGuests.length;
+    const target = data.targetGuestCount || 0;
+    if (target === 0) return { percentage: 0, current: currentCount, target: 0 };
+    return { percentage: Math.min(100, Math.round((currentCount / target) * 100)), current: currentCount, target };
+  }, [data.rsvpInvitees, data.targetGuestCount, data.entourage]);
+
+  const checklistProgress = useMemo(() => {
+    void showChecklistEditor;
+    try {
+      const stored = localStorage.getItem('weddingChecklist');
+      if (!stored) return { percentage: 0, completed: 0, total: 0 };
+      const containers = JSON.parse(stored);
+      const allItems = containers.flatMap((c: any) => c.items || []);
+      if (allItems.length === 0) return { percentage: 0, completed: 0, total: 0 };
+      const checked = allItems.filter((item: any) => item.checked).length;
+      return { percentage: Math.round((checked / allItems.length) * 100), completed: checked, total: allItems.length };
+    } catch {
+      return { percentage: 0, completed: 0, total: 0 };
+    }
+  }, [showChecklistEditor]);
+
+  const budgetProgress = useMemo(() => {
+    void showBudgetEditor;
+    try {
+      const stored = localStorage.getItem('weddingBudget');
+      if (!stored) return { percentage: 0, paid: 0, budget: 0 };
+      const containers = JSON.parse(stored);
+      const allItems = containers.flatMap((c: any) => c.items || []);
+      const totalBudget = allItems.reduce((sum: number, item: any) => sum + (parseFloat(item.cost) || parseFloat(item.budget) || 0), 0);
+      const totalPaid = allItems.reduce((sum: number, item: any) => sum + (parseFloat(item.paid) || 0), 0);
+      if (totalBudget === 0) return { percentage: 0, paid: 0, budget: 0 };
+      return { percentage: Math.round((totalPaid / totalBudget) * 100), paid: totalPaid, budget: totalBudget };
+    } catch {
+      return { percentage: 0, paid: 0, budget: 0 };
+    }
+  }, [showBudgetEditor]);
 
   // Back gesture closes sub-views instead of minimizing app
   useBackHandler(showEntourageEditor, () => setShowEntourageEditor(false));
   useBackHandler(showGuestEditor, () => setShowGuestEditor(false));
-  useBackHandler(showRSVPResponseEditor, () => setShowRSVPResponseEditor(false));
   useBackHandler(showMediaEditor, () => setShowMediaEditor(false));
-  useBackHandler(showSettingsEditor, () => setShowSettingsEditor(false));
   useBackHandler(showChecklistEditor, () => setShowChecklistEditor(false));
   useBackHandler(showBudgetEditor, () => setShowBudgetEditor(false));
   useBackHandler(showTableMapEditor, () => setShowTableMapEditor(false));
   useBackHandler(showWeddingProgramEditor, () => setShowWeddingProgramEditor(false));
   useBackHandler(showStoryTimelineEditor, () => setShowStoryTimelineEditor(false));
+  useBackHandler(showEventDetails, () => setShowEventDetails(false));
 
   // Snapshot of data for change detection at tools level
   const dataSnapshot = useRef(JSON.stringify(data));
@@ -226,7 +326,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   // Handle hide save confirmation dialog change
   const handleHideSaveConfirmationDialogChange = (value: boolean) => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: value, hideInstructions, showScreenDimensions });
+      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: value, hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
@@ -316,10 +416,6 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     setShowGuestEditor(true);
   };
 
-  const handleRSVPResponseClick = () => {
-    setShowRSVPResponseEditor(true);
-  };
-
   const handleMediaClick = () => {
     setShowMediaEditor(true);
   };
@@ -328,10 +424,6 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     if (onOpenEditor) {
       onOpenEditor();
     }
-  };
-
-  const handleSettingsClick = () => {
-    setShowSettingsEditor(true);
   };
 
   const handleChecklistClick = () => {
@@ -354,6 +446,38 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     setShowStoryTimelineEditor(true);
   };
 
+  const handleEventDetailsClick = () => {
+    setShowEventDetails(true);
+  };
+
+  if (showEventDetails) {
+    return (
+      <div className={`w-full ${isDemoMode ? "h-full" : "h-dvh"} rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+        <div className={`flex items-center gap-3 p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+          <button
+            onClick={() => setShowEventDetails(false)}
+            className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div>
+            <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
+              Wedding Details
+            </h2>
+            <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Fill in the important wedding information
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5" style={{ fontFamily: "Inter, sans-serif" }}>
+          <EventDetailsTab data={data} onChange={onChange} isDarkMode={isDarkMode} accentColor={accentColor} />
+        </div>
+      </div>
+    );
+  }
+
   if (showEntourageEditor) {
     return (
       <EntourageEditor
@@ -371,24 +495,12 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     return (
       <GuestEditor
         data={data}
+        invitationId={invitationId}
         onChange={onChange}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowGuestEditor(false)}
         onSave={onSave}
-      />
-    );
-  }
-
-  if (showRSVPResponseEditor) {
-    return (
-      <RSVPResponseEditor
-        data={data}
-        invitationId={invitationId}
-        onChange={onChange}
-        isDarkMode={isDarkMode}
-        accentColor={accentColor}
-        onClose={() => setShowRSVPResponseEditor(false)}
       />
     );
   }
@@ -404,25 +516,6 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         invitationId={invitationId}
         onSave={onSave}
         isDemoMode={isDemoMode}
-      />
-    );
-  }
-
-  if (showSettingsEditor) {
-    return (
-      <SettingsEditor
-        data={data}
-        onChange={onChange}
-        isDarkMode={isDarkMode}
-        accentColor={accentColor}
-        onClose={() => setShowSettingsEditor(false)}
-        onSettingsChange={onSettingsChange}
-        hideSaveConfirmationDialog={hideSaveConfirmationDialog}
-        hideInstructions={hideInstructions}
-        showScreenDimensions={showScreenDimensions}
-        invitationId={invitationId}
-        isDemoMode={isDemoMode}
-        slug={slug}
       />
     );
   }
@@ -488,14 +581,118 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   }
 
   return (
-    <div className="flex flex-col h-dvh lg:h-full">
-      {/* Save bubble - shows when there are unsaved changes at tools level */}
+    <div className={`flex flex-col ${isDemoMode ? "h-full" : "h-dvh"} lg:h-full overflow-hidden`}>
+      {/* Web bubble - only on dashboard */}
+      {activeNavTab === "dashboard" && (
+        <div className="fixed top-4 right-4 z-[59] no-print">
+          <button
+            onClick={() => setShowWebBubbleMenu(!showWebBubbleMenu)}
+            aria-label="Web options"
+            className="p-4 rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
+            style={{ backgroundColor: accentColor }}
+          >
+            <div className="w-7 h-7" style={{
+              backgroundColor: "white",
+              WebkitMaskImage: "url(/assets/ico-globe.png)",
+              WebkitMaskSize: "contain",
+              WebkitMaskPosition: "center",
+              WebkitMaskRepeat: "no-repeat",
+              maskImage: "url(/assets/ico-globe.png)",
+              maskSize: "contain",
+              maskPosition: "center",
+              maskRepeat: "no-repeat",
+            }} />
+          </button>
+
+          {showWebBubbleMenu && (
+            <>
+              <div className="fixed inset-0 z-[-1]" onClick={() => setShowWebBubbleMenu(false)} />
+              <div
+                className="absolute right-0 mt-2 rounded-2xl shadow-xl overflow-hidden min-w-[200px]"
+                style={{
+                  backgroundColor: isDarkMode ? "#1C2531" : "#ffffff",
+                  border: `1px solid ${isDarkMode ? "#374151" : "#E5E7EB"}`,
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setShowWebBubbleMenu(false);
+                    if (onOpenEditor) onOpenEditor();
+                  }}
+                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full text-left ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}
+                  style={{ fontFamily: "Inter, sans-serif" }}
+                >
+                  <span style={{ color: accentColor }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </span>
+                  Edit Web Invitation
+                </button>
+                <button
+                  onClick={() => {
+                    setShowWebBubbleMenu(false);
+                    if (isDemoMode) {
+                      // Demo edits live in this origin's localStorage, so navigate
+                      // in-app (same WebView, same origin) rather than an external
+                      // browser. This works both online and offline.
+                      window.location.href = "/invite/demo";
+                      return;
+                    }
+                    window.open(buildInviteUrl(slug), "_blank");
+                  }}
+                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full text-left ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}
+                  style={{ fontFamily: "Inter, sans-serif" }}
+                >
+                  <span style={{ color: accentColor }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </span>
+                  Open Invitation Link
+                </button>
+                <button
+                  onClick={() => {
+                    setShowWebBubbleMenu(false);
+                    togglePreviewDetached();
+                  }}
+                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full text-left ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}
+                  style={{ fontFamily: "Inter, sans-serif" }}
+                >
+                  <span style={{ color: accentColor }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      {isPreviewDetached ? (
+                        <>
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                        </>
+                      ) : (
+                        <>
+                          <path d="M15 3h6v6" />
+                          <path d="M9 21H3v-6" />
+                          <path d="M21 3l-7 7" />
+                          <path d="M3 21l7-7" />
+                        </>
+                      )}
+                    </svg>
+                  </span>
+                  {isPreviewDetached ? "Attach Preview" : "Detach Preview"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Save bubble - shows when there are unsaved changes at tools level - rendered after web bubble for stacking */}
       {hasUnsavedChanges && (
         <button
           onClick={handleSaveBubbleClick}
           aria-label={`Save ${changedSections.length} unsaved change${changedSections.length === 1 ? "" : "s"}`}
           title={`Save changes (${changedSections.join(", ")})`}
-          className="fixed top-4 right-4 z-[60] no-print p-4 rounded-full shadow-lg transition-opacity backdrop-blur-sm"
+          className="fixed top-4 right-4 z-[70] no-print p-4 rounded-full shadow-lg transition-opacity backdrop-blur-sm"
           style={{ backgroundColor: accentColor }}
         >
           <div className="relative">
@@ -514,12 +711,14 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         </button>
       )}
 
-      {/* Custom Hero Preview - fixed, no scroll */}
-      <div className="relative h-[28vh] overflow-hidden w-full shrink-0">
+      {/* Custom Hero Preview - fixed, no scroll - only on dashboard */}
+      {activeNavTab === "dashboard" && (
+      <div className={`relative h-[22vh] overflow-hidden w-full shrink-0 ${isPreviewDetached ? "p-4" : ""}`}>
+        <div className={`relative h-full overflow-hidden w-full ${isPreviewDetached ? "rounded-2xl" : ""}`}>
         {/* Background */}
-        <div 
+        <div
           className="absolute inset-0 z-0"
-          style={{ 
+          style={{
             backgroundColor: data.mainColor1,
             backgroundImage: (() => {
               const imagesToUse = isMobile ? data.heroBackgroundImagesMobile : data.heroBackgroundImages;
@@ -548,7 +747,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         />
         
         {/* Content */}
-        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-0 px-4" style={{ transform: 'scale(0.65)', transformOrigin: 'center' }}>
+        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-0 px-4" style={{ transform: 'scale(0.51)', transformOrigin: 'center' }}>
           {/* Couple Name */}
           {hasCelebrantNames ? (
             <h1 
@@ -798,89 +997,182 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
             </div>
           )}
         </div>
-      </div>
-
-      <div className="p-4 flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-4">
-          <ToolTile
-            icon="/assets/ico-entourage.png"
-            label="Entourage List"
-            onClick={handleEntourageListClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-guest.png"
-            label="Guest List"
-            onClick={handleGuestListClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-rsvp.png"
-            label="Responses"
-            onClick={handleRSVPResponseClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-med.png"
-            label="Media"
-            onClick={handleMediaClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-event.png"
-            label="Checklist"
-            onClick={handleChecklistClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-budget.png"
-            label="Budget List"
-            onClick={handleBudgetClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-table.png"
-            label="Table Map"
-            onClick={handleTableMapClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-event.png"
-            label="Wedding Program"
-            onClick={handleWeddingProgramClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-event.png"
-            label="Story Timeline"
-            onClick={handleStoryTimelineClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-mail.png"
-            label="Wedding Website"
-            onClick={handleWeddingWebsiteClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
-          <ToolTile
-            icon="/assets/ico-settings.png"
-            label="Settings"
-            onClick={handleSettingsClick}
-            isDarkMode={isDarkMode}
-            accentColor={accentColor}
-          />
         </div>
       </div>
+      )}
+
+      {/* Progress container - overlaps hero preview slightly - only on dashboard */}
+      {activeNavTab === "dashboard" && (
+        <>
+        <div className={`relative z-20 ${isPreviewDetached ? "mt-3 mx-4" : "-mt-6 mx-3"} rounded-2xl p-4 shadow-lg ${isDarkMode ? "bg-[#253143]" : "bg-white"}`}>
+          <div className="flex items-center justify-around">
+            <ProgressCircle
+              percentage={budgetProgress.percentage}
+              label="Budget"
+              sublabel={budgetProgress.budget > 0 ? budgetProgress.budget.toLocaleString() : "No items"}
+              accentColor={accentColor}
+              isDarkMode={isDarkMode}
+              onClick={() => handleBudgetClick()}
+            />
+            <ProgressCircle
+              percentage={checklistProgress.percentage}
+              label="Checklist"
+              sublabel={checklistProgress.total > 0 ? `${checklistProgress.completed}/${checklistProgress.total}` : "No tasks"}
+              accentColor={accentColor}
+              isDarkMode={isDarkMode}
+              onClick={() => handleChecklistClick()}
+            />
+            <ProgressCircle
+              percentage={guestProgress.percentage}
+              label="Guests"
+              sublabel={guestProgress.target > 0 ? `${guestProgress.current}/${guestProgress.target}` : "Set target"}
+              accentColor={accentColor}
+              isDarkMode={isDarkMode}
+              onClick={() => handleGuestListClick()}
+            />
+          </div>
+        </div>
+
+        {/* Website progress gauge - segmented by included tiles */}
+        <div className={`relative z-20 mx-3 mt-3 rounded-2xl p-4 shadow-lg flex flex-col items-center ${isDarkMode ? "bg-[#253143]" : "bg-white"}`}>
+          <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+            Website Progress
+          </p>
+          <HalfCircleGauge
+            segments={websiteGaugeSegments}
+            overallPercentage={websiteOverallProgress}
+            accentColor={accentColor}
+            isDarkMode={isDarkMode}
+            centerLabel="Overall"
+          />
+        </div>
+        </>
+      )}
+
+      <div className="p-4 flex-1 overflow-y-auto">
+        {activeNavTab === "list" && (
+          <div className="grid grid-cols-2 gap-4">
+            <ToolTile
+              icon="/assets/ico-entourage.png"
+              label="Entourage List"
+              onClick={handleEntourageListClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-guest.png"
+              label="Guest List"
+              onClick={handleGuestListClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-event.png"
+              label="Checklist"
+              onClick={handleChecklistClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-budget.png"
+              label="Budget List"
+              onClick={handleBudgetClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+          </div>
+        )}
+
+        {activeNavTab === "website" && (
+          <div className="grid grid-cols-2 gap-4">
+            <ToolTile
+              icon="/assets/ico-inf.png"
+              label="Wedding Details"
+              onClick={handleEventDetailsClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-med.png"
+              label="Media Files"
+              onClick={handleMediaClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-table.png"
+              label="Table Map"
+              onClick={handleTableMapClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-event.png"
+              label="Event Program"
+              onClick={handleWeddingProgramClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-event.png"
+              label="Story Timeline"
+              onClick={handleStoryTimelineClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+          </div>
+        )}
+
+        {activeNavTab === "settings" && (
+          <SettingsEditor
+            data={data}
+            onChange={onChange}
+            isDarkMode={isDarkMode}
+            accentColor={accentColor}
+            onClose={() => setActiveNavTab("dashboard")}
+            onSettingsChange={onSettingsChange}
+            hideSaveConfirmationDialog={hideSaveConfirmationDialog}
+            hideInstructions={hideInstructions}
+            showScreenDimensions={showScreenDimensions}
+            isPreviewDetached={isPreviewDetached}
+            invitationId={invitationId}
+            isDemoMode={isDemoMode}
+            slug={slug}
+          />
+        )}
+      </div>
+
+      {/* Bottom navigation tabs */}
+      <nav className={`shrink-0 border-t ${isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-100"}`}>
+        <div className="flex">
+          {TOOLS_NAV_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveNavTab(tab.id)}
+              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs transition-colors ${
+                activeNavTab === tab.id ? "text-[#6998EE]" : (isDarkMode ? "text-gray-400" : "text-gray-400")
+              }`}
+              style={{ color: activeNavTab === tab.id ? accentColor : undefined }}
+            >
+              <div className="w-5 h-5" style={{
+                backgroundColor: activeNavTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
+                WebkitMaskImage: `url(${tab.icon})`,
+                WebkitMaskSize: "contain",
+                WebkitMaskPosition: "center",
+                WebkitMaskRepeat: "no-repeat",
+                maskImage: `url(${tab.icon})`,
+                maskSize: "contain",
+                maskPosition: "center",
+                maskRepeat: "no-repeat"
+              }} />
+              <span className="text-[10px] font-sans">{tab.label}</span>
+              {activeNavTab === tab.id && (
+                <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: accentColor }} />
+              )}
+            </button>
+          ))}
+        </div>
+      </nav>
 
       {/* Save confirmation dialog */}
       <SaveConfirmationDialog

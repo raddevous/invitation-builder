@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { Invitation } from "@/lib/types/invitation";
 import { setStoredItem } from "@/lib/utils/storage";
+import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
+import { apiUrl } from "@/lib/utils/api";
 
 interface EditorLoginProps {
   onLogin: (invitation: Invitation) => void;
@@ -10,6 +12,7 @@ interface EditorLoginProps {
 }
 
 export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
+  const { mode } = useSystemTheme();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -21,7 +24,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
     setError("");
 
     try {
-      const res = await fetch("/api/auth/access-code", {
+      const res = await fetch(apiUrl("/api/auth/access-code"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode: code.trim() }),
@@ -38,8 +41,8 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
       const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
       await setStoredItem("invitation", JSON.stringify({ ...data.invitation, data: invitationData }));
       if (isDarkMode !== undefined || accentColor !== undefined) {
-        await setStoredItem("appSettings", JSON.stringify({
-          isDarkMode: isDarkMode ?? true,
+        localStorage.setItem("appSettings", JSON.stringify({
+          isDarkMode: mode === "dark",
           accentColor: accentColor ?? "#6998EE",
         }));
       }

@@ -12,6 +12,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 
 // Add CSS for flip animation
 const flipAnimationStyles = `
@@ -203,6 +204,21 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingCountdownChanges };
+
+  const predefinedMessages = [
+    "Counting down the days until our special moment together...",
+    "Every moment brings us closer to our special day. We can't wait to celebrate with you!",
+    "The countdown to our wedding has begun. We're so excited to share this day with you.",
+    "Days, hours, and moments until we say 'I do'. Thank you for being part of our journey.",
+    "As we count down to our wedding day, we're filled with joy and anticipation. See you soon!",
+    "Our special day is approaching fast. We're counting down the moments until we celebrate with you."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.countdownMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleCountdownChange("countdownMessage", predefinedMessages[nextIndex]);
+  };
 
   // Drag-to-adjust for countdown icon
   const isAnyDragging = useRef(false);
@@ -443,6 +459,104 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
     };
     return { handleDown, handleMove, handleUp, handleCancel };
   })();
+
+  // Heading drag-to-resize (size only, 50-150%)
+  const headingDragRef = useRef<GenericDragData | null>(null);
+  const [headingDragging, setHeadingDragging] = useState(false);
+  const [localHeadingSize, setLocalHeadingSize] = useState<number | null>(null);
+  const effectiveHeadingSize = localHeadingSize ?? (desktopMode ? (mergedData.countdownHeadingFontSizeMobile ?? mergedData.countdownHeadingFontSize ?? 100) : (mergedData.countdownHeadingFontSize ?? 100));
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.countdownMessageFontSizeMobile ?? mergedData.countdownMessageFontSize ?? 100) : (mergedData.countdownMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => handleCountdownChange(isDesktop ? 'countdownMessageFontSizeMobile' : 'countdownMessageFontSize', size),
+    arrowClassPrefix: 'countdown-msg',
+  });
+
+  const headingDrag = (() => {
+    const handleDown = (e: React.PointerEvent<HTMLHeadingElement>) => {
+      const isTouchLike = e.pointerType === 'touch' || e.pointerType === 'pen';
+      if (!editMode || (!isTouchLike && e.button !== 0)) return;
+      const element = e.currentTarget as HTMLHeadingElement;
+      headingDragRef.current = {
+        timer: setTimeout(() => {
+          const d = headingDragRef.current;
+          if (!d) return;
+          d.timer = null;
+          d.triggered = true;
+          isAnyDragging.current = true;
+          setHeadingDragging(true);
+          try { d.element?.setPointerCapture(d.pointerId); } catch {}
+        }, 350),
+        triggered: false,
+        pointerId: e.pointerId,
+        element,
+        startX: e.clientX,
+        startY: e.clientY,
+        startSize: effectiveHeadingSize,
+        startSpacing: 100,
+      };
+    };
+    const handleMove = (e: React.PointerEvent<HTMLHeadingElement>) => {
+      const d = headingDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (!d.triggered) {
+        const dx = e.clientX - d.startX;
+        const dy = e.clientY - d.startY;
+        if (Math.hypot(dx, dy) > 10) {
+          if (d.timer) clearTimeout(d.timer);
+          headingDragRef.current = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      const deltaY = e.clientY - d.startY;
+      const newSize = Math.max(50, Math.min(150, d.startSize - deltaY * 0.5));
+      setLocalHeadingSize(Math.round(newSize));
+      setDragToast([
+        { label: 'Size', value: Math.round(newSize), atLimit: newSize <= 50 || newSize >= 150 },
+      ]);
+    };
+    const handleUp = (e: React.PointerEvent<HTMLHeadingElement>) => {
+      const d = headingDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      try { d.element?.releasePointerCapture(d.pointerId); } catch {}
+      isAnyDragging.current = false;
+      setHeadingDragging(false);
+      if (localHeadingSize != null) handleCountdownChange(desktopMode ? 'countdownHeadingFontSizeMobile' : 'countdownHeadingFontSize', localHeadingSize);
+      setLocalHeadingSize(null);
+      setDragToast(null);
+      setTimeout(() => { headingDragRef.current = null; }, 100);
+    };
+    const handleCancel = (e: React.PointerEvent<HTMLHeadingElement>) => {
+      const d = headingDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.timer) clearTimeout(d.timer);
+      headingDragRef.current = null;
+      isAnyDragging.current = false;
+      setHeadingDragging(false);
+      setLocalHeadingSize(null);
+      setDragToast(null);
+    };
+    return { handleDown, handleMove, handleUp, handleCancel };
+  })();
+
+  const renderHeadingArrowOverlay = (size: number) => (
+    <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+      {size < 150 && (
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 countdown-arrow-up" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-8 8h16z" /></svg>
+        </div>
+      )}
+      {size > 50 && (
+        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 countdown-arrow-down" style={{ color: 'white', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l8-8H4z" /></svg>
+        </div>
+      )}
+    </div>
+  );
 
   // Initialize crystal color from saved data
   useEffect(() => {
@@ -844,18 +958,28 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
         ) : null}
       
       <h2
-        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.countdownUseMainColor !== false ? getCountdownCrystalColor() : (mergedData.countdownHeadingColor || getCountdownCrystalColor()),
           fontFamily: mergedData.countdownUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.countdownHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.countdownHeadingFontSize || 100) * 3}%`,
+          fontSize: `${effectiveHeadingSize * 3}%`,
           lineHeight: '1.2',
-          marginTop: '50px'
-        }}
+          marginTop: '50px',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        onPointerDown={editMode ? headingDrag.handleDown : undefined}
+        onPointerMove={editMode ? headingDrag.handleMove : undefined}
+        onPointerUp={editMode ? headingDrag.handleUp : undefined}
+        onPointerCancel={editMode ? headingDrag.handleCancel : undefined}
+        onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
       >
+        {headingDragging && renderHeadingArrowOverlay(effectiveHeadingSize)}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDragRef.current?.triggered) { e.stopPropagation(); headingDragRef.current = null; return; }
             setShowTypographyPanel(true);
             const element = document.getElementById('countdown-cssid');
             if (element) {
@@ -868,17 +992,34 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
       </h2>
 
       {mergedData.countdownMessage && (
-        <p
-          className="text-center mb-6 leading-relaxed scale-[0.7] md:scale-100"
+        <>
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
+          className="text-center mb-6 leading-relaxed scale-[0.7] md:scale-100 select-none"
           style={{
             color: mergedData.countdownUseMainColor !== false ? data.neutralColor1 : (mergedData.countdownMessageColor || data.neutralColor1),
             fontFamily: mergedData.countdownUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.countdownMessageTypography || data.bodyFont, "body"),
-            fontSize: `${mergedData.countdownMessageFontSize || 100}%`,
-            opacity: 0.85
-          }}
+            fontSize: `${messageDrag.effectiveSize}%`,
+            opacity: 0.85,
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
-          {mergedData.countdownMessage}
-        </p>
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+          <span
+            className={editMode ? "cursor-pointer" : ""}
+            onClick={editMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleMessage();
+            } : undefined}
+          >
+            {mergedData.countdownMessage}
+          </span>
+        </div>
+        </>
       )}
       {/* Countdown Display - Multiple Structures */}
       <div 

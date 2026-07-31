@@ -31,6 +31,56 @@ interface BudgetEditorProps {
   onClose: () => void;
 }
 
+let budgetIdCounter = 0;
+const genBudgetId = () => `default-budget-${budgetIdCounter++}`;
+
+function getDefaultBudget(): BudgetContainer[] {
+  const makeContainer = (title: string): BudgetContainer => ({
+    id: genBudgetId(),
+    title,
+    items: [{ id: genBudgetId(), name: title, budget: "", cost: "", paid: "", due: "" }],
+    isExpanded: false,
+  });
+
+  return [
+    "Venue",
+    "Catering",
+    "Photography & Videography",
+    "Florist",
+    "Entertainment",
+    "Wedding Attire",
+    "Hair & Makeup",
+    "Invitations",
+    "Wedding Rings",
+    "Wedding Cake",
+    "Transportation",
+    "Officiant",
+    "Rehearsal Dinner",
+    "Wedding Favors",
+    "Honeymoon",
+  ].map(makeContainer);
+}
+
+const formatNumberInput = (value: string): string => {
+  if (!value) return "";
+  const numStr = value.replace(/[^0-9.]/g, "");
+  if (!numStr) return "";
+  const parts = numStr.split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return parts.join(".");
+};
+
+const parseNumberInput = (value: string): string => {
+  return value.replace(/,/g, "");
+};
+
+const formatDisplay = (value: string): string => {
+  if (!value) return "0";
+  const num = parseFloat(value);
+  if (isNaN(num)) return value;
+  return num.toLocaleString();
+};
+
 export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", onClose }: BudgetEditorProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   // Initialize from localStorage directly
@@ -38,12 +88,12 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
     try {
       const stored = localStorage.getItem('weddingBudget');
       if (stored) {
-        return JSON.parse(stored);
+        return JSON.parse(stored).map((c: BudgetContainer) => ({ ...c, isExpanded: false }));
       }
     } catch (error) {
       console.error('Failed to load initial budget:', error);
     }
-    return [];
+    return getDefaultBudget();
   };
   const [containers, setContainers] = useState<BudgetContainer[]>(getInitialContainers);
   const initialDataSnapshot = useRef(JSON.stringify(getInitialContainers()));
@@ -61,6 +111,19 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
   const isDragging = useRef(false);
   const [dragToast, setDragToast] = useState<string | null>(null);
   const [hoveredContainer, setHoveredContainer] = useState<string | null>(null);
+  const [showDefaultDialog, setShowDefaultDialog] = useState(false);
+
+  // Show dialog when defaults are loaded for the first time
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('weddingBudget');
+      if (!stored) {
+        setShowDefaultDialog(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
@@ -263,7 +326,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Drag indicator toast */}
       {dragToast && (
         <div
@@ -493,11 +556,11 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                       {container.items.map((item) => (
                         <div key={item.id} className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span>• Cost: {getDisplayCost(item)}      • Balance: {getItemBalance(item).toLocaleString()}</span>
+                            <span>• Cost: {formatDisplay(getDisplayCost(item))}      • Balance: {getItemBalance(item).toLocaleString()}</span>
                             <span style={{ color: getPercentageColor(getItemBalancePercentage(item)) }}>({getItemBalancePercentage(item)}%)</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span>• Paid: {item.paid || "0"}      • Deadline: {item.due || "TBD"}</span>
+                            <span>• Paid: {formatDisplay(item.paid || "0")}      • Deadline: {item.due || "TBD"}</span>
                           </div>
                         </div>
                       ))}
@@ -541,8 +604,8 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                         <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>BUDGET</label>
                         <input
                           type="text"
-                          value={container.items[0]?.budget || ""}
-                          onChange={(e) => updateItemBudget(container.id, container.items[0]?.id || "", e.target.value)}
+                          value={formatNumberInput(container.items[0]?.budget || "")}
+                          onChange={(e) => updateItemBudget(container.id, container.items[0]?.id || "", parseNumberInput(e.target.value))}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
                           placeholder="Expected cost"
@@ -552,8 +615,8 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                         <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>COST</label>
                         <input
                           type="text"
-                          value={container.items[0]?.cost || ""}
-                          onChange={(e) => updateItemCost(container.id, container.items[0]?.id || "", e.target.value)}
+                          value={formatNumberInput(container.items[0]?.cost || "")}
+                          onChange={(e) => updateItemCost(container.id, container.items[0]?.id || "", parseNumberInput(e.target.value))}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
                           placeholder="Actual cost"
@@ -565,8 +628,8 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                         <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>PAID</label>
                         <input
                           type="text"
-                          value={container.items[0]?.paid || ""}
-                          onChange={(e) => updateItemPaid(container.id, container.items[0]?.id || "", e.target.value)}
+                          value={formatNumberInput(container.items[0]?.paid || "")}
+                          onChange={(e) => updateItemPaid(container.id, container.items[0]?.id || "", parseNumberInput(e.target.value))}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
                           placeholder="Amount paid"
@@ -611,6 +674,35 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
           { label: "Edit Budget", icon: "edit", onClick: () => setIsEditMode(true) },
         ]}
       />
+
+      {/* Default items info dialog */}
+      {showDefaultDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDefaultDialog(false)} />
+          <div className={`relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-xl ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: hexToRgba(accentColor, 0.15) }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              </div>
+              <h3 className={`text-base font-semibold ${isDarkMode ? "text-gray-100" : "text-gray-900"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                Recommended Budget Items
+              </h3>
+              <p className={`text-sm leading-relaxed ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                We've added a suggested list of wedding budget categories to help you get started. Feel free to remove, rename, or add your own items using the + button below.
+              </p>
+              <button
+                onClick={() => setShowDefaultDialog(false)}
+                className="w-full py-2.5 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90"
+                style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Saving overlay */}
       {saveStatus !== "idle" && (

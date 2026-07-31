@@ -10,6 +10,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 import { TIMELINE_EMPTY_MESSAGES, getNextMessage } from "@/lib/constants/heroMessages";
 
 interface StoryTimelineItem {
@@ -134,6 +135,37 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
 
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingChanges };
+
+  const predefinedMessages = [
+    "From our first meeting to this special day, here's our journey together...",
+    "Every moment we've shared has led us here. This is our love story in milestones.",
+    "Our journey began with a single moment and has grown into a beautiful adventure. Here are the highlights.",
+    "From strangers to soulmates, our timeline captures the moments that brought us together.",
+    "Each milestone in our journey has been a step toward forever. Here's our story.",
+    "The path that led us to this day has been filled with love, laughter, and unforgettable moments."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.timelineMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleChange("timelineMessage", predefinedMessages[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.timelineHeadingFontSizeMobile ?? mergedData.timelineHeadingFontSize ?? 100) : (mergedData.timelineHeadingFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'timelineHeadingFontSizeMobile' : 'timelineHeadingFontSize', size),
+    arrowClassPrefix: 'timeline',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.timelineMessageFontSizeMobile ?? mergedData.timelineMessageFontSize ?? 100) : (mergedData.timelineMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'timelineMessageFontSizeMobile' : 'timelineMessageFontSize', size),
+    arrowClassPrefix: 'timeline-msg',
+  });
 
   // Set default values when background type changes
   useEffect(() => {
@@ -329,18 +361,26 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
           onColorBlendChange={(value) => onChange?.("timelineDividerColorBlend", value)}
         />
       )}
+      {headingDrag.renderArrowStyles()}
+      {headingDrag.renderDragToast()}
       <h2
-        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center max-[320px]:scale-[0.4] scale-[0.55] lg:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center max-[320px]:scale-[0.4] scale-[0.55] lg:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.timelineUseMainColor !== false ? data.mainColor2 : (mergedData.timelineHeadingColor || data.mainColor2),
           fontFamily: mergedData.timelineUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.timelineHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.timelineHeadingFontSize || 100) * 3}%`,
-          lineHeight: '1.2'
-        }}
+          fontSize: `${headingDrag.effectiveSize * 3}%`,
+          lineHeight: '1.2',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...headingDrag.headingDragProps}
       >
+        {headingDrag.dragging && headingDrag.renderArrowOverlay()}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDrag.clickGuard(e)) return;
             setShowTypographyPanel(true);
             const element = document.getElementById('timeline-cssid');
             if (element) {
@@ -353,17 +393,34 @@ export default function TimelineSection({ data, onChange, panelPosition = "left"
       </h2>
 
       {mergedData.timelineMessage && events.length > 0 && (
-        <p
-          className="text-center text-sm mb-6 leading-relaxed scale-[0.7] lg:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+        <>
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
+          className="text-center text-sm mb-6 leading-relaxed scale-[0.7] lg:scale-100 max-[400px]:scale-100 select-none"
           style={{
             color: mergedData.timelineUseMainColor !== false ? data.neutralColor1 : (mergedData.timelineMessageColor || data.neutralColor1),
             fontFamily: mergedData.timelineUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.timelineMessageTypography || data.bodyFont, "body"),
-            fontSize: `${mergedData.timelineMessageFontSize || 100}%`,
-            opacity: 0.85
-          }}
+            fontSize: `${messageDrag.effectiveSize}%`,
+            opacity: 0.85,
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
-          {mergedData.timelineMessage}
-        </p>
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+          <span
+            className={editMode ? "cursor-pointer" : ""}
+            onClick={editMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleMessage();
+            } : undefined}
+          >
+            {mergedData.timelineMessage}
+          </span>
+        </div>
+        </>
       )}
 
       {/* Empty state message when no story timeline entries */}

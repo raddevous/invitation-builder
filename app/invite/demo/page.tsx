@@ -1,65 +1,88 @@
-import Link from "next/link";
+"use client";
+
+import { useEffect, useState } from "react";
+import { loadDemoInvitation } from "@/lib/demo/demo-data";
+import InvitationTemplate from "@/components/invitation/InvitationTemplate";
+import DemoProtection from "@/components/demo/DemoProtection";
+import { useBackHandler } from "@/lib/hooks/useBackHandler";
 
 export default function DemoInvitePage() {
-  return (
-    <main
-      className="min-h-screen flex flex-col items-center justify-center px-6 text-center"
-      style={{ backgroundColor: "#fff8f3" }}
-    >
-      <div className="max-w-md space-y-6">
-        <p
-          className="text-sm tracking-[0.3em] uppercase"
-          style={{ color: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
-        >
-          Demo Preview
-        </p>
-        <h1
-          className="text-3xl md:text-4xl"
-          style={{ fontFamily: "Playfair Display, serif", color: "#5c4a3a" }}
-        >
-          This is a Demo Invitation
-        </h1>
-        <p
-          className="text-base md:text-lg"
-          style={{ color: "#8a6252", fontFamily: "Cormorant Garamond, serif" }}
-        >
-          Demo invitations cannot be shared through a public link — they are only
-          stored in your browser. To create your own beautiful, shareable
-          invitation, sign up and get your personal builder access.
-        </p>
-        <p
-          className="text-base"
-          style={{ color: "#8a6252", fontFamily: "Cormorant Garamond, serif" }}
-        >
-          Already started designing in the demo? Your progress is saved locally,
-          and you can continue exactly where you left off once you sign up.
-        </p>
-        <div className="flex flex-col gap-4 items-center pt-4">
-          <Link
-            href="/signup"
-            className="w-full max-w-xs py-3 px-6 rounded-full text-white font-medium tracking-wide transition-all hover:opacity-90 active:scale-95"
-            style={{
-              backgroundColor: "#6998EE",
-              fontFamily: "Cormorant Garamond, serif",
-              fontSize: "1.1rem",
-            }}
+  const [invitation, setInvitation] = useState<ReturnType<typeof loadDemoInvitation> | null>(null);
+  const [desktopMode, setDesktopMode] = useState(false);
+
+  useBackHandler(true, () => {
+    window.history.back();
+  });
+
+  useEffect(() => {
+    if ("scrollRestoration" in history) {
+      history.scrollRestoration = "manual";
+    }
+    window.scrollTo(0, 0);
+    setInvitation(loadDemoInvitation());
+  }, []);
+
+  useEffect(() => {
+    const checkDesktop = () => setDesktopMode(window.innerWidth >= 768);
+    checkDesktop();
+    window.addEventListener("resize", checkDesktop);
+    return () => window.removeEventListener("resize", checkDesktop);
+  }, []);
+
+  useEffect(() => {
+    if (!invitation?.data) return;
+    const { data } = invitation;
+    let title = "";
+    if (data.nameType === "couple") {
+      const name1 = data.hisName || "";
+      const andText = data.andText || "&";
+      const name2 = data.herName || "";
+      title = `${name1} ${andText} ${name2} - Demo Invitation`;
+    } else {
+      title = `${data.coupleName || "Event"} - Demo Invitation`;
+    }
+    document.title = title;
+  }, [invitation?.data]);
+
+  if (!invitation) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: "#1B3B5F" }}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin"
+            style={{ borderColor: "#6998EE", borderTopColor: "transparent" }}
+          />
+          <p
+            className="text-sm italic"
+            style={{ color: "#6998EE", fontFamily: "Inter, sans-serif" }}
           >
-            Create Your Invitation
-          </Link>
-          <Link
-            href="/demo"
-            className="w-full max-w-xs py-3 px-6 rounded-full font-medium tracking-wide transition-all hover:opacity-90 active:scale-95 border-2"
-            style={{
-              borderColor: "#6998EE",
-              color: "#6998EE",
-              fontFamily: "Cormorant Garamond, serif",
-              fontSize: "1.1rem",
-            }}
-          >
-            Continue Designing Demo
-          </Link>
+            Opening your invitation…
+          </p>
         </div>
       </div>
-    </main>
+    );
+  }
+
+  return (
+    <>
+      <DemoProtection />
+      <div
+        className="relative"
+        style={{
+          WebkitUserSelect: "none",
+          userSelect: "none",
+          WebkitTouchCallout: "none",
+        }}
+      >
+        <InvitationTemplate
+          invitation={invitation}
+          editMode={false}
+          desktopMode={desktopMode}
+        />
+      </div>
+    </>
   );
 }

@@ -276,7 +276,7 @@ export default function WeddingProgramEditor({ isDarkMode = false, accentColor =
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Drag indicator toast */}
       {dragToast && (
         <div

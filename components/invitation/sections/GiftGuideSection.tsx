@@ -10,6 +10,7 @@ import ColorControl from "@/components/shared/ColorControl";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 
 interface GiftGuideSectionProps {
   data: InvitationData;
@@ -187,6 +188,41 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
   
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingChanges };
+
+  const predefinedMessages = [
+    "Your love and support are the greatest gifts we could ever receive. If you would like to honor us with a gift, a contribution toward building our new life together would be sincerely appreciated and deeply cherished.",
+    "As we begin this beautiful new chapter, your presence and blessings mean everything to us. Should you wish to bless us with a gift, a contribution toward our future home and dreams would be most warmly appreciated.",
+    "Celebrating our wedding day with you is our highest joy. For those who wish to honor us with a token of love, a contribution toward our journey ahead would be a wonderful blessing to our new family.",
+    "We are so blessed to already have a home filled with love and everyday essentials. In lieu of traditional gifts, a contribution toward our future together would help us create memories that last a lifetime.",
+    "Your presence, prayers, and laughter on our big day are all we truly ask for. However, if you are looking to honor us with a gift, a monetary contribution toward our future would be received with absolute gratitude.",
+    "The love you show us is the best gift of all. If it is your wish to give something more, we would be incredibly grateful for a contribution toward our future together as husband and wife.",
+    "Your presence at our wedding is the greatest gift we could ask for. Should you wish to honor us further, a contribution toward our future together would be warmly and deeply appreciated.",
+    "Having you celebrate with us is what matters most. For guests wishing to give a gift, we are gratefully accepting contributions toward our next chapter and future dreams.",
+    "Your love and prayers mean the world to us as we marry. If you would like to honor us with a gift, a contribution toward our honeymoon and setting up our future home would be a beautiful blessing.",
+    "We are incredibly grateful for the love that surrounds us. If you wish to bless us with a gift, we kindly ask for a contribution toward our future goals, helping us build a foundation for the life ahead."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.giftMessage ?? "");
+    const nextIndex = currentIndex === -1 || currentIndex === predefinedMessages.length - 1 ? 0 : currentIndex + 1;
+    handleChange("giftMessage", predefinedMessages[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.giftguideHeadingFontSizeMobile ?? mergedData.giftguideHeadingFontSize ?? 100) : (mergedData.giftguideHeadingFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'giftguideHeadingFontSizeMobile' : 'giftguideHeadingFontSize', size),
+    arrowClassPrefix: 'gift-guide',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.giftguideMessageFontSizeMobile ?? mergedData.giftguideMessageFontSize ?? 100) : (mergedData.giftguideMessageFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'giftguideMessageFontSizeMobile' : 'giftguideMessageFontSize', size),
+    arrowClassPrefix: 'gift-guide-msg',
+  });
 
   // Get crystal colors based on current structure
   const crystalColors = getCrystalColors(mergedData);
@@ -422,41 +458,64 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
         />
       )}
       
+      {headingDrag.renderArrowStyles()}
+      {headingDrag.renderDragToast()}
             <h2
-        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 text-center font-bold uppercase max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.giftguideUseMainColor !== false ? data.mainColor2 : (mergedData.giftguideHeadingColor || data.mainColor2),
           fontFamily: mergedData.giftguideUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.giftguideHeadingTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.giftguideHeadingFontSize || 100) * 3}%`,
-          lineHeight: '1.2'
-        }}
+          fontSize: `${headingDrag.effectiveSize * 3}%`,
+          lineHeight: '1.2',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...headingDrag.headingDragProps}
       >
+        {headingDrag.dragging && headingDrag.renderArrowOverlay()}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
-          setShowTypographyPanel(true);
-          const element = document.getElementById('gift-guide-cssid');
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-          }
-        } : undefined}
-      >
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDrag.clickGuard(e)) return;
+            setShowTypographyPanel(true);
+            const element = document.getElementById('gift-guide-cssid');
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth' });
+            }
+          } : undefined}
+        >
         {mergedData.giftguideHeading || "Gift Guide"}
         </span>
       </h2>
 
       <div className="max-w-2xl mx-auto">
-        <p
-          className="text-center mb-10 leading-relaxed scale-[0.7] max-[440px]:scale-[0.6] md:scale-100"
+        {messageDrag.renderArrowStyles()}
+        {messageDrag.renderDragToast()}
+        <div
+          className="text-center mb-10 leading-relaxed scale-[0.7] max-[440px]:scale-[0.6] md:scale-100 select-none"
           style={{
             color: mergedData.giftguideUseMainColor !== false ? data.neutralColor1 : (mergedData.giftguideMessageColor || data.neutralColor1),
             fontFamily: mergedData.giftguideUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.giftguideMessageTypography || data.bodyFont, "body"),
-            fontSize: `${mergedData.giftguideMessageFontSize || 100}%`,
-            opacity: 0.85
-          }}
+            fontSize: `${messageDrag.effectiveSize}%`,
+            opacity: 0.85,
+            position: 'relative',
+            touchAction: editMode ? 'pan-y' : 'auto',
+            WebkitTouchCallout: 'none',
+          } as React.CSSProperties}
+          {...messageDrag.headingDragProps}
         >
-          {mergedData.giftMessage || "Your love, presence, and prayers mean the world to us. Should you wish to honor us with a gift, a contribution toward our future together would be warmly appreciated and forever cherished."}
-        </p>
+          {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+          <span
+            className={editMode ? "cursor-pointer" : ""}
+            onClick={editMode ? (e) => {
+              if (messageDrag.clickGuard(e)) return;
+              cycleMessage();
+            } : undefined}
+          >
+            {mergedData.giftMessage || "Your love, presence, and prayers mean the world to us. Should you wish to honor us with a gift, a contribution toward our future together would be warmly appreciated and forever cherished."}
+          </span>
+        </div>
 
         {/* Gift Guide Container */}
         <div className="max-w-2xl mx-auto">

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import BackButtonHandler from "@/components/BackButtonHandler";
+import StatusIndicator from "@/components/StatusIndicator";
 
 export const metadata: Metadata = {
   title: "Instavow - Instant design, Personal touch, Shared in a link.",
@@ -13,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -23,7 +24,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased"><BackButtonHandler />{children}</body>
+      <body className="antialiased"><BackButtonHandler /><StatusIndicator />{children}</body>
     </html>
   );
 }

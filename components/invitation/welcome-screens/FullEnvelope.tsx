@@ -6,11 +6,13 @@ import type { InvitationData } from "@/lib/types/invitation";
 interface Props {
   data: InvitationData;
   onOpen: () => void;
+  envelopeScale?: number;
+  contained?: boolean;
 }
 
 const FLAP_DURATION_MS = 4000;
 
-export default function FullEnvelope({ data, onOpen }: Props) {
+export default function FullEnvelope({ data, onOpen, envelopeScale = 1, contained = false }: Props) {
   const [flapOpen, setFlapOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [showStdImage, setShowStdImage] = useState(false);
@@ -32,9 +34,13 @@ export default function FullEnvelope({ data, onOpen }: Props) {
       setMessageReady(true);
       return;
     }
+    if (contained) {
+      setMessageReady(true);
+      return;
+    }
     const timer = setTimeout(() => setMessageReady(true), totalDuration + 300 + 1000);
     return () => clearTimeout(timer);
-  }, [data.welcomeTopMessage, totalDuration]);
+  }, [data.welcomeTopMessage, totalDuration, contained]);
 
   const hisInitial = data.hisName?.charAt(0).toUpperCase() || "";
   const herInitial = data.herName?.charAt(0).toUpperCase() || "";
@@ -58,9 +64,9 @@ export default function FullEnvelope({ data, onOpen }: Props) {
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 bottom-0 z-40 flex flex-col items-center justify-center select-none overflow-hidden"
+      className={`${contained ? "absolute" : "fixed"} top-0 left-0 right-0 bottom-0 z-40 flex flex-col items-center justify-center select-none overflow-hidden`}
       style={{
-        height: '100dvh',
+        height: contained ? '100%' : '100dvh',
         backgroundColor: envelopeColor || data.mainColor1 || '#5c4a3a',
         opacity: exiting ? 0 : 1,
         transition: `opacity ${Math.round(FLAP_DURATION_MS * 0.5 + 800)}ms ease`,
@@ -84,10 +90,13 @@ export default function FullEnvelope({ data, onOpen }: Props) {
       </div>
 
       {/* Envelope + content */}
-      <div className="relative z-10 flex flex-col items-center">
+      <div className={`relative z-10 flex flex-col items-center justify-center ${contained ? "w-full h-full" : ""}`} style={{ transform: envelopeScale !== 1 ? `scale(${envelopeScale})` : undefined, transformOrigin: "center center" }}>
         <div
-          className="relative h-[100dvh] lg:h-auto lg:w-screen max-h-[100dvh] aspect-[7/5]"
+          className={`relative ${contained ? "" : "h-[100dvh]"} ${contained ? "" : "lg:h-auto lg:w-screen"} max-h-[100dvh] aspect-[7/5]`}
           style={{
+            height: contained ? '100%' : undefined,
+            width: contained ? 'auto' : undefined,
+            maxWidth: contained ? 'none' : undefined,
             filter: "drop-shadow(0 12px 24px rgba(0, 0, 0, 0.18))",
             animation: flapOpen ? "none" : "float 3s ease-in-out infinite",
           }}
@@ -98,7 +107,7 @@ export default function FullEnvelope({ data, onOpen }: Props) {
             style={{ zIndex: 2 }}
           >
             <div
-              className={`relative select-none w-[40%] h-[40%] sm:w-[50%] sm:h-[50%] md:w-[60%] md:h-[60%] lg:w-[70%] lg:h-[70%] ${showStdImage ? "std-image-fade-in" : ""}`}
+              className={`relative select-none w-[30%] h-[30%] sm:w-[40%] sm:h-[40%] md:w-[50%] md:h-[50%] lg:w-[55%] lg:h-[55%] ${showStdImage ? "std-image-fade-in" : ""}`}
               style={{ opacity: showStdImage ? undefined : 0 }}
             >
               <img
@@ -161,7 +170,7 @@ export default function FullEnvelope({ data, onOpen }: Props) {
               flapOpen ? "flap-full-env4" : ""
             }`}
             style={{
-              top: '-5%',
+              top: '-2%',
               zIndex: 5,
               transformOrigin: "top center",
               filter: "drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))",
@@ -253,7 +262,7 @@ export default function FullEnvelope({ data, onOpen }: Props) {
                 width: "80%",
                 color: data.welcomeTopMessageColor || envelopeColor || data.mainColor1 || "#5c4a3a",
                 fontFamily: data.welcomeTopMessageFont || "Playfair Display, serif",
-                fontSize: "clamp(28px, 8vmin, 60px)",
+                fontSize: contained ? "clamp(10px, 2.5vmin, 18px)" : "clamp(28px, 8vmin, 60px)",
                 textShadow: "-0.5px -0.5px 0 rgba(255, 255, 255, 0.4), 0.5px 0.5px 0 rgba(0, 0, 0, 0.5)",
                 letterSpacing: "0.05em",
                 opacity: showTopMessage ? 1 : 0,
@@ -261,19 +270,23 @@ export default function FullEnvelope({ data, onOpen }: Props) {
                 zIndex: 6,
               }}
             >
-              {letters.map((char, i) => (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-block",
-                    opacity: 0,
-                    animation: `letterFadeIn 0.8s ease-out forwards`,
-                    animationDelay: `${i * letterDelay + 1000}ms`,
-                  }}
-                >
-                  {char === " " ? "\u00A0" : char}
-                </span>
-              ))}
+              {contained ? (
+                <span>{data.welcomeTopMessage}</span>
+              ) : (
+                letters.map((char, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: "inline-block",
+                      opacity: 0,
+                      animation: `letterFadeIn 0.8s ease-out forwards`,
+                      animationDelay: `${i * letterDelay + 1000}ms`,
+                    }}
+                  >
+                    {char === " " ? "\u00A0" : char}
+                  </span>
+                ))
+              )}
             </div>
           )}
         </div>

@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from "react";
 
 interface FloatingActionMenuOption {
   label: string;
-  icon: "plus" | "edit" | "done";
+  icon: "plus" | "edit" | "done" | "target";
   onClick: () => void;
+  divider?: boolean;
 }
 
 interface FloatingActionMenuProps {
@@ -53,6 +54,15 @@ export default function FloatingActionMenu({ options, accentColor, isDarkMode = 
         </svg>
       );
     }
+    if (icon === "target") {
+      return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <circle cx="12" cy="12" r="6" />
+          <circle cx="12" cy="12" r="2" />
+        </svg>
+      );
+    }
     // done
     return (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -74,18 +84,22 @@ export default function FloatingActionMenu({ options, accentColor, isDarkMode = 
           }}
         >
           {options.map((option, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleOptionClick(option)}
-              className="flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5"
-              style={{
-                color: isDarkMode ? "#E5E7EB" : "#374151",
-                fontFamily: "Inter, sans-serif",
-              }}
-            >
-              <span style={{ color: accentColor }}>{renderIcon(option.icon)}</span>
-              {option.label}
-            </button>
+            <div key={idx}>
+              <button
+                onClick={() => handleOptionClick(option)}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full"
+                style={{
+                  color: isDarkMode ? "#E5E7EB" : "#374151",
+                  fontFamily: "Inter, sans-serif",
+                }}
+              >
+                <span style={{ color: accentColor }}>{renderIcon(option.icon)}</span>
+                {option.label}
+              </button>
+              {option.divider && (
+                <div className={`border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} />
+              )}
+            </div>
           ))}
         </div>
       )}

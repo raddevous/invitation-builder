@@ -220,8 +220,9 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const { x, y } = toVenueCoords((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
 
     const newTable = {
       id: Date.now().toString(),
@@ -645,6 +646,8 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
   const animationFrameRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const viewScaleRef = useRef(1);
   const baseLayoutDropdownRef = useRef<HTMLDivElement>(null);
   const cutoutDropdownRef = useRef<HTMLDivElement>(null);
   const colorDropdownRef = useRef<HTMLDivElement>(null);
@@ -761,13 +764,34 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
 
     const resizeCanvas = () => {
       const rect = container.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      if (rect.width > 0 && rect.height > 0) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        setCanvasSize({ width: rect.width, height: rect.height });
+      }
     };
 
     resizeCanvas();
+
+    // Use ResizeObserver for reliable dimension tracking (handles Android WebView viewport settling)
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+    resizeObserver.observe(container);
+
+    // Fallback: also listen to window resize
     window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+
+    // Re-check after delay for Android WebView where initial dimensions may be wrong
+    const delayedCheck = setTimeout(resizeCanvas, 300);
+    const secondCheck = setTimeout(resizeCanvas, 1000);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', resizeCanvas);
+      clearTimeout(delayedCheck);
+      clearTimeout(secondCheck);
+    };
   }, []);
 
   // Canvas rendering
@@ -788,6 +812,14 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
     // Calculate center position
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
+
+    // Compute view scale to fit venue within canvas
+    const padding = 40;
+    const viewScale = Math.min(1,
+      (canvasWidth - padding) / venueLayout.dimensions.width,
+      (canvasHeight - padding) / venueLayout.dimensions.height
+    );
+    viewScaleRef.current = viewScale > 0 ? viewScale : 1;
 
     // Outline color helpers
     const outlineColor = toRgba(venueLayout.outlineColor || defaultOutlineColor, 1);
@@ -853,6 +885,12 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
         ctx.drawImage(tempCanvas, -drawW / 2, -drawH / 2, drawW, drawH);
       }
     };
+
+    // Apply view scale transform for venue content
+    ctx.save();
+    ctx.translate(canvasWidth / 2, canvasHeight / 2);
+    ctx.scale(viewScaleRef.current, viewScaleRef.current);
+    ctx.translate(-canvasWidth / 2, -canvasHeight / 2);
 
     // Draw venue shape
     ctx.fillStyle = customColors.floor;
@@ -1417,8 +1455,8 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
         
         if (fillImage && outlineImage) {
           const scale = (venueLayout.tableScale || 100) / 100;
-          const imageWidth = table.dimensions.width * scale;
-          const imageHeight = table.dimensions.height * scale;
+          const imageWidth = Math.max(1, table.dimensions.width * scale);
+          const imageHeight = Math.max(1, table.dimensions.height * scale);
           const mode = venueLayout.doorColorMode ?? 0;
           
           // Apply flip transformations
@@ -1497,8 +1535,8 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
         
         if (fillImage && outlineImage) {
           const scale = (venueLayout.tableScale || 100) / 100;
-          const imageWidth = table.dimensions.width * scale;
-          const imageHeight = table.dimensions.height * scale;
+          const imageWidth = Math.max(1, table.dimensions.width * scale);
+          const imageHeight = Math.max(1, table.dimensions.height * scale);
           const mode = venueLayout.doorColorMode ?? 0;
           
           // Apply flip transformations
@@ -1881,6 +1919,9 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
       ctx.setLineDash([]);
     }
 
+    // Restore view scale transform before drawing grid
+    ctx.restore();
+
     // Draw grid lines - drawn last to be on top
     ctx.save();
     ctx.strokeStyle = customColors.grid;
@@ -1921,7 +1962,19 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
 
     ctx.restore();
 
-  }, [venueLayout, selectedTable, isDarkMode, accentColor, isDrawingCutout, cutoutStart, showControls, currentCutout, selectedCutout, isEditDisabled, customColors, gridDensity, chairImagesLoaded, entranceDoorImagesLoaded, data.heroIcon, data.hisName, data.herName, data.nameType, data.coupleName]);
+  }, [venueLayout, selectedTable, isDarkMode, accentColor, isDrawingCutout, cutoutStart, showControls, currentCutout, selectedCutout, isEditDisabled, customColors, gridDensity, chairImagesLoaded, entranceDoorImagesLoaded, data.heroIcon, data.hisName, data.herName, data.nameType, data.coupleName, canvasSize]);
+
+  // Convert canvas pixel coordinates to venue space (accounting for viewScale)
+  const toVenueCoords = (canvasX: number, canvasY: number): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: canvasX, y: canvasY };
+    const vs = viewScaleRef.current || 1;
+    if (vs === 1) return { x: canvasX, y: canvasY };
+    return {
+      x: canvas.width / 2 + (canvasX - canvas.width / 2) / vs,
+      y: canvas.height / 2 + (canvasY - canvas.height / 2) / vs,
+    };
+  };
 
   // Handle canvas click to show/hide controls
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1934,8 +1987,9 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const rawX = (e.clientX - rect.left) * scaleX;
+    const rawY = (e.clientY - rect.top) * scaleY;
+    const { x, y } = toVenueCoords(rawX, rawY);
 
     // Calculate venue position
     const canvasWidth = canvas.width;
@@ -2060,8 +2114,9 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const rawX = (e.clientX - rect.left) * scaleX;
+    const rawY = (e.clientY - rect.top) * scaleY;
+    const { x, y } = toVenueCoords(rawX, rawY);
 
     // Calculate venue position
     const canvasWidth = canvas.width;
@@ -2335,8 +2390,7 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
+      const { x, y } = toVenueCoords((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
 
       const deltaX = x - dragTableStart.x;
       const deltaY = y - dragTableStart.y;
@@ -2368,8 +2422,7 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
+      const { x, y } = toVenueCoords((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
 
       // Calculate venue position
       const canvasWidth = canvas.width;
@@ -2406,8 +2459,7 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
+      const { x, y } = toVenueCoords((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
 
       const dx = x - resizeStart.x;
       const dy = y - resizeStart.y;
@@ -2467,8 +2519,7 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const x = (e.clientX - rect.left) * scaleX;
-      const y = (e.clientY - rect.top) * scaleY;
+      const { x, y } = toVenueCoords((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
 
       const dx = x - resizeTableStart.x;
       const dy = y - resizeTableStart.y;
@@ -2569,8 +2620,7 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const { x, y } = toVenueCoords((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
 
     const dx = x - resizeStart.x;
     const dy = y - resizeStart.y;
@@ -2749,7 +2799,7 @@ export default function TableMapEditor({ data, onChange, onImmediateSave, isDark
   }, [isResizing, isDrawingCutout, isDraggingTable, resizeStart, resizeHandle, resizeTableStart, venueLayout, cutoutStart, currentCutout, dragTableStart, selectedTable]);
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Header */}
       <div className={`flex items-center justify-between p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
         <div className="flex items-center gap-3">

@@ -11,6 +11,7 @@ import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
+import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
 
 interface DressCodeSectionProps {
   data: InvitationData;
@@ -492,6 +493,43 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
   // Merge original data with pending changes for display
   const mergedData = { ...data, ...pendingChanges };
 
+  const predefinedMessages = [
+    "Dress code details can be found below.",
+    "Find our look book details below.",
+    "Friendly & Casual",
+    "Help us match the vibe below.",
+    "Kindly refer to the details below.",
+    "Kindly review our wardrobe guidelines below.",
+    "Modern & Direct",
+    "Our dress code details are below.",
+    "Please dress according to below.",
+    "Please follow the style notes below.",
+    "Please see our attire guide below.",
+    "See below for wardrobe details."
+  ];
+
+  const cycleMessage = () => {
+    const currentIndex = predefinedMessages.indexOf(mergedData.dresscodeBody ?? "");
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % predefinedMessages.length;
+    handleChange("dresscodeBody", predefinedMessages[nextIndex]);
+  };
+
+  const headingDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.dresscodeTitlesFontSizeMobile ?? mergedData.dresscodeTitlesFontSize ?? 100) : (mergedData.dresscodeTitlesFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'dresscodeTitlesFontSizeMobile' : 'dresscodeTitlesFontSize', size),
+    arrowClassPrefix: 'dresscode',
+  });
+
+  const messageDrag = useHeadingDrag({
+    editMode,
+    desktopMode,
+    getSize: () => desktopMode ? (mergedData.dresscodeBodyFontSizeMobile ?? mergedData.dresscodeBodyFontSize ?? 100) : (mergedData.dresscodeBodyFontSize ?? 100),
+    onSizeChange: (size, isDesktop) => onChange?.(isDesktop ? 'dresscodeBodyFontSizeMobile' : 'dresscodeBodyFontSize', size),
+    arrowClassPrefix: 'dresscode-msg',
+  });
+
   // Set default values when background type changes
   useEffect(() => {
     if (mergedData.dresscodeBackgroundType === "color" && !mergedData.dresscodeBackgroundColor) {
@@ -746,18 +784,26 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         onColorBlendChange={(value) => onChange?.("dresscodeDividerColorBlend", value)}
       />
     )}
+      {headingDrag.renderArrowStyles()}
+      {headingDrag.renderDragToast()}
       <h2
-        className="text-2xl text-center font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-2xl"
+        className="text-2xl text-center font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{
           color: mergedData.dresscodeUseMainColor !== false ? data.mainColor2 : (mergedData.dresscodeHeadingColor || data.mainColor2),
           fontFamily: mergedData.dresscodeUseMainColor !== false ? getFontFamily(data.headingFont, "heading") : getFontFamily(mergedData.dresscodeTitlesTypography || data.headingFont, "heading"),
-          fontSize: `${(mergedData.dresscodeTitlesFontSize || 100) * 3}%`,
-          lineHeight: '1.2'
-        }}
+          fontSize: `${headingDrag.effectiveSize * 3}%`,
+          lineHeight: '1.2',
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...headingDrag.headingDragProps}
       >
+        {headingDrag.dragging && headingDrag.renderArrowOverlay()}
         <span
-          className={editMode ? "cursor-pointer" : ""}
-          onClick={editMode ? () => {
+          className={editMode ? "cursor-pointer select-none" : ""}
+          onClick={editMode ? (e) => {
+            if (headingDrag.clickGuard(e)) return;
             setShowTypographyPanel(true);
             const element = document.getElementById('dresscode-cssid');
             if (element) {
@@ -770,17 +816,35 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
       </h2>
 
       {/* Body text */}
-      <p
-        className="text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 max-[400px]:!text-sm"
+      {messageDrag.renderArrowStyles()}
+      {messageDrag.renderDragToast()}
+      <div
+        className="text-sm mb-6 leading-relaxed scale-[0.7] md:scale-100 max-[400px]:scale-100 select-none"
         style={{ 
           color: mergedData.dresscodeUseMainColor !== false ? data.neutralColor1 : (mergedData.dresscodeBodyColor || data.neutralColor1), 
           fontFamily: mergedData.dresscodeUseMainColor !== false ? getFontFamily(data.bodyFont, "body") : getFontFamily(mergedData.dresscodeBodyTypography || data.bodyFont, "body"),
-          fontSize: `${mergedData.dresscodeBodyFontSize || 100}%`
-        }}
-        dangerouslySetInnerHTML={{
-          __html: (mergedData.dresscodeBody || "We look forward to seeing everyone dressed in their finest!<br>Details below:").replace(/\n/g, "<br>")
-        }}
-      />
+          fontSize: `${messageDrag.effectiveSize}%`,
+          position: 'relative',
+          touchAction: editMode ? 'pan-y' : 'auto',
+          WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+        {...messageDrag.headingDragProps}
+      >
+        {messageDrag.dragging && messageDrag.renderArrowOverlay()}
+        <span
+          className={editMode ? "cursor-pointer" : ""}
+          onClick={editMode ? (e) => {
+            if (messageDrag.clickGuard(e)) return;
+            cycleMessage();
+          } : undefined}
+        >
+          <span
+            dangerouslySetInnerHTML={{
+              __html: (mergedData.dresscodeBody || "We look forward to seeing everyone dressed in their finest!<br>Details below:").replace(/\n/g, "<br>")
+            }}
+          />
+        </span>
+      </div>
 
       {/* Dress Code Grid View (default) */}
       {!showSlideshow && (

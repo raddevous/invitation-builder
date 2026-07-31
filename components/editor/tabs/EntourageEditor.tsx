@@ -21,7 +21,23 @@ const hexToRgba = (hex: string, alpha: number): string => {
 export default function EntourageEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave }: EntourageEditorProps) {
   const [pendingEntourageChanges, setPendingEntourageChanges] = useState(data.entourage || {});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [showCheckboxes, setShowCheckboxes] = useState(false);
+  const [showCheckboxes, setShowCheckboxes] = useState(() => {
+    const ent = data.entourage;
+    if (!ent) return true;
+    const hasName = (n?: string) => !!n && n.trim() !== "";
+    const hasAny = (names?: string[]) => (names || []).some(n => hasName(n));
+    const allEmpty = !hasName(ent.couple?.groomName) && !hasName(ent.couple?.brideName)
+      && !hasName(ent.groomParents?.fatherName) && !hasName(ent.groomParents?.motherName)
+      && !hasName(ent.brideParents?.fatherName) && !hasName(ent.brideParents?.motherName)
+      && !hasName(ent.marriageTalkSpeaker?.name) && !hasName(ent.officiatingMinister?.name)
+      && !hasAny(ent.witnesses?.names) && !hasName(ent.bestMan?.name) && !hasName(ent.maidOfHonor?.name)
+      && !hasAny(ent.directorOfCeremony?.names) && !hasAny(ent.directorOfFeast?.names)
+      && !hasAny(ent.ushers?.names) && !hasAny(ent.usherettes?.names)
+      && !hasName(ent.chairman?.name) && !hasAny(ent.groomsmen?.names) && !hasAny(ent.bridesmaids?.names)
+      && !hasAny(ent.jrGroomsmen?.names) && !hasAny(ent.jrBridesmaid?.names) && !hasAny(ent.flowerGirls?.names)
+      && !hasName(ent.bibleBearer?.name) && !hasName(ent.ringBearer?.name);
+    return allEmpty;
+  });
   const [localVisibleSections, setLocalVisibleSections] = useState(data.entourage?.visibleSections || {});
   const initialEntourageSnapshot = useRef(JSON.stringify({ ...(data.entourage || {}), visibleSections: data.entourage?.visibleSections || {} }));
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
@@ -155,7 +171,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
   };
 
   return (
-    <div className={`w-full h-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Header - fixed, not scrollable */}
       <div className={`flex items-center justify-between p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
         <div className="flex items-center gap-3">

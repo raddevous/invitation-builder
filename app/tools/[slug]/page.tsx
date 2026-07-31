@@ -10,6 +10,8 @@ import { debounce, updateFavicon } from "@/lib/utils";
 import { registerPushNotifications } from "@/lib/utils/push";
 import { getStoredItem, setStoredItem } from "@/lib/utils/storage";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
+import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
+import { apiUrl } from "@/lib/utils/api";
 
 interface AppSettings {
   isDarkMode: boolean;
@@ -17,21 +19,25 @@ interface AppSettings {
   hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
+  isPreviewDetached?: boolean;
 }
 
 export default function ToolsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
+  const { mode: systemMode } = useSystemTheme();
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [slugValid, setSlugValid] = useState<boolean | null>(null);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
-    isDarkMode: true,
+    isDarkMode: false,
     accentColor: "#6998EE",
     hideSaveConfirmationDialog: false,
     hideInstructions: false,
     showScreenDimensions: false,
+    isPreviewDetached: false,
   });
+  const [hasStoredSettings, setHasStoredSettings] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
@@ -78,7 +84,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   useEffect(() => {
     async function checkSlug() {
       try {
-        const res = await fetch(`/api/invitation/${slug}`);
+        const res = await fetch(apiUrl(`/api/invitation/${slug}`));
         setSlugValid(res.ok);
       } catch {
         setSlugValid(false);
@@ -108,7 +114,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
 
       // Fallback: verify auth cookie and fetch from server
       try {
-        const res = await fetch("/api/auth/verify", { credentials: "include" });
+        const res = await fetch(apiUrl("/api/auth/verify"), { credentials: "include" });
         if (!res.ok) return;
         const data = await res.json();
         if (data.authenticated && data.invitation && data.invitation.slug === slug) {
@@ -116,8 +122,8 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           const inv = { ...data.invitation, data: invitationData };
           await setStoredItem("invitation", JSON.stringify(inv));
           if (isDarkMode !== undefined || accentColor !== undefined) {
-            await setStoredItem("appSettings", JSON.stringify({
-              isDarkMode: isDarkMode ?? true,
+            localStorage.setItem("appSettings", JSON.stringify({
+              isDarkMode: systemMode === "dark",
               accentColor: accentColor ?? "#6998EE",
             }));
           }
@@ -133,7 +139,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   // Fetch invitation by access code (called from EditorLogin)
   const fetchInvitationByAccessCode = async (accessCode: string): Promise<Invitation | null> => {
     try {
-      const res = await fetch("/api/auth/access-code", {
+      const res = await fetch(apiUrl("/api/auth/access-code"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode }),
@@ -174,17 +180,21 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   }, [invitation?.data?.heroIcon]);
 
   useEffect(() => {
-    // Load settings from localStorage
+    // Load settings from localStorage, or use system theme if none exist
     const storedSettings = localStorage.getItem('appSettings');
     if (storedSettings) {
       try {
         const parsed = JSON.parse(storedSettings);
         setSettings(parsed);
+        setHasStoredSettings(true);
       } catch (error) {
         console.error('Failed to parse stored settings:', error);
+        setSettings(prev => ({ ...prev, isDarkMode: systemMode === "dark" }));
       }
+    } else {
+      setSettings(prev => ({ ...prev, isDarkMode: systemMode === "dark" }));
     }
-  }, [slug]);
+  }, [slug, systemMode]);
 
   // Refetch when returning from editor to ensure we have latest data
   useEffect(() => {
@@ -209,7 +219,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     try {
       // Exclude settings from the data being saved to Supabase
       const { isDarkMode, accentColor, ...dataToSave } = inv.data;
-      const res = await fetch(`/api/invitation/${inv.slug}`, {
+      const res = await fetch(apiUrl(`/api/invitation/${inv.slug}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invitationId: inv.id, data: dataToSave }),
@@ -307,7 +317,12 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     return (
       <EditorPanel
         invitation={invitation}
-        onBack={() => setShowEditorPanel(false)}
+        onBack={(updatedInvitation) => {
+          if (updatedInvitation) {
+            loadInvitation(updatedInvitation);
+          }
+          setShowEditorPanel(false);
+        }}
         showScreenDimensions={settings.showScreenDimensions}
       />
     );
@@ -368,10 +383,12 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           onSettingsChange={(newSettings) => {
             setSettings(newSettings);
             localStorage.setItem('appSettings', JSON.stringify(newSettings));
+            setStoredItem("themeOverride", newSettings.isDarkMode ? "dark" : "light");
           }}
           hideSaveConfirmationDialog={settings.hideSaveConfirmationDialog}
           hideInstructions={settings.hideInstructions}
           showScreenDimensions={settings.showScreenDimensions}
+          isPreviewDetached={settings.isPreviewDetached}
         />
       </div>
 
