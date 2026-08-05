@@ -7,6 +7,7 @@ import { getStoredItem, setStoredItem, removeStoredItem } from "@/lib/utils/stor
 import HomePreviewStage from "@/components/home/HomePreviewStage";
 import { openSignup } from "@/lib/utils/signup";
 import { apiUrl } from "@/lib/utils/api";
+import { getCachedInvitation, getLastUsedSlug, setLastUsedSlug, cacheInvitation, isOnline } from "@/lib/utils/offline-cache";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 
 export default function ToolsLandingPage() {
@@ -41,6 +42,8 @@ export default function ToolsLandingPage() {
             const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
             const inv = { ...data.invitation, data: invitationData };
             await setStoredItem("invitation", JSON.stringify(inv));
+            await setLastUsedSlug(data.invitation.slug);
+            await cacheInvitation(data.invitation.slug, inv);
             if (isDarkMode !== undefined || accentColor !== undefined) {
               localStorage.setItem("appSettings", JSON.stringify({
                 isDarkMode: mode === "dark",
@@ -52,7 +55,18 @@ export default function ToolsLandingPage() {
           }
         }
       } catch {
-        // not authenticated
+        // Offline or network error — try cached invitation
+        if (!isOnline()) {
+          const lastSlug = await getLastUsedSlug();
+          if (lastSlug) {
+            const cached = await getCachedInvitation(lastSlug);
+            if (cached) {
+              await setStoredItem("invitation", JSON.stringify(cached));
+              router.replace(`/tools/${lastSlug}`);
+              return;
+            }
+          }
+        }
       }
 
       setChecking(false);
@@ -64,6 +78,8 @@ export default function ToolsLandingPage() {
     const { isDarkMode, accentColor, ...invitationData } = inv.data;
     const invitationToStore = { ...inv, data: invitationData };
     await setStoredItem('invitation', JSON.stringify(invitationToStore));
+    await setLastUsedSlug(inv.slug);
+    await cacheInvitation(inv.slug, inv);
     localStorage.setItem('appSettings', JSON.stringify({
       isDarkMode: mode === "dark",
       accentColor: accentColor ?? "#6998EE",
@@ -88,6 +104,7 @@ export default function ToolsLandingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode: code.trim() }),
+        credentials: "include",
       });
 
       const data = await res.json();

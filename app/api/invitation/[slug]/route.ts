@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { wpGetInvitationBySlug, wpUpdateInvitation } from "@/lib/wp/client";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { requireAuth } from "@/lib/auth/middleware";
 
@@ -7,24 +7,25 @@ export const dynamic = "force-dynamic";
 
 const getInvitationBySlug = unstable_cache(
   async (slug: string) => {
-    const { data, error } = await supabaseAdmin
-      .from("invitations")
-      .select("id, slug, template_id, event_type, client_name, data, updated_at")
-      .eq("slug", slug)
-      .single();
+    const { ok, body } = await wpGetInvitationBySlug(slug);
 
-    if (error || !data) {
+    if (!ok || !body?.invitation) {
       throw new Error("Invitation not found");
     }
 
+    const { invitation } = body;
+
     return {
-      id: data.id,
-      slug: data.slug,
-      templateId: data.template_id,
-      eventType: data.event_type,
-      clientName: data.client_name,
-      data: data.data,
-      updatedAt: data.updated_at,
+      id: invitation.id,
+      slug: invitation.slug,
+      templateId: invitation.templateId,
+      eventType: invitation.eventType,
+      clientName: invitation.clientName,
+      email: invitation.email,
+      createdAt: invitation.createdAt,
+      expiresAt: invitation.expiresAt,
+      data: invitation.data,
+      updatedAt: invitation.updatedAt,
     };
   },
   ["invitation"],
@@ -70,12 +71,7 @@ export async function PATCH(
     const body = await request.json();
     const { invitationId, data } = body;
 
-    console.log('[PATCH] Request:', { slug, invitationId, dataKeys: Object.keys(data) });
-    console.log('[PATCH] Full data being saved:', JSON.stringify(data).substring(0, 500) + '...');
-    console.log('[PATCH] Entourage data:', JSON.stringify(data.entourage)?.substring(0, 300) + '...');
-
     if (!invitationId || !data) {
-      console.error('[PATCH] Missing required fields:', { invitationId, data });
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -90,46 +86,17 @@ export async function PATCH(
       );
     }
 
-    // Get current data before update
-    const { data: currentRecord } = await supabaseAdmin
-      .from("invitations")
-      .select("data")
-      .eq("id", invitationId)
-      .single();
+    const { ok, body: result } = await wpUpdateInvitation(slug, invitationId, data);
 
-    console.log('[PATCH] Current data sample:', {
-      hisName: currentRecord?.data?.hisName,
-      herName: currentRecord?.data?.herName,
-      date: currentRecord?.data?.date
-    });
-
-    const { data: updatedData, error } = await supabaseAdmin
-      .from("invitations")
-      .update({
-        data,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", invitationId)
-      .select();
-
-    if (error) {
-      console.error('[PATCH] Supabase error:', error);
+    if (!ok) {
       return NextResponse.json(
-        { error: "Failed to update invitation", details: error.message },
+        { error: "Failed to update invitation", details: result?.error },
         { status: 500 }
       );
     }
 
-    console.log('[PATCH] Updated record:', updatedData?.[0]?.id);
-    console.log('[PATCH] Updated data sample:', {
-      hisName: updatedData?.[0]?.data?.hisName,
-      herName: updatedData?.[0]?.data?.herName,
-      date: updatedData?.[0]?.data?.date
-    });
-
     // Clear server cache so share link gets fresh data
     revalidateTag("invitations");
-    console.log('[PATCH] Cache revalidated');
 
     return NextResponse.json({ success: true });
   } catch (error) {

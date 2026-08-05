@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { InvitationData } from "@/lib/types/invitation";
 import Divider from "./Divider";
 import FontControl from "@/components/shared/FontControl";
@@ -182,11 +183,15 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
   // Filter valid image URLs
   const validImages = (data.venueImages || []).filter(url => url && url.trim() !== "");
   const hasImages = validImages.length > 0;
+  const validReceptionImages = (data.receptionVenueImages || []).filter(url => url && url.trim() !== "");
+  const hasReceptionImages = validReceptionImages.length > 0;
 
   // Slideshow state
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [currentReceptionImageIndex, setCurrentReceptionImageIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // Swipe handlers for mobile
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -222,6 +227,15 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
     setCurrentImageIndex((prev) => (prev === validImages.length - 1 ? 0 : prev + 1));
   };
 
+  // Reception slideshow navigation
+  const goToReceptionPrevious = () => {
+    setCurrentReceptionImageIndex((prev) => (prev === 0 ? validReceptionImages.length - 1 : prev - 1));
+  };
+
+  const goToReceptionNext = () => {
+    setCurrentReceptionImageIndex((prev) => (prev === validReceptionImages.length - 1 ? 0 : prev + 1));
+  };
+
   // Auto-advance slideshow
   useEffect(() => {
     if (!hasImages || validImages.length <= 1) return;
@@ -233,9 +247,22 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
     return () => clearInterval(interval);
   }, [hasImages, validImages.length]);
 
+  // Auto-advance reception slideshow
+  useEffect(() => {
+    if (!hasReceptionImages || validReceptionImages.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentReceptionImageIndex((prev) => (prev + 1) % validReceptionImages.length);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [hasReceptionImages, validReceptionImages.length]);
+
   // Fallback to venue name/address for map
   const mapQuery = `${data.venueName} ${data.venueAddress}`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+  const receptionMapQuery = `${data.receptionVenueName || ""} ${data.receptionVenueAddress || ""}`;
+  const receptionMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(receptionMapQuery)}`;
 
   const mapUseDefaultDivider = data.mapDividerUseDefault ?? true;
   const effectivePullDown = mapUseDefaultDivider ? (data.universalDividerPullDown ?? 0) : (data.mapDividerPullDown ?? 0);
@@ -402,29 +429,31 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
         </>
       )}
 
-      <div className="mt-4 mb-6">
+      {/* Ceremony / Event Venue Section */}
+      <div className="mt-8 mb-6">
+        <p
+          className="text-sm uppercase tracking-wide mb-3"
+          style={{ color: data.neutralColor1, opacity: 0.6, fontFamily: getFontFamily(data.bodyFont, "body") }}
+        >
+          {data.oneVenueOnly ? "At the Venue" : "At the Ceremony"}
+        </p>
         <p
           className="text-xl mb-1"
           style={{ color: data.mainColor2, fontFamily: getFontFamily(data.headingFont, "heading") }}
         >
           {data.venueName}
         </p>
-        <p
-          className="text-sm"
-          style={{ color: data.neutralColor1, opacity: 0.7, fontFamily: getFontFamily(data.bodyFont, "body") }}
-        >
-          {data.venueAddress}
-        </p>
       </div>
 
-      {/* Venue Images Slideshow - Above Map */}
+      {/* Venue Images Slideshow */}
       {hasImages && (
         <div
-          className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative group"
+          className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative group cursor-pointer"
           style={{ height: "300px" }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          onClick={() => setLightboxImage(validImages[currentImageIndex])}
         >
           {validImages.map((imageUrl, index) => (
             <img
@@ -441,7 +470,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
           {validImages.length > 1 && (
             <>
               <button
-                onClick={goToPrevious}
+                onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-white/30"
                 aria-label="Previous image"
               >
@@ -450,7 +479,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
                 </svg>
               </button>
               <button
-                onClick={goToNext}
+                onClick={(e) => { e.stopPropagation(); goToNext(); }}
                 className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-white/30"
                 aria-label="Next image"
               >
@@ -467,7 +496,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
               {validImages.map((_, index) => (
                 <button
                   key={index}
-                  onClick={() => setCurrentImageIndex(index)}
+                  onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(index); }}
                   className={`w-2 h-2 rounded-full transition-colors ${
                     index === currentImageIndex ? "bg-white" : "bg-white/50"
                   }`}
@@ -478,7 +507,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
         </div>
       )}
 
-      {/* Google Maps - Always Show */}
+      {/* Ceremony/Event Map */}
       <div
         className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative"
         style={{ height: "300px" }}
@@ -507,19 +536,171 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
         }}
       >
         <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent rounded-full"></span>
-        <span className="relative z-10 flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
+        <span className="relative z-10">
           Open in Maps
         </span>
       </a>
+
+      {/* Divider between ceremony and reception sections */}
+      {!data.oneVenueOnly && data.receptionVenueName && (
+        <div className="flex items-center justify-center gap-3 my-10 px-6">
+          <div className="flex-1 max-w-[120px] h-px" style={{ backgroundColor: `${data.neutralColor1}30` }} />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={data.neutralColor1} strokeWidth="1.5" style={{ opacity: 0.4 }}>
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          <div className="flex-1 max-w-[120px] h-px" style={{ backgroundColor: `${data.neutralColor1}30` }} />
+        </div>
+      )}
+
+      {/* Reception Venue Section - only when oneVenueOnly is off */}
+      {!data.oneVenueOnly && data.receptionVenueName && (
+        <>
+          <div className="mt-12 mb-6">
+            <p
+              className="text-sm uppercase tracking-wide mb-3"
+              style={{ color: data.neutralColor1, opacity: 0.6, fontFamily: getFontFamily(data.bodyFont, "body") }}
+            >
+              Reception Area
+            </p>
+            <p
+              className="text-xl mb-1"
+              style={{ color: data.mainColor2, fontFamily: getFontFamily(data.headingFont, "heading") }}
+            >
+              {data.receptionVenueName}
+            </p>
+          </div>
+
+          {/* Reception Venue Images Slideshow */}
+          {hasReceptionImages && (
+            <div
+              className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative group cursor-pointer"
+              style={{ height: "300px" }}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onClick={() => setLightboxImage(validReceptionImages[currentReceptionImageIndex])}
+            >
+              {validReceptionImages.map((imageUrl, index) => (
+                <img
+                  key={index}
+                  src={imageUrl}
+                  alt={`Reception venue image ${index + 1}`}
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
+                    index === currentReceptionImageIndex ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+              ))}
+              
+              {/* Desktop Navigation Arrows */}
+              {validReceptionImages.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); goToReceptionPrevious(); }}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-white/30"
+                    aria-label="Previous image"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); goToReceptionNext(); }}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-white/30"
+                    aria-label="Next image"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                </>
+              )}
+              
+              {/* Slideshow indicators */}
+              {validReceptionImages.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                  {validReceptionImages.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={(e) => { e.stopPropagation(); setCurrentReceptionImageIndex(index); }}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        index === currentReceptionImageIndex ? "bg-white" : "bg-white/50"
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reception Map */}
+          <div
+            className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative"
+            style={{ height: "300px" }}
+          >
+            <iframe
+              width="100%"
+              height="100%"
+              style={{ border: 0 }}
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+              src={`https://www.google.com/maps?q=${encodeURIComponent(receptionMapQuery)}&output=embed`}
+            />
+          </div>
+
+          <a
+            href={receptionMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm tracking-wide transition-all duration-300 active:scale-95 relative overflow-hidden backdrop-blur-md border shadow-lg"
+            style={{
+              backgroundColor: `${data.mainColor2}20`,
+              borderColor: `${data.mainColor2}40`,
+              color: data.mainColor2,
+              fontFamily: `${data.bodyFont}, serif`,
+            }}
+          >
+            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent rounded-full"></span>
+            <span className="relative z-10">
+              Open in Maps
+            </span>
+          </a>
+        </>
+      )}
       </div>
 
       {/* Spacer below open in maps button */}
       <div style={{ height: '50px' }} />
     </section>
+
+    {/* Lightbox - fullscreen image viewer */}
+    {lightboxImage && createPortal(
+      <div
+        className="fixed inset-0 bg-black/90 flex items-center justify-center p-4"
+        style={{ zIndex: 99999 }}
+        onClick={() => setLightboxImage(null)}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setLightboxImage(null);
+          }}
+          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+        <img
+          src={lightboxImage}
+          alt="Venue"
+          className="max-w-full max-h-full rounded-lg object-contain"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>,
+      document.body
+    )}
 
     {/* Divider Settings Panel - outside section to escape stacking context */}
     {showDividerSettingsPanel && (

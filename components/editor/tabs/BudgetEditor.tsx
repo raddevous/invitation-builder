@@ -28,6 +28,8 @@ interface BudgetContainer {
 interface BudgetEditorProps {
   isDarkMode?: boolean;
   accentColor?: string;
+  showNumbers?: boolean;
+  highlightItemId?: string | null;
   onClose: () => void;
 }
 
@@ -81,14 +83,14 @@ const formatDisplay = (value: string): string => {
   return num.toLocaleString();
 };
 
-export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", onClose }: BudgetEditorProps) {
+export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, onClose }: BudgetEditorProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   // Initialize from localStorage directly
   const getInitialContainers = (): BudgetContainer[] => {
     try {
       const stored = localStorage.getItem('weddingBudget');
       if (stored) {
-        return JSON.parse(stored).map((c: BudgetContainer) => ({ ...c, isExpanded: false }));
+        return JSON.parse(stored).map((c: BudgetContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
       }
     } catch (error) {
       console.error('Failed to load initial budget:', error);
@@ -101,6 +103,21 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
   const [editingTitle, setEditingTitle] = useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightItemId);
+
+  useEffect(() => {
+    if (!highlightItemId) return;
+    setActiveHighlightId(highlightItemId);
+    const timer = setTimeout(() => setActiveHighlightId(null), 4000);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-item-id="${highlightItemId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+    return () => clearTimeout(timer);
+  }, [highlightItemId]);
+
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
 
   // Drag-and-drop reorder state
@@ -350,6 +367,15 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
           0%, 100% { opacity: 0.6; }
           50% { opacity: 1; }
         }
+        @keyframes be-highlight-pulse {
+          0% { box-shadow: 0 0 0 0 ${hexToRgba(accentColor, 0.6)}; background-color: ${hexToRgba(accentColor, 0.12)}; }
+          50% { box-shadow: 0 0 16px 4px ${hexToRgba(accentColor, 0.3)}; background-color: ${hexToRgba(accentColor, 0.06)}; }
+          100% { box-shadow: 0 0 0 0 ${hexToRgba(accentColor, 0)}; background-color: transparent; }
+        }
+        .budget-item-highlight {
+          animation: be-highlight-pulse 2s ease-in-out 1;
+          border-radius: 8px;
+        }
       `}</style>
       {/* Header */}
       <div className={`flex flex-col p-4 shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
@@ -434,7 +460,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
               data-be-idx={idx}
               onMouseEnter={() => setHoveredContainer(container.id)}
               onMouseLeave={() => setHoveredContainer(null)}
-              className={`border rounded-xl overflow-hidden transition-all duration-300`}
+              className={`border rounded-xl overflow-hidden transition-all duration-300 ${activeHighlightId === container.items[0]?.id ? "budget-item-highlight" : ""}`}
               style={{
                 backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
                 borderColor: hoveredContainer === container.id ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
@@ -557,7 +583,11 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                         <div key={item.id} className="space-y-1">
                           <div className="flex items-center justify-between">
                             <span>• Cost: {formatDisplay(getDisplayCost(item))}      • Balance: {getItemBalance(item).toLocaleString()}</span>
-                            <span style={{ color: getPercentageColor(getItemBalancePercentage(item)) }}>({getItemBalancePercentage(item)}%)</span>
+                            <span style={{ color: getPercentageColor(getItemBalancePercentage(item)) }}>
+                              {showNumbers
+                                ? `(${formatDisplay(item.paid || "0")}/${formatDisplay(getDisplayCost(item))})`
+                                : `(${getItemBalancePercentage(item)}%)`}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between">
                             <span>• Paid: {formatDisplay(item.paid || "0")}      • Deadline: {item.due || "TBD"}</span>
@@ -596,7 +626,9 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
 
               {/* Container Items - Input fields */}
               {container.isExpanded && (
-                <div className={`p-4 space-y-4 ${isEditMode ? (isDarkMode ? "border-gray-700" : "border-gray-100") : "border-transparent"} border-t`}
+                <div
+                  data-item-id={container.items[0]?.id}
+                  className={`p-4 space-y-4 ${isEditMode ? (isDarkMode ? "border-gray-700" : "border-gray-100") : "border-transparent"} border-t`}
                   style={isEditMode ? (isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }) : { backgroundColor: "transparent" }}>
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">

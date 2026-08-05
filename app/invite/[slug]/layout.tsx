@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import type { InvitationData } from "@/lib/types/invitation";
+import { wpGetInvitationBySlug } from "@/lib/wp/client";
 
-async function getInvitationMeta(slug: string) {
-  const { data } = await supabaseAdmin
-    .from("invitations")
-    .select("data")
-    .eq("slug", slug)
-    .single();
-
-  return data?.data;
+async function getInvitationMeta(slug: string): Promise<InvitationData | null> {
+  const { ok, body } = await wpGetInvitationBySlug(slug);
+  if (!ok || !body?.invitation) return null;
+  return (body.invitation.data as InvitationData) ?? null;
 }
 
 export async function generateMetadata({

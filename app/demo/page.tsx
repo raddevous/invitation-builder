@@ -12,7 +12,6 @@ import DemoWatermark from "@/components/demo/DemoWatermark";
 interface AppSettings {
   isDarkMode: boolean;
   accentColor: string;
-  hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
   isPreviewDetached?: boolean;
@@ -25,7 +24,6 @@ export default function DemoPage() {
   const [settings, setSettings] = useState<AppSettings>({
     isDarkMode: false,
     accentColor: "#6998EE",
-    hideSaveConfirmationDialog: false,
     hideInstructions: false,
     showScreenDimensions: false,
     isPreviewDetached: false,
@@ -80,7 +78,7 @@ export default function DemoPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#fff8f3" }}>
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#e8cfc3", borderTopColor: "#6998EE" }} />
+          <div className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#6998EE", borderTopColor: "transparent" }} />
         </div>
       </div>
     );
@@ -122,7 +120,6 @@ export default function DemoPage() {
       )}
 
       <div className="w-full overflow-hidden demo-scroll-fix lg:max-w-[400px] lg:h-[calc(100vh-2rem)] lg:mx-4 lg:rounded-2xl lg:overflow-hidden lg:shadow-2xl" style={{ backgroundColor: settings.isDarkMode ? "#1f2937" : "#fff8f3", height: "100dvh" }}>
-        <DemoWatermark />
         <ToolsTab
           data={invitation.data}
           slug={invitation.slug}
@@ -141,7 +138,6 @@ export default function DemoPage() {
             localStorage.setItem('appSettings', JSON.stringify(newSettings));
             setStoredItem("themeOverride", newSettings.isDarkMode ? "dark" : "light");
           }}
-          hideSaveConfirmationDialog={settings.hideSaveConfirmationDialog}
           hideInstructions={settings.hideInstructions}
           showScreenDimensions={settings.showScreenDimensions}
           isPreviewDetached={settings.isPreviewDetached}

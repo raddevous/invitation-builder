@@ -1,0 +1,800 @@
+/* Invitation Database — Admin UI */
+
+#idb-root {
+    margin-top: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Row 1: Tabs */
+.idb-tabs-row {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid #2271b1;
+    margin-bottom: 0;
+    padding-left: 4px;
+}
+
+.idb-tab {
+    background: #f0f0f1;
+    border: 1px solid #c3c4c7;
+    border-bottom: none;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #50575e;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    transition: background 0.15s, color 0.15s;
+}
+
+.idb-tab:hover {
+    background: #e0e0e2;
+}
+
+.idb-tab.active {
+    background: #fff;
+    color: #2271b1;
+    border-color: #2271b1;
+    border-bottom: 2px solid #fff;
+    margin-bottom: -2px;
+}
+
+/* Row 2: Toolbar (search, filter, delete) */
+.idb-toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-top: none;
+}
+
+/* Search box with icon — icon is outside input but visually merged */
+.idb-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    flex: 0 1 300px;
+}
+
+.idb-search-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    font-size: 18px;
+    color: #646970;
+    background: #fff;
+    border: 1px solid #8c8f94;
+    border-right: none;
+    border-radius: 3px 0 0 3px;
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.idb-search-wrap.idb-search-focused .idb-search-icon {
+    border-color: #2271b1;
+    color: #2271b1;
+}
+
+.idb-search-input {
+    flex: 1;
+    width: auto;
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid #8c8f94;
+    border-radius: 0 3px 3px 0;
+    box-sizing: border-box;
+    margin-left: -1px;
+    background: #fff;
+}
+
+.idb-search-input:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+/* Field dropdown below search */
+.idb-search-field-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 2px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.idb-search-field-dropdown.open {
+    display: block;
+}
+
+.idb-search-field-item {
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    text-align: left;
+    font-size: 13px;
+    color: #1d2327;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.idb-search-field-item:hover {
+    background: #f0f0f1;
+}
+
+.idb-search-field-item.active {
+    background: #e0ecf8;
+    color: #2271b1;
+    font-weight: 600;
+}
+
+.idb-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    border: 1px solid #2271b1;
+    background: #2271b1;
+    color: #fff;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.idb-btn:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+.idb-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.idb-btn-danger {
+    background: #d63638;
+    border-color: #d63638;
+}
+
+.idb-btn-danger:hover {
+    background: #b32d2e;
+    border-color: #b32d2e;
+}
+
+.idb-btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.idb-toolbar-spacer {
+    flex: 1;
+}
+
+/* Slide-right-fade animation for hiding/showing insert & delete buttons */
+.idb-insert-dropdown,
+.idb-delete-btn {
+    transition: opacity 0.2s ease, transform 0.2s ease, margin-right 0.2s ease, padding 0.2s ease, width 0.2s ease;
+}
+
+.idb-hidden-slide {
+    opacity: 0 !important;
+    transform: translateX(30px);
+    pointer-events: none;
+    width: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    border: 0 !important;
+    overflow: hidden;
+}
+
+/* Row 3 & 4: Data table */
+.idb-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    table-layout: auto;
+}
+
+/* Combined table wrapper — header + body in one table for alignment */
+.idb-table-wrap {
+    border: 1px solid #c3c4c7;
+    border-top: none;
+    overflow: auto;
+    max-height: 65vh;
+}
+
+.idb-data-table-fixed {
+    table-layout: fixed;
+    margin: 0;
+}
+
+.idb-data-table thead th {
+    background: #f0f0f1;
+    border-bottom: 1px solid #c3c4c7;
+    border-right: 1px solid #e0e0e2;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 700;
+    color: #1d2327;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+/* Column resize handle — drag to resize column width */
+.idb-col-resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 2;
+}
+
+.idb-col-resizer:hover {
+    background: #2271b1;
+    opacity: 0.4;
+}
+
+.idb-data-table thead th:hover {
+    background: #e5e5e7;
+}
+
+.idb-data-table thead th.sorted {
+    background: #e0ecf8;
+    color: #2271b1;
+}
+
+.idb-sort-arrow {
+    font-size: 10px;
+    margin-left: 2px;
+}
+
+.idb-check-col {
+    width: 36px;
+    text-align: center;
+    cursor: default;
+}
+
+.idb-data-table thead th.idb-check-col:hover {
+    background: #f0f0f1 !important;
+}
+
+/* Editable cells — double-click to edit */
+.idb-data-table tbody td.idb-cell-editable {
+    cursor: pointer;
+}
+
+.idb-data-table tbody td.idb-cell-editable:hover {
+    background: #e8f0fe;
+    outline: 1px dashed #2271b1;
+    outline-offset: -1px;
+}
+
+/* Body rows */
+.idb-data-table tbody tr {
+    border-bottom: 1px solid #e0e0e2;
+    transition: background 0.1s;
+}
+
+.idb-data-table tbody tr:hover {
+    background: #f6f7f7;
+}
+
+.idb-data-table tbody td {
+    padding: 6px 10px;
+    border-right: 1px solid #f0f0f1;
+    vertical-align: middle;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.idb-data-table tbody td.idb-check-col {
+    text-align: center;
+    padding: 8px;
+}
+
+/* Loading / empty / error states in table cells */
+.idb-loading-td,
+.idb-empty-td {
+    padding: 30px;
+    text-align: center;
+    font-size: 14px;
+    color: #646970;
+}
+
+.idb-error-td {
+    padding: 30px;
+    text-align: center;
+    font-size: 14px;
+    color: #d63638;
+    font-weight: 600;
+}
+
+.idb-null {
+    color: #999;
+    font-style: italic;
+    font-size: 11px;
+}
+
+.idb-json-preview {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    color: #646970;
+    cursor: help;
+}
+
+/* Pagination */
+.idb-pagination {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: #50575e;
+}
+
+.idb-pagination-info {
+    flex: 1;
+}
+
+/* ---------------------------------------------------------------
+   Type tags (Supabase-style badges)
+   --------------------------------------------------------------- */
+.idb-type-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-family: "SF Mono", Consolas, monospace;
+    border-radius: 3px;
+    margin-left: 6px;
+    font-weight: 600;
+    vertical-align: middle;
+    text-transform: lowercase;
+    letter-spacing: 0.3px;
+}
+
+.idb-type-tag-text         { background: #e3f2fd; color: #1565c0; }
+.idb-type-tag-uuid         { background: #f3e5f5; color: #7b1fa2; }
+.idb-type-tag-json         { background: #fff3e0; color: #e65100; }
+.idb-type-tag-datetime     { background: #e8f5e9; color: #2e7d32; }
+.idb-type-tag-int          { background: #fce4ec; color: #c62828; }
+
+/* In table headers */
+.idb-data-table thead th .idb-field-label {
+    font-weight: 700;
+}
+
+/* In form labels */
+.idb-form-label .idb-type-tag {
+    margin-left: 4px;
+}
+
+/* ---------------------------------------------------------------
+   Insert button
+   --------------------------------------------------------------- */
+.idb-btn-insert {
+    background: #00a32a;
+    border-color: #00a32a;
+}
+
+.idb-btn-insert:hover {
+    background: #008a20;
+    border-color: #008a20;
+}
+
+.idb-btn-primary {
+    background: #2271b1;
+    border-color: #2271b1;
+}
+
+.idb-btn-primary:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+/* ---------------------------------------------------------------
+   Insert dropdown
+   --------------------------------------------------------------- */
+.idb-insert-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.idb-insert-caret {
+    font-size: 10px;
+    margin-left: 4px;
+}
+
+.idb-insert-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 160px;
+    z-index: 1000;
+}
+
+.idb-insert-menu.open {
+    display: block;
+}
+
+.idb-insert-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    background: none;
+    border: none;
+    text-align: left;
+    font-size: 13px;
+    color: #1d2327;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.idb-insert-menu-item:hover {
+    background: #f0f0f1;
+}
+
+.idb-insert-menu-item:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.idb-insert-menu-item:last-child {
+    border-radius: 0 0 4px 4px;
+}
+
+/* ---------------------------------------------------------------
+   Modal dialog (insert / edit / import)
+   --------------------------------------------------------------- */
+.idb-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99999;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 60px;
+}
+
+.idb-modal-dialog {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+    width: 600px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.idb-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.idb-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+.idb-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #646970;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.idb-modal-close:hover {
+    color: #d63638;
+}
+
+.idb-modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.idb-form-field {
+    margin-bottom: 14px;
+}
+
+.idb-form-field-auto {
+    opacity: 0.6;
+}
+
+.idb-form-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.idb-form-label-text {
+    margin-right: 2px;
+}
+
+.idb-form-auto-hint {
+    font-size: 11px;
+    color: #999;
+    font-style: italic;
+    font-weight: 400;
+}
+
+.idb-form-input {
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid #8c8f94;
+    border-radius: 3px;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+.idb-form-input:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+.idb-form-input-auto {
+    background: #f0f0f1;
+    color: #999;
+}
+
+.idb-form-textarea {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    resize: vertical;
+    min-height: 80px;
+}
+
+.idb-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid #c3c4c7;
+}
+
+/* ---------------------------------------------------------------
+   Import dialog
+   --------------------------------------------------------------- */
+.idb-import-instructions {
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #50575e;
+}
+
+.idb-import-instructions p {
+    margin: 0 0 8px 0;
+}
+
+.idb-import-instructions code {
+    display: block;
+    background: #fff;
+    padding: 8px 10px;
+    border-radius: 3px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    color: #1d2327;
+    margin: 4px 0;
+    word-break: break-all;
+}
+
+.idb-import-hint {
+    font-size: 12px;
+    color: #646970;
+    margin-top: 8px !important;
+}
+
+.idb-import-preview-wrap {
+    margin-top: 12px;
+}
+
+.idb-import-preview-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 6px;
+}
+
+.idb-import-preview-table {
+    font-size: 12px;
+    max-height: 200px;
+    overflow: auto;
+    border: 1px solid #dcdcde;
+    border-radius: 3px;
+}
+
+.idb-import-preview-table th {
+    background: #f0f0f1;
+    padding: 4px 8px;
+    text-align: left;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+}
+
+.idb-import-preview-table td {
+    padding: 4px 8px;
+    border-top: 1px solid #f0f0f1;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.idb-import-preview-more {
+    font-size: 12px;
+    color: #646970;
+    padding: 6px 0;
+    font-style: italic;
+}
+
+.idb-import-error {
+    color: #d63638;
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+/* ---------------------------------------------------------------
+   Duplicate check status
+   --------------------------------------------------------------- */
+.idb-dup-status {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.idb-dup-status.dup-checking {
+    color: #646970;
+}
+
+.idb-dup-status.dup-ok {
+    color: #00a32a;
+}
+
+.idb-dup-status.dup-bad {
+    color: #d63638;
+}
+
+.idb-form-input.idb-input-error {
+    border-color: #d63638;
+    box-shadow: 0 0 0 1px #d63638;
+}
+
+/* ---------------------------------------------------------------
+   Edit cell dialog
+   --------------------------------------------------------------- */
+.idb-edit-dialog {
+    width: 700px;
+    max-width: 90vw;
+}
+
+.idb-edit-row-info {
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.idb-edit-textarea {
+    width: 100%;
+    min-height: 120px;
+    max-height: 50vh;
+    padding: 10px 12px;
+    font-size: 13px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    resize: vertical;
+    overflow: auto;
+}
+
+.idb-edit-textarea:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+/* Datetime picker in edit dialog */
+.idb-edit-datetime {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    box-sizing: border-box;
+}
+
+.idb-edit-datetime:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+/* JSON field — taller textarea */
+.idb-edit-textarea-json {
+    min-height: 300px;
+    max-height: 60vh;
+    font-family: "SF Mono", Consolas, "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow: auto;
+}
+
+/* Placeholder state (before Load Full Value) */
+.idb-edit-textarea-placeholder {
+    color: #646970;
+    font-style: italic;
+    background: #f6f7f7;
+}
+
+/* Load Full Value button */
+.idb-btn-load-full {
+    margin-top: 10px;
+    background: #2271b1;
+    border-color: #2271b1;
+}
+
+.idb-btn-load-full:hover {
+    background: #135e96;
+    border-color: #135e96;
+}

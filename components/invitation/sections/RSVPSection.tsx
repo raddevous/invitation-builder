@@ -9,7 +9,7 @@ import ColorControl from "@/components/shared/ColorControl";
 import PhotoGalleryPicker from "@/components/shared/PhotoGalleryPicker";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
-import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
+import { getEntourageGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
 import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
@@ -518,16 +518,18 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     if (selectedGuest && invitationId) {
       const fetchGuestResponse = async () => {
         try {
-          const guestName = selectedGuest.title === 'M' 
-            ? selectedGuest.name 
-            : `${selectedGuest.title} ${selectedGuest.name}`;
+          // Normalize the selected guest's name for matching
+          const normalizedSelectedName = normalizeGuestName(selectedGuest.name);
           
-          const res = await fetch(apiUrl(`/api/rsvp?invitationId=${invitationId}`));
+          const res = await fetch(apiUrl(`/api/rsvp?invitationId=${invitationId}`), {
+            cache: "no-store",
+          });
           const data = await res.json();
           
           if (res.ok && data.responses) {
+            // Match by normalized name (title-insensitive)
             const guestResponse = data.responses.find(
-              (r: any) => r.guest_name === guestName
+              (r: any) => normalizeGuestName(r.guest_name) === normalizedSelectedName
             );
             if (guestResponse) {
               setExistingResponse({
@@ -4669,7 +4671,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
       {/* Temporary background picker */}
       {showTempBackgroundPicker && createPortal(
         <PhotoGalleryPicker
-          galleryImages={data.galleryImages || []}
+          galleryImages={data.photosAndImages || []}
           selectedUrl={tempBackgroundImage || ""}
           isDarkMode={isDarkMode}
           accentColor={accentColor}

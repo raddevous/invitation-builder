@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { wpGetInvitationBySlug } from "@/lib/wp/client";
 import { verifyAuth } from "@/lib/auth/middleware";
 
 export async function GET(request: NextRequest) {
@@ -9,26 +9,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from("invitations")
-      .select("id, slug, client_name, template_id, event_type, data, updated_at")
-      .eq("id", payload.invitationId)
-      .single();
+    const { ok, body } = await wpGetInvitationBySlug(payload.slug);
 
-    if (error || !data) {
+    if (!ok || !body?.invitation || body.invitation.id !== payload.invitationId) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
+
+    const { invitation } = body;
 
     return NextResponse.json({
       authenticated: true,
       invitation: {
-        id: data.id,
-        slug: data.slug,
-        clientName: data.client_name,
-        templateId: data.template_id,
-        eventType: data.event_type,
-        data: data.data,
-        updatedAt: data.updated_at,
+        id: invitation.id,
+        slug: invitation.slug,
+        clientName: invitation.clientName,
+        templateId: invitation.templateId,
+        eventType: invitation.eventType,
+        email: invitation.email,
+        createdAt: invitation.createdAt,
+        expiresAt: invitation.expiresAt,
+        data: invitation.data,
+        updatedAt: invitation.updatedAt,
       },
     });
   } catch {

@@ -13,7 +13,40 @@ const RESERVED_SUBDOMAINS = new Set([
   "signup",
 ]);
 
+const CAPACITOR_ORIGINS = new Set([
+  "https://localhost",
+  "capacitor://localhost",
+  "http://localhost",
+]);
+
 export function middleware(request: NextRequest) {
+  const origin = request.headers.get("origin") || "";
+
+  // Handle CORS for API routes called from the Capacitor native app
+  if (request.nextUrl.pathname.startsWith("/api/") && CAPACITOR_ORIGINS.has(origin)) {
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+    const response = NextResponse.next();
+    response.headers.set("Access-Control-Allow-Origin", origin);
+    response.headers.set("Access-Control-Allow-Credentials", "true");
+    return response;
+  }
+
+  // Skip subdomain rewrite for API routes — they should always hit /api/...
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   const host = request.headers.get("host") || "";
   const hostname = host.split(":")[0].toLowerCase();
 
@@ -50,10 +83,9 @@ export const config = {
     /*
      * Match all paths except:
      * - /_next/ (Next.js internals)
-     * - /api/ (API routes)
      * - /_vercel (Vercel internals)
      * - Static files (favicon, images, etc.)
      */
-    "/((?!_next/|api/|_vercel|.*\\..*).*)",
+    "/((?!_next/|_vercel|.*\\..*).*)",
   ],
 };

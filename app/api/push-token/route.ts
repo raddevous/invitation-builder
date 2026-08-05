@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { wpRegisterPushToken, wpRemovePushToken } from "@/lib/wp/client";
 import { requireAuth } from "@/lib/auth/middleware";
 
 export async function POST(request: NextRequest) {
@@ -16,20 +16,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // Remove this token from any other invitation first (device switching invitations)
-    await supabaseAdmin
-      .from("push_tokens")
-      .delete()
-      .eq("token", token);
+    const { ok, body } = await wpRegisterPushToken(invitationId, token);
 
-    const { error } = await supabaseAdmin
-      .from("push_tokens")
-      .insert(
-        { invitation_id: invitationId, token, updated_at: new Date().toISOString() }
-      );
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!ok) {
+      return NextResponse.json({ error: body?.error || "Failed to register token" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
@@ -48,11 +38,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Missing token" }, { status: 400 });
     }
 
-    await supabaseAdmin
-      .from("push_tokens")
-      .delete()
-      .eq("token", token)
-      .eq("invitation_id", auth.invitationId);
+    await wpRemovePushToken(token, auth.invitationId);
 
     return NextResponse.json({ success: true });
   } catch {

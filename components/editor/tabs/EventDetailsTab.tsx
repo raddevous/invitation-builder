@@ -208,34 +208,58 @@ export default function EventDetailsTab({ data, onChange, isDarkMode = false, ac
       </div>
       <div className={`border-t my-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
       <label className="block text-base font-bold tracking-wide uppercase text-center" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>Event Location</label>
+
+      {/* One venue only toggle */}
+      <div className="flex items-center justify-between py-2">
+        <span className={`text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>One Venue Only</span>
+        <button
+          type="button"
+          onClick={() => handleLocalChange("oneVenueOnly", !pendingData.oneVenueOnly)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            pendingData.oneVenueOnly ? "bg-gray-600" : "bg-gray-300"
+          }`}
+          style={pendingData.oneVenueOnly ? { backgroundColor: accentColor } : undefined}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              pendingData.oneVenueOnly ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+
       <Field
-        label="Ceremony Venue"
+        label={pendingData.oneVenueOnly ? "Event Venue" : "Ceremony Venue"}
         value={pendingData.venueName}
         onChange={(v) => handleLocalChange("venueName", v)}
-        placeholder="The Garden Pavilion"
+        placeholder="The Blossom Garden"
         isDarkMode={isDarkMode}
       />
       <Field
-        label="Ceremony Address"
+        label={pendingData.oneVenueOnly ? "Event Address" : "Ceremony Address"}
         value={pendingData.venueAddress}
         onChange={(v) => handleLocalChange("venueAddress", v)}
-        placeholder="Quezon City, Philippines"
+        placeholder="45 Blossom Street, Romance City"
         isDarkMode={isDarkMode}
       />
-      <Field
-        label="Reception Venue"
-        value={pendingData.receptionVenueName ?? ""}
-        onChange={(v) => handleLocalChange("receptionVenueName", v)}
-        placeholder="The Grand Ballroom"
-        isDarkMode={isDarkMode}
-      />
-      <Field
-        label="Reception Address"
-        value={pendingData.receptionVenueAddress ?? ""}
-        onChange={(v) => handleLocalChange("receptionVenueAddress", v)}
-        placeholder="Makati City, Philippines"
-        isDarkMode={isDarkMode}
-      />
+      {!pendingData.oneVenueOnly && (
+        <>
+          <Field
+            label="Reception Venue"
+            value={pendingData.receptionVenueName ?? ""}
+            onChange={(v) => handleLocalChange("receptionVenueName", v)}
+            placeholder="The Rosewood Pavilion"
+            isDarkMode={isDarkMode}
+          />
+          <Field
+            label="Reception Address"
+            value={pendingData.receptionVenueAddress ?? ""}
+            onChange={(v) => handleLocalChange("receptionVenueAddress", v)}
+            placeholder="78 Moonlight Avenue, Romance City"
+            isDarkMode={isDarkMode}
+          />
+        </>
+      )}
       <div className={`border-t my-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`} />
       <label className="block text-base font-bold tracking-wide uppercase text-center" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>MESSAGE</label>
       <div className="space-y-1">

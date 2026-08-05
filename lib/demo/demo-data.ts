@@ -142,6 +142,7 @@ export const demoInvitationData: InvitationData = {
   "dresscodeBody": "Formal attire requested",
   "footerDivider": "none",
   "galleryImages": [],
+  "photosAndImages": [],
   "neutralColor1": "#FFFFFF",
   "neutralColor2": "#ebebeb",
   "galleryHeading": "Gallery",

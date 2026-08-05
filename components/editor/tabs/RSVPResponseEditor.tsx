@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
-import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
-import { supabase } from "@/lib/supabase/client";
+import { getEntourageGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
+import { apiUrl } from "@/lib/utils/api";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -46,16 +46,15 @@ export default function RSVPResponseEditor({ data, invitationId, onChange, isDar
   });
   const guestScrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch RSVP responses from Supabase
+  // Fetch RSVP responses
   useEffect(() => {
     const fetchResponses = async () => {
       try {
-        const { data: responsesData, error } = await supabase
-          .from("rsvp_responses")
-          .select("*")
-          .eq("invitation_id", invitationId);
-
-        if (error) throw error;
+        const res = await fetch(apiUrl(`/api/rsvp?invitationId=${encodeURIComponent(invitationId)}`), {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to fetch RSVP responses");
+        const { responses: responsesData } = await res.json();
         setResponses(responsesData || []);
       } catch (error) {
         console.error("Error fetching RSVP responses:", error);
@@ -111,7 +110,7 @@ export default function RSVPResponseEditor({ data, invitationId, onChange, isDar
     }
 
     return guests.filter(guest => {
-      const response = responses.find(r => r.guest_name.toLowerCase() === guest.name.toLowerCase());
+      const response = responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(guest.name));
       
       if (filter === "not-responded") {
         return !response;
@@ -162,14 +161,14 @@ export default function RSVPResponseEditor({ data, invitationId, onChange, isDar
 
   // Get response status for a guest
   const getResponseStatus = (guestName: string) => {
-    const response = responses.find(r => r.guest_name.toLowerCase() === guestName.toLowerCase());
+    const response = responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(guestName));
     if (!response) return "not-responded";
     return response.attendance === "attending" ? "attending" : "not-attending";
   };
 
   // Get response details for a guest
   const getResponseDetails = (guestName: string) => {
-    return responses.find(r => r.guest_name.toLowerCase() === guestName.toLowerCase());
+    return responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(guestName));
   };
 
   const TabButton = ({ label, activeFilter, count, icon }: { label: string; activeFilter: ResponseFilter; count?: number; icon?: string }) => (
@@ -240,14 +239,14 @@ export default function RSVPResponseEditor({ data, invitationId, onChange, isDar
           <TabButton 
             label="Waiting" 
             activeFilter="not-responded" 
-            count={combinedGuests.filter(g => !responses.find(r => r.guest_name.toLowerCase() === g.name.toLowerCase())).length}
+            count={combinedGuests.filter(g => !responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(g.name))).length}
             icon="/assets/ico-nores.png"
           />
           <TabButton 
             label="Messaged" 
             activeFilter="messaged" 
             count={combinedGuests.filter(g => {
-              const response = responses.find(r => r.guest_name.toLowerCase() === g.name.toLowerCase());
+              const response = responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(g.name));
               return response && response.message && response.message.trim() !== "";
             }).length}
             icon="/assets/ico-msg.png"
@@ -255,13 +254,13 @@ export default function RSVPResponseEditor({ data, invitationId, onChange, isDar
           <TabButton 
             label="Accepted" 
             activeFilter="attending" 
-            count={combinedGuests.filter(g => responses.find(r => r.guest_name.toLowerCase() === g.name.toLowerCase())?.attendance === "attending").length}
+            count={combinedGuests.filter(g => responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(g.name))?.attendance === "attending").length}
             icon="/assets/ico-yes.png"
           />
           <TabButton 
             label="Declined" 
             activeFilter="not-attending" 
-            count={combinedGuests.filter(g => responses.find(r => r.guest_name.toLowerCase() === g.name.toLowerCase())?.attendance === "not-attending").length}
+            count={combinedGuests.filter(g => responses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(g.name))?.attendance === "not-attending").length}
             icon="/assets/ico-no.png"
           />
         </div>

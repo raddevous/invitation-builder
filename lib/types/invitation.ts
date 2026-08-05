@@ -70,6 +70,8 @@ export interface InvitationData {
   venueImages?: string[];
   receptionVenueName?: string;
   receptionVenueAddress?: string;
+  receptionVenueImages?: string[];
+  oneVenueOnly?: boolean;
   headingFont: string;
   bodyFont: string;
   mainColor1: string;
@@ -89,6 +91,7 @@ export interface InvitationData {
   heroBackgroundImagesMobileCrop?: Array<{ x: number; y: number; zoom: number } | null>;
   backgroundImage: string;
   galleryImages: string[];
+  photosAndImages: string[];
   musicEnabled: boolean;
   musicTrack: string;
   musicVolume: number;
@@ -801,6 +804,8 @@ export interface Invitation {
   data: InvitationData;
   createdAt?: string;
   updatedAt?: string;
+  email?: string;
+  expiresAt?: string;
 }
 
 export interface RsvpResponse {

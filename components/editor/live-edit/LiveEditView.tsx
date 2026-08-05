@@ -12,7 +12,7 @@ import PhotoGalleryPicker from "@/components/shared/PhotoGalleryPicker";
 import ColorControl from "@/components/shared/ColorControl";
 import { clearDemoInvitation } from "@/lib/demo/demo-data";
 import { buildInviteUrl } from "@/lib/utils";
-import { shareInviteLink } from "@/lib/utils/share";
+import { shareInviteLink, openInviteUrl } from "@/lib/utils/share";
 import { unregisterPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem } from "@/lib/utils/storage";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
@@ -361,7 +361,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
       window.location.href = "/invite/demo";
       return;
     }
-    window.open(buildInviteUrl(invitation.slug), '_blank');
+    openInviteUrl(buildInviteUrl(invitation.slug));
   };
 
   const handleOpenMainInvitationPrint = useCallback(() => {
@@ -1080,6 +1080,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
                       await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
                       await removeStoredItem('invitation');
                       await removeStoredItem('appSettings');
+                      await removeStoredItem('last_used_slug');
                       localStorage.removeItem('weddingChecklist');
                       localStorage.removeItem('weddingBudget');
                       window.location.href = '/tools';
@@ -1246,7 +1247,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
       {activeField && (
         <ImagePickerSheet
           editField={activeField}
-          galleryImages={mergedData.galleryImages || []}
+          galleryImages={mergedData.photosAndImages || []}
           currentSrc={getCurrentSrc()}
           currentTransform={getCurrentTransform()}
           onSelect={handleSelect}
@@ -1258,7 +1259,7 @@ export default function LiveEditView({ invitation, onChange, isActive = true, sa
       {/* Temporary hero background picker */}
       {showTempBackgroundPicker && createPortal(
         <PhotoGalleryPicker
-          galleryImages={mergedData.galleryImages || []}
+          galleryImages={mergedData.photosAndImages || []}
           selectedUrl={tempBackgroundImage || ""}
           isDarkMode={isDarkMode}
           accentColor={accentColor}

@@ -4,7 +4,6 @@ import QRUpload from "../QRUpload";
 import EditableZone from "@/components/invitation/EditableZone";
 import ColorControl from "@/components/shared/ColorControl";
 import FontControl from "@/components/shared/FontControl";
-import ImageCropper, { type CropData } from "../ImageCropper";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
 // Helper to convert hex to rgba
@@ -91,20 +90,9 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
   const [activeGiftType, setActiveGiftType] = useState<"bank" | "wallet">("bank");
   const [isArrangeMode, setIsArrangeMode] = useState(false);
   const [tempSectionOrder, setTempSectionOrder] = useState<string[]>(sectionOrder);
-  const [croppingImage, setCroppingImage] = useState<{ url: string; index: number; isMobile: boolean } | null>(null);
   
   // Fetch predefined options from Supabase
   const { options: predefinedSectionColors } = usePredefinedOptions('section_colors');
-  const [isMobileBackgroundMode, setIsMobileBackgroundMode] = useState(false);
-  const [showBgImagePicker, setShowBgImagePicker] = useState(false);
-
-  const handleBgSelect = (url: string) => {
-    if (!url) return;
-    const field = isMobileBackgroundMode ? "heroBackgroundImagesMobile" : "heroBackgroundImages";
-    const currentImages = isMobileBackgroundMode ? (data.heroBackgroundImagesMobile || []) : (data.heroBackgroundImages || []);
-    onChange(field, [...currentImages, url]);
-    setShowBgImagePicker(false);
-  };
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
     const allSections = ["event-details", "gallery", "map", "rsvp", "timeline", "countdown", "dresscode", "giftguide", "wedding-directory", "entourage", "footer", "hero"];
     const stored = data.collapsedSections;
@@ -254,13 +242,13 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
   const handleToggle = (key: keyof InvitationSections) => {
     onChange("sections", {
       ...data.sections,
-      [key]: !data.sections[key],
+      [key]: !data.sections?.[key],
     } as unknown as string);
   };
 
   // Prevent any auto-expansion when sections are toggled
   const handleCheckboxChange = (key: keyof InvitationSections) => {
-    const newValue = !data.sections[key];
+    const newValue = !data.sections?.[key];
     handleToggle(key);
     
     // If unchecking the section, collapse it
@@ -626,7 +614,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
               } : {})
             }}
           >
-            <div className={`flex items-center gap-3 p-4 ${!isArrangeMode && (isHero || isEventDetails || (isFooter && (data.sections.footer ?? true)) || (isEntourage && (data.sections.entourage ?? true)) || (!isFooter && !isEntourage && data.sections[section.key as keyof typeof data.sections])) ? `cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}` : ""}`}>
+            <div className={`flex items-center gap-3 p-4 ${!isArrangeMode && (isHero || isEventDetails || (isFooter && (data.sections?.footer ?? true)) || (isEntourage && (data.sections?.entourage ?? true)) || (!isFooter && !isEntourage && data.sections?.[section.key as keyof typeof data.sections])) ? `cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}` : ""}`}>
               {/* Drag handle in arrange mode for non-locked sections, or checkbox for reorderable sections, or lock icon for locked sections */}
               {isArrangeMode && !isLocked ? (
                 <div className="flex items-center justify-center w-6 h-6 shrink-0 cursor-grab active:cursor-grabbing">
@@ -649,7 +637,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
               ) : (
                 <input
                   type="checkbox"
-                  checked={section.id === "event-details" ? (data.sections.eventdetails ?? true) : (data.sections[section.key!] ?? (section.key === "footer" || section.key === "entourage" ? true : false))}
+                  checked={section.id === "event-details" ? (data.sections?.eventdetails ?? true) : (data.sections?.[section.key!] ?? (section.key === "footer" || section.key === "entourage" ? true : false))}
                   onChange={() => handleCheckboxChange(section.id === "event-details" ? "eventdetails" : section.key!)}
                   className="w-5 h-5 rounded border-gray-300 text-[#6998EE] focus:ring-[#6998EE] cursor-pointer shrink-0"
                   style={{ accentColor: accentColor }}
@@ -657,7 +645,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
               )}
 
               {/* Section info - clickable to collapse/expand */}
-              {!isArrangeMode && (isHero || isEventDetails || (isFooter && (data.sections.footer ?? true)) || (isEntourage && (data.sections.entourage ?? true)) || (!isFooter && !isEntourage && data.sections[section.key as keyof typeof data.sections])) ? (
+              {!isArrangeMode && (isHero || isEventDetails || (isFooter && (data.sections?.footer ?? true)) || (isEntourage && (data.sections?.entourage ?? true)) || (!isFooter && !isEntourage && data.sections?.[section.key as keyof typeof data.sections])) ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -730,146 +718,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
               )}
             </div>
 
-            {/* Hero settings in normal mode */}
-            {!isArrangeMode && isHero && !collapsedSections.has("hero") && (
-              <div className={`border-t p-4 space-y-8 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
-              style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
-                {/* Background Images */}
-                <div className="space-y-3">
-                  <label className="block text-base font-bold tracking-wide uppercase text-center" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>BACKGROUND</label>
-                  
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs tracking-wide uppercase text-gray-500">{isMobileBackgroundMode ? "PHONE SCREEN" : "DESKTOP"}</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsMobileBackgroundMode(!isMobileBackgroundMode)}
-                      className={`px-3 py-2 text-sm border rounded-md transition-colors ${isDarkMode ? "border-gray-700 text-gray-300" : "border-gray-200 text-gray-600"}`}
-                      title={isMobileBackgroundMode ? "Switch to Desktop" : "Switch to Phone"}
-                    >
-                      {isMobileBackgroundMode ? (
-                        <div className="w-5 h-5" style={{
-                          backgroundColor: accentColor,
-                          WebkitMaskImage: "url(/assets/desktop.png)",
-                          WebkitMaskSize: "contain",
-                          WebkitMaskPosition: "center",
-                          WebkitMaskRepeat: "no-repeat",
-                          maskImage: "url(/assets/desktop.png)",
-                          maskSize: "contain",
-                          maskPosition: "center",
-                          maskRepeat: "no-repeat"
-                        }} />
-                      ) : (
-                        <div className="w-5 h-5" style={{
-                          backgroundColor: accentColor,
-                          WebkitMaskImage: "url(/assets/smartphone.png)",
-                          WebkitMaskSize: "contain",
-                          WebkitMaskPosition: "center",
-                          WebkitMaskRepeat: "no-repeat",
-                          maskImage: "url(/assets/smartphone.png)",
-                          maskSize: "contain",
-                          maskPosition: "center",
-                          maskRepeat: "no-repeat"
-                        }} />
-                      )}
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {(isMobileBackgroundMode ? (data.heroBackgroundImagesMobile || []) : (data.heroBackgroundImages || [])).map((bgImage, index) => (
-                      <div key={index} className="relative">
-                        {/* Preview with delete button */}
-                        {bgImage && (
-                          <div className={`relative w-full h-32 rounded-lg overflow-hidden border mb-2 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
-                            <img src={bgImage} alt={`Background ${index + 1}`} className="w-full h-full object-cover" />
-                            {/* Delete button */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newImages = [...(isMobileBackgroundMode ? (data.heroBackgroundImagesMobile || []) : (data.heroBackgroundImages || []))];
-                                newImages.splice(index, 1);
-                                onChange(isMobileBackgroundMode ? "heroBackgroundImagesMobile" : "heroBackgroundImages", newImages);
-                              }}
-                              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center hover:bg-white transition-colors"
-                              style={{ border: "1px solid #e8cfc3" }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {/* Add button - dashed line style */}
-                    {(isMobileBackgroundMode ? (data.heroBackgroundImagesMobile || []) : (data.heroBackgroundImages || [])).filter(Boolean).length < 3 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowBgImagePicker(true)}
-                        className={`w-full px-3 py-2 border-2 border-dashed rounded-lg text-sm hover:border-gray-400 hover:text-gray-600 transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
-                      >
-                        + Add background image
-                      </button>
-                    )}
-                    <p className="text-xs text-gray-400 text-center mt-2">
-                      {isMobileBackgroundMode ? "Use portrait images" : "Use  landscape images"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Background Image Picker Sheet */}
-                {showBgImagePicker && (
-                  <>
-                    <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowBgImagePicker(false)} />
-                    <div
-                      className={`fixed bottom-0 left-0 right-0 z-50 ${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-t-3xl shadow-2xl flex flex-col animate-slide-up`}
-                      style={{ maxWidth: 480, margin: "0 auto", maxHeight: "60vh" }}
-                    >
-                      <div className="flex justify-center pt-3 pb-1 shrink-0">
-                        <div className={`w-10 h-1 rounded-full ${isDarkMode ? "bg-gray-600" : "bg-gray-200"}`} />
-                      </div>
-                      <div className={`flex items-center justify-between px-5 py-2 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-100"}`}>
-                        <h3 className={`font-semibold ${isDarkMode ? "text-gray-200" : "text-[#5c4a3a]"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                          Select Background Image
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => setShowBgImagePicker(false)}
-                          className={`p-1.5 rounded-md transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10">
-                        <div className="grid grid-cols-3 gap-3">
-                          {/* Gallery images */}
-                          {(data.galleryImages || []).filter(Boolean).map((url, i) => (
-                            <button
-                              key={`gallery-${i}`}
-                              onClick={() => handleBgSelect(url)}
-                              className="aspect-square rounded-2xl border-2 border-transparent overflow-hidden transition-all active:scale-95 hover:border-gray-300"
-                            >
-                              <img src={url} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
-
-                          {/* Empty state */}
-                          {(data.galleryImages || []).filter(Boolean).length === 0 && (
-                            <div className="col-span-3 text-center py-8 text-gray-400 text-sm">
-                              No images available.
-                              <br />
-                              Add photos in Tools &gt; Media &gt; Photo Gallery.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-              </div>
-            )}
+            {/* Hero settings moved to Media tab */}
 
             {/* Event Details settings in normal mode */}
             {!isArrangeMode && isEventDetails && !collapsedSections.has("event-details") && (
@@ -1220,33 +1069,6 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
         )}
         </div>
       </div>
-
-      {/* Image Cropper Modal */}
-      {croppingImage && (
-        <ImageCropper
-          imageUrl={croppingImage.url}
-          initialCrop={
-            croppingImage.isMobile
-              ? (data.heroBackgroundImagesMobileCrop?.[croppingImage.index] || undefined)
-              : (data.heroBackgroundImagesCrop?.[croppingImage.index] || undefined)
-          }
-          onSave={({ crop }) => {
-            const cropField = croppingImage.isMobile ? "heroBackgroundImagesMobileCrop" : "heroBackgroundImagesCrop";
-            const newCrops = [...(data[cropField as keyof InvitationData] as any || [])];
-            newCrops[croppingImage.index] = crop;
-            onChange(cropField, newCrops as any);
-            setCroppingImage(null);
-          }}
-          onReset={() => {
-            const cropField = croppingImage.isMobile ? "heroBackgroundImagesMobileCrop" : "heroBackgroundImagesCrop";
-            const newCrops = [...(data[cropField as keyof InvitationData] as any || [])];
-            newCrops[croppingImage.index] = null;
-            onChange(cropField, newCrops as any);
-            setCroppingImage(null);
-          }}
-          onCancel={() => setCroppingImage(null)}
-        />
-      )}
     </div>
   );
 }

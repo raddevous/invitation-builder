@@ -5724,7 +5724,7 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
 
     {photoPickerItemId && createPortal(
       <PhotoGalleryPicker
-        galleryImages={data.galleryImages || []}
+        galleryImages={data.photosAndImages || []}
         selectedUrl={(() => {
           const [baseId, paperType] = photoPickerItemId.split("-paper");
           const item = directoryItems.find((i) => i.id === baseId);

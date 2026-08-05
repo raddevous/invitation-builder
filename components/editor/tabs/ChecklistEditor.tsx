@@ -13,6 +13,7 @@ interface ChecklistItem {
   id: string;
   name: string;
   checked: boolean;
+  deadline?: string;
 }
 
 interface ChecklistContainer {
@@ -25,6 +26,8 @@ interface ChecklistContainer {
 interface ChecklistEditorProps {
   isDarkMode?: boolean;
   accentColor?: string;
+  showNumbers?: boolean;
+  highlightItemId?: string | null;
   onClose: () => void;
 }
 
@@ -140,14 +143,14 @@ function getDefaultChecklist(): ChecklistContainer[] {
   ];
 }
 
-export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", onClose }: ChecklistEditorProps) {
+export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, onClose }: ChecklistEditorProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   // Initialize from localStorage directly
   const getInitialContainers = (): ChecklistContainer[] => {
     try {
       const stored = localStorage.getItem('weddingChecklist');
       if (stored) {
-        return JSON.parse(stored).map((c: ChecklistContainer) => ({ ...c, isExpanded: false }));
+        return JSON.parse(stored).map((c: ChecklistContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
       }
     } catch (error) {
       console.error('Failed to load initial checklist:', error);
@@ -160,6 +163,22 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
   const [editingTitle, setEditingTitle] = useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightItemId);
+
+  // Scroll to + glow highlighted item on mount
+  useEffect(() => {
+    if (!highlightItemId) return;
+    setActiveHighlightId(highlightItemId);
+    const timer = setTimeout(() => setActiveHighlightId(null), 4000);
+    // Scroll to the item
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-item-id="${highlightItemId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+    return () => clearTimeout(timer);
+  }, [highlightItemId]);
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
 
   // Drag-and-drop reorder state
@@ -343,6 +362,7 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
       id: Date.now().toString(),
       name: "",
       checked: false,
+      deadline: "",
     };
     setContainers(containers.map(c => 
       c.id === containerId ? { ...c, items: [...c.items, newItem] } : c
@@ -374,6 +394,23 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
     ));
   };
 
+  // Update item deadline
+  const updateItemDeadline = (containerId: string, itemId: string, deadline: string) => {
+    setContainers(containers.map(c => 
+      c.id === containerId 
+        ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, deadline } : i) }
+        : c
+    ));
+  };
+
+  // Format deadline for display (M/D/YY)
+  const formatDeadline = (deadline: string): string => {
+    if (!deadline) return "";
+    const d = new Date(deadline);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear().toString().slice(2)}`;
+  };
+
   return (
     <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       {/* Drag indicator toast */}
@@ -398,6 +435,14 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
         @keyframes cl-drag-grip {
           0%, 100% { opacity: 0.6; }
           50% { opacity: 1; }
+        }
+        @keyframes cl-highlight-pulse {
+          0% { text-shadow: 0 0 0 ${accentColor}, 0 0 10px ${hexToRgba(accentColor, 0.9)}, 0 0 4px ${hexToRgba(accentColor, 0.6)}; transform: scale(1); }
+          40% { text-shadow: 0 0 0 ${accentColor}, 0 0 12px ${hexToRgba(accentColor, 0.6)}, 0 0 4px ${hexToRgba(accentColor, 0.4)}; transform: scale(1.08); }
+          100% { text-shadow: 0 0 0 transparent, 0 0 0 transparent; transform: scale(1); }
+        }
+        .checklist-item-highlight {
+          animation: cl-highlight-pulse 1.5s ease-in-out 1;
         }
       `}</style>
       {/* Header */}
@@ -603,23 +648,24 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                   )}
                 </div>
                 <div className="flex-1">
-                  {editingContainerId === container.id ? (
-                    <input
-                      type="text"
-                      value={editingTitle}
-                      onChange={(e) => setEditingTitle(e.target.value)}
-                      onBlur={saveTitle}
-                      onKeyDown={(e) => e.key === "Enter" && saveTitle()}
-                      onClick={(e) => e.stopPropagation()}
-                      className={`text-sm font-medium bg-transparent border-b outline-none ${isDarkMode ? "text-gray-200 border-gray-500" : "text-gray-900 border-gray-300"}`}
-                      autoFocus
-                    />
-                  ) : (
-                    <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>{container.title}</p>
-                  )}
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-400 mt-0.5">{getContainerProgress(container)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{getContainerPercentage(container)}%</p>
+                    {editingContainerId === container.id ? (
+                      <input
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={saveTitle}
+                        onKeyDown={(e) => e.key === "Enter" && saveTitle()}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`text-sm font-medium bg-transparent border-b outline-none ${isDarkMode ? "text-gray-200 border-gray-500" : "text-gray-900 border-gray-300"}`}
+                        autoFocus
+                      />
+                    ) : (
+                      <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>{container.title}</p>
+                    )}
+                    {!isEditMode && (
+                      <p className="text-xs text-gray-400">{showNumbers ? getContainerProgress(container) : `${getContainerPercentage(container)}%`}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -659,58 +705,94 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {container.items.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2">
-                          {!isEditMode && (
-                            <div 
-                              className="w-4 h-4 rounded-full border-2 cursor-pointer flex items-center justify-center transition-colors"
-                              style={{ 
-                                borderColor: item.checked ? accentColor : (isDarkMode ? "#4B5563" : "#D1D5DB"),
-                                backgroundColor: item.checked ? accentColor : "transparent"
-                              }}
-                              onClick={() => toggleItemCheck(container.id, item.id)}
-                            >
-                              {item.checked && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                                  <path d="M5 13l4 4L19 7" />
-                                </svg>
+                      {container.items.map((item, itemIdx) => (
+                        <div
+                          key={item.id}
+                          data-item-id={item.id}
+                        >
+                          <div className="flex items-center gap-2">
+                            {isEditMode && (
+                              <span className={`text-xs font-medium shrink-0 w-5 text-right ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                                {itemIdx + 1}.
+                              </span>
+                            )}
+                            {!isEditMode && (
+                              <div 
+                                className="w-4 h-4 rounded-full border-2 cursor-pointer flex items-center justify-center transition-colors shrink-0"
+                                style={{ 
+                                  borderColor: item.checked ? accentColor : (isDarkMode ? "#4B5563" : "#D1D5DB"),
+                                  backgroundColor: item.checked ? accentColor : "transparent"
+                                }}
+                                onClick={() => toggleItemCheck(container.id, item.id)}
+                              >
+                                {item.checked && (
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                                    <path d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </div>
+                            )}
+                            <div className="flex-1 flex items-center gap-1">
+                              {isEditMode ? (
+                                <input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => updateItemName(container.id, item.id, e.target.value)}
+                                  className={`flex-1 px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"} ${activeHighlightId === item.id ? "checklist-item-highlight" : ""}`}
+                                  style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                                  placeholder="Item name"
+                                />
+                              ) : (
+                                <p className={`px-3 py-2 text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"} ${item.checked ? "line-through opacity-50" : ""} ${activeHighlightId === item.id ? "checklist-item-highlight" : ""}`}>
+                                  {item.name}
+                                  {item.deadline && (
+                                    <span className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                                      {" "}•{formatDeadline(item.deadline)}
+                                    </span>
+                                  )}
+                                </p>
                               )}
                             </div>
-                          )}
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => updateItemName(container.id, item.id, e.target.value)}
-                            className={`flex-1 px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isEditMode ? (isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200") : "bg-transparent border-transparent"} ${!isEditMode ? (isDarkMode ? "text-gray-200" : "text-gray-900") : ""} ${!isEditMode && item.checked ? "line-through opacity-50" : ""}`}
-                            style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : {}}
-                            placeholder="Item name"
-                            disabled={!isEditMode}
-                          />
+                            {isEditMode && (
+                              <button
+                                onClick={() => deleteItem(container.id, item.id)}
+                                className={`p-1 rounded transition-colors shrink-0 ${isDarkMode ? "hover:bg-gray-600 text-red-400" : "hover:bg-gray-200 text-red-500"}`}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                           {isEditMode && (
-                            <button
-                              onClick={() => deleteItem(container.id, item.id)}
-                              className={`p-1 rounded transition-colors ${isDarkMode ? "hover:bg-gray-600 text-red-400" : "hover:bg-gray-200 text-red-500"}`}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </svg>
-                            </button>
+                            <div className="flex items-center gap-2 ml-7 mt-1">
+                              <label className={`text-xs font-medium ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Deadline</label>
+                              <input
+                                type="date"
+                                value={item.deadline || ""}
+                                onChange={(e) => updateItemDeadline(container.id, item.id, e.target.value)}
+                                className={`px-2 py-1 text-xs rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                                style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", colorScheme: isDarkMode ? "dark" : "light" }}
+                              />
+                            </div>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
                   
-                  {/* Add item button - always shown */}
-                  <div className="flex justify-center mt-2">
-                    <button
-                      onClick={() => addItem(container.id)}
-                      className="px-4 py-2 text-sm text-center rounded-lg transition-colors"
-                      style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
-                    >
-                      + Add item
-                    </button>
-                  </div>
+                  {/* Add item button - only in edit mode */}
+                  {isEditMode && (
+                    <div className="flex justify-center mt-2">
+                      <button
+                        onClick={() => addItem(container.id)}
+                        className="px-4 py-2 text-sm text-center rounded-lg transition-colors"
+                        style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
+                      >
+                        + Add item
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

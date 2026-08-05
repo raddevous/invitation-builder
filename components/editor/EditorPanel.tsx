@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Invitation, InvitationData } from "@/lib/types/invitation";
-import { supabase } from "@/lib/supabase/client";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 import { setStoredItem } from "@/lib/utils/storage";
 import { debounce, buildInviteUrl } from "@/lib/utils";
-import { shareInviteLink } from "@/lib/utils/share";
+import { shareInviteLink, openInviteUrl } from "@/lib/utils/share";
 import { saveDemoInvitation } from "@/lib/demo/demo-data";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import { apiUrl } from "@/lib/utils/api";
+import { isOnline, queueOfflineSave, cacheInvitation, flushSaveQueue } from "@/lib/utils/offline-cache";
+import { useMediaCache } from "@/lib/hooks/useMediaCache";
+import { sanitizeMediaForSave } from "@/lib/utils/media-cache";
 import SectionsTab from "./tabs/SectionsTab";
 import LiveEditView from "./live-edit/LiveEditView";
 import DesignTab from "./tabs/DesignTab";
@@ -28,11 +30,13 @@ interface EditorPanelProps {
   onBack?: (updatedInvitation?: Invitation) => void;
   showScreenDimensions?: boolean;
   isDemoMode?: boolean;
+  isExpired?: boolean;
 }
 
-export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false, isDemoMode = false }: EditorPanelProps) {
+export default function EditorPanel({ invitation: initial, onBack, showScreenDimensions = false, isDemoMode = false, isExpired = false }: EditorPanelProps) {
   const { mode: systemMode } = useSystemTheme();
   const [invitation, setInvitation] = useState<Invitation>(initial);
+  const { resolvedData } = useMediaCache(invitation.data);
   const [activeTab, setActiveTab] = useState<TabId>(
     typeof window !== 'undefined' && window.innerWidth >= 1024 ? "sections" : "live"
   );
@@ -61,7 +65,6 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [localVisibleSections, setLocalVisibleSections] = useState<Record<string, boolean>>({});
   const isSavingRef = useRef(false);
   const [showSaveConfirmationDialog, setShowSaveConfirmationDialog] = useState(false);
-  const [hideSaveConfirmationDialog, setHideSaveConfirmationDialog] = useState(false);
   const [hideInstructions, setHideInstructions] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [localShowScreenDimensions, setLocalShowScreenDimensions] = useState(showScreenDimensions);
@@ -143,7 +146,6 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         const parsed = JSON.parse(storedSettings);
         setIsDarkMode(parsed.isDarkMode ?? false);
         setAccentColor(parsed.accentColor ?? "#6998EE");
-        setHideSaveConfirmationDialog(parsed.hideSaveConfirmationDialog ?? false);
         setHideInstructions(parsed.hideInstructions ?? false);
         setLocalShowScreenDimensions(parsed.showScreenDimensions ?? false);
         setHasStoredSettings(true);
@@ -216,47 +218,6 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     setActiveTab(tabId);
   };
 
-  // Subscribe to realtime updates from other sessions
-  useEffect(() => {
-    if (isDemoMode) return;
-
-    const channel = supabase
-      .channel(`invitation:${invitation.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "invitations",
-          filter: `id=eq.${invitation.id}`,
-        },
-        (payload) => {
-          console.log('[EditorPanel] Realtime update received:', payload);
-          // Ignore realtime updates if we're currently saving (to prevent overwriting our own changes)
-          if (isSavingRef.current) {
-            console.log('[EditorPanel] Ignoring realtime update during save');
-            return;
-          }
-          // Only update if the new data is different from our current data
-          if (payload.new && JSON.stringify(payload.new.data) !== JSON.stringify(invitation.data)) {
-            console.log('[EditorPanel] Updating from realtime (data changed)');
-            setInvitation((prev) => ({
-              ...prev,
-              data: payload.new.data as InvitationData,
-            }));
-          } else {
-            console.log('[EditorPanel] Ignoring realtime update (data unchanged)');
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      console.log('[EditorPanel] Unsubscribing from realtime updates');
-      supabase.removeChannel(channel);
-    };
-  }, [invitation.id, invitation.data]);
-
   // Handle save status visibility with fade out
   useEffect(() => {
     if (saveStatus === "saving") {
@@ -310,6 +271,15 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     pendingChangesRef.current = pendingChanges;
   }, [pendingChanges]);
 
+  // Flush queued saves when internet reconnects
+  useEffect(() => {
+    const handleOnline = () => {
+      flushSaveQueue();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
   // Debounced save function
   const saveRef = useRef(
     debounce(async (id: string, slug: string, data: InvitationData, demoMode: boolean = false) => {
@@ -319,7 +289,10 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         // Merge any queued pending changes with the data being saved
         const dataToSave = { ...data, ...pendingChangesRef.current };
         // Exclude settings from the data being saved
-        const { isDarkMode, accentColor, ...finalDataToSave } = dataToSave;
+        const { isDarkMode, accentColor, ...rawFinalDataToSave } = dataToSave;
+        // Reverse any device-local cached media URIs back to their original
+        // remote URL (or drop them if unmappable) so they never get persisted
+        const finalDataToSave = await sanitizeMediaForSave(rawFinalDataToSave);
 
         if (demoMode) {
           // Save to localStorage in demo mode
@@ -330,6 +303,23 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           setHasEverSaved(true);
           setPendingChanges({});
           isSavingRef.current = false;
+          return;
+        }
+
+        // Offline — queue save and update cache locally
+        if (!isOnline()) {
+          await queueOfflineSave(slug, id, finalDataToSave as Record<string, unknown>);
+          await cacheInvitation(slug, { id, slug, data: dataToSave } as Invitation);
+          setSaveStatus("saved");
+          setHasUnsavedChanges(false);
+          setHasEverSaved(true);
+          setPendingChanges({});
+          isSavingRef.current = false;
+          try {
+            localStorage.setItem('invitation', JSON.stringify({ id, slug, data: dataToSave }));
+          } catch (e) {
+            console.error('[EditorPanel] Failed to update localStorage:', e);
+          }
           return;
         }
 
@@ -375,6 +365,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   const handleChange = useCallback(
     (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => {
+      if (isExpired) return;
       setHasUnsavedChanges(true);
       setInvitation((prev) => {
         const newData = { ...prev.data, [field]: value };
@@ -383,7 +374,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       });
       // Don't set saving status here - let the debounced function handle it
     },
-    [isDemoMode]
+    [isDemoMode, isExpired]
   );
 
   // Helper function to deep compare values
@@ -400,6 +391,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   // Queue a change to the global pending state instead of saving immediately
   const queueChange = useCallback(
     (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => {
+      if (isExpired) return;
       const originalValue = invitation.data[field];
       
       setPendingChanges((prev) => {
@@ -413,7 +405,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         return { ...prev, [field]: value };
       });
     },
-    [invitation.data, isValueEqual]
+    [invitation.data, isValueEqual, isExpired]
   );
 
   // Immediate save function (bypasses debounce)
@@ -430,7 +422,10 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       dataToSave.entourage = { ...pendingEntourage, visibleSections };
 
       // Exclude settings from the data being saved
-      const { isDarkMode, accentColor, ...finalDataToSave } = dataToSave;
+      const { isDarkMode, accentColor, ...rawFinalDataToSave } = dataToSave;
+      // Reverse any device-local cached media URIs back to their original
+      // remote URL (or drop them if unmappable) so they never get persisted
+      const finalDataToSave = await sanitizeMediaForSave(rawFinalDataToSave);
 
       console.log('[EditorPanel] Immediate save:', { id: invitation.id, slug: invitation.slug, demoMode: isDemoMode, dataKeys: Object.keys(finalDataToSave) });
 
@@ -458,6 +453,22 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         return;
       }
 
+      // Offline — queue save and update cache locally
+      if (!isOnline()) {
+        await queueOfflineSave(invitation.slug, invitation.id, finalDataToSave as Record<string, unknown>);
+        await cacheInvitation(invitation.slug, { ...invitation, data: dataToSave });
+        setSaveStatus("saved");
+        setHasUnsavedChanges(false);
+        setHasEverSaved(true);
+        isSavingRef.current = false;
+        try {
+          localStorage.setItem('invitation', JSON.stringify({ ...invitation, data: dataToSave }));
+        } catch (e) {
+          console.error('[EditorPanel] Failed to update localStorage:', e);
+        }
+        return;
+      }
+
       const res = await fetch(apiUrl(`/api/invitation/${invitation.slug}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -481,7 +492,18 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       }
     } catch (error) {
       console.error('[EditorPanel] Immediate save error:', error);
-      setSaveStatus("error");
+      // Network error — queue for later using current invitation data
+      const { isDarkMode, accentColor, ...finalDataToSave } = invitation.data;
+      await queueOfflineSave(invitation.slug, invitation.id, finalDataToSave as Record<string, unknown>);
+      await cacheInvitation(invitation.slug, invitation);
+      setSaveStatus("saved");
+      setHasUnsavedChanges(false);
+      setHasEverSaved(true);
+      try {
+        localStorage.setItem('invitation', JSON.stringify(invitation));
+      } catch (e) {
+        console.error('[EditorPanel] Failed to update localStorage:', e);
+      }
     } finally {
       setTimeout(() => { isSavingRef.current = false; }, 2000);
     }
@@ -489,14 +511,8 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   // Apply pending changes and save immediately
   const handleApplyPendingChanges = useCallback(async () => {
-    if (hideSaveConfirmationDialog) {
-      // If setting is on, save immediately without dialog
-      await handleImmediateSave();
-    } else {
-      // Otherwise, show confirmation dialog
-      setShowSaveConfirmationDialog(true);
-    }
-  }, [handleImmediateSave, hideSaveConfirmationDialog]);
+    setShowSaveConfirmationDialog(true);
+  }, []);
 
   // Handle save from confirmation dialog
   const handleSaveFromDialog = useCallback(async () => {
@@ -511,22 +527,6 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
     setPendingEntourageChanges(null);
     setLocalVisibleSections({});
     setHasUnsavedChanges(false);
-  }, []);
-
-  // Handle hide save confirmation dialog change
-  const handleHideSaveConfirmationDialogChange = useCallback((value: boolean) => {
-    setHideSaveConfirmationDialog(value);
-    // Save to localStorage
-    const storedSettings = localStorage.getItem('appSettings');
-    if (storedSettings) {
-      try {
-        const parsed = JSON.parse(storedSettings);
-        parsed.hideSaveConfirmationDialog = value;
-        localStorage.setItem('appSettings', JSON.stringify(parsed));
-      } catch (error) {
-        console.error('Failed to update stored settings:', error);
-      }
-    }
   }, []);
 
   // Handler for countdown unsaved changes notification
@@ -650,7 +650,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   const copyInviteLink = async () => {
     if (isDemoMode) {
-      window.open("/invite/demo", "_blank");
+      openInviteUrl(window.location.origin + "/invite/demo");
       return;
     }
     const url = buildInviteUrl(invitation.slug);
@@ -869,21 +869,21 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           {/* Tab content in sidebar */}
           <div className={`flex-1 overflow-y-auto ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"} p-4`}>
             {activeTab === "design" && (
-              <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
+              <DesignTab data={resolvedData || invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
             )}
             {activeTab === "sections" && (
               <SectionsTab 
                 data={{
-                  ...invitation.data,
+                  ...(resolvedData || invitation.data),
                   ...pendingChanges,
                   ...pendingCountdownChanges,
                   ...pendingHeroChanges,
                   entourage: {
-                    ...invitation.data.entourage,
+                    ...(resolvedData || invitation.data).entourage,
                     ...pendingEntourageChanges,
                     ...pendingChanges.entourage,
                     visibleSections: {
-                      ...invitation.data.entourage?.visibleSections,
+                      ...(resolvedData || invitation.data).entourage?.visibleSections,
                       ...localVisibleSections
                     }
                   }
@@ -933,7 +933,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       <div className={`relative flex-1 flex flex-col ${isDemoMode ? "min-h-0" : ""} ${desktopMode ? "overflow-hidden" : ""} ${activeTab !== "live" ? "editor-font" : ""} ${isDarkMode && activeTab !== "live" ? "bg-gray-800" : "bg-transparent"}`} style={desktopMode ? { order: 1 } : { paddingBottom: "56px" }}>
         <div className={`${activeTab === "live" || desktopMode ? "flex-1 min-h-0" : "hidden"} ${activeTab === "live" || (!desktopMode && activeTab === "design") ? "overflow-hidden" : ""}`}>
         <LiveEditView
-          invitation={invitation}
+          invitation={resolvedData ? { ...invitation, data: resolvedData } : invitation}
           onChange={queueChange}
           pendingChanges={pendingChanges}
           hasPendingChanges={hasPendingChanges}
@@ -968,8 +968,8 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         />
         </div>
 
-        {/* Universal Apply button - appears when there are pending changes */}
-        {hasPendingChanges && (
+        {/* Universal Apply button - appears when there are pending changes (hidden when expired) */}
+        {hasPendingChanges && !isExpired && (
           <button
             onClick={handleApplyPendingChanges}
             disabled={saveStatus === "saving"}
@@ -1000,21 +1000,21 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
           /* Mobile tab content - scrollable */
           <div className={`${isDemoMode ? "flex-1 min-h-0 overflow-y-auto" : ""} ${!isDemoMode && activeTab === "design" ? "overflow-hidden" : ""} ${activeTab === "design" ? "" : "p-4"}`}>
             {activeTab === "design" && (
-              <DesignTab data={invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
+              <DesignTab data={resolvedData || invitation.data} onChange={queueChange} isDarkMode={isDarkMode} accentColor={accentColor} onHeaderChange={setDesignHeader} />
             )}
             {activeTab === "sections" && (
               <SectionsTab 
                 data={{
-                  ...invitation.data,
+                  ...(resolvedData || invitation.data),
                   ...pendingChanges,
                   ...pendingCountdownChanges,
                   ...pendingHeroChanges,
                   entourage: {
-                    ...invitation.data.entourage,
+                    ...(resolvedData || invitation.data).entourage,
                     ...pendingEntourageChanges,
                     ...pendingChanges.entourage,
                     visibleSections: {
-                      ...invitation.data.entourage?.visibleSections,
+                      ...(resolvedData || invitation.data).entourage?.visibleSections,
                       ...localVisibleSections
                     }
                   }
@@ -1105,11 +1105,9 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         pendingChangesCount={pendingChangesCount}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
-        hideSaveConfirmationDialog={hideSaveConfirmationDialog}
         onSave={handleSaveFromDialog}
         onDiscard={handleDiscardFromDialog}
         onClose={() => setShowSaveConfirmationDialog(false)}
-        onHideSaveConfirmationDialogChange={handleHideSaveConfirmationDialogChange}
       />
 
       {/* Demo mode toast */}

@@ -6,9 +6,12 @@ interface ProgressCircleProps {
   isDarkMode?: boolean;
   onClick?: () => void;
   size?: "default" | "compact";
+  showNumbers?: boolean;
+  filled?: number;
+  total?: number;
 }
 
-export default function ProgressCircle({ percentage, label, sublabel, accentColor, isDarkMode = false, onClick, size = "default" }: ProgressCircleProps) {
+export default function ProgressCircle({ percentage, label, sublabel, accentColor, isDarkMode = false, onClick, size = "default", showNumbers = false, filled, total }: ProgressCircleProps) {
   const clampedPercentage = Math.min(100, Math.max(0, percentage));
   const isCompact = size === "compact";
   const dimension = isCompact ? 48 : 58;
@@ -47,7 +50,7 @@ export default function ProgressCircle({ percentage, label, sublabel, accentColo
           className={`absolute inset-0 flex items-center justify-center font-medium ${isCompact ? "text-[10px]" : "text-xs"} ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}
           style={{ fontFamily: "Inter, sans-serif" }}
         >
-          {clampedPercentage}%
+          {showNumbers && filled !== undefined && total !== undefined ? `${filled}/${total}` : `${clampedPercentage}%`}
         </span>
       </div>
       {!isCompact && (

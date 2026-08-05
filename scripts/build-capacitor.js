@@ -4,12 +4,14 @@
  *
  * Next.js `output: 'export'` cannot include:
  *  - Dynamic API routes (app/api/**) that use server-only logic (firebase-admin, jsonwebtoken, cookies)
- *  - Dynamic per-user routes (app/tools/[slug], app/invite/[slug]) since arbitrary
- *    customer slugs can't be enumerated at build time
+ *  - Dynamic per-user routes (app/invite/[slug]) since arbitrary customer slugs can't be enumerated
  *
- * This script temporarily moves those routes out of `app/` before running
- * `next build` with CAPACITOR_BUILD=true, then restores them afterwards so the
- * normal web deployment (with API routes + dynamic slugs) is unaffected.
+ * app/tools/[slug] is patched (not excluded) with generateStaticParams so its JS chunk
+ * (including ToolsTab and all editor components) is bundled into the static export.
+ *
+ * This script temporarily moves API routes and invite/[slug] out of `app/`, patches
+ * tools/[slug]/page.tsx, then runs `next build` with CAPACITOR_BUILD=true, and
+ * restores everything afterwards.
  *
  * Usage: npm run build:capacitor
  */
@@ -22,9 +24,11 @@ const root = path.resolve(__dirname, "..");
 
 const moves = [
   { from: path.join(root, "app", "api"), to: path.join(root, "app", "_api.excluded") },
-  { from: path.join(root, "app", "tools", "[slug]"), to: path.join(root, "app", "tools", "_slug.excluded") },
   { from: path.join(root, "app", "invite", "[slug]"), to: path.join(root, "app", "invite", "_slug.excluded") },
 ];
+
+const toolsSlugDir = path.join(root, "app", "tools", "[slug]");
+const toolsSlugLayout = path.join(toolsSlugDir, "layout.tsx");
 
 function moveOut() {
   for (const m of moves) {
@@ -35,12 +39,19 @@ function moveOut() {
   }
 }
 
-function restore() {
-  for (const m of moves) {
-    if (fs.existsSync(m.to)) {
-      fs.renameSync(m.to, m.from);
-      console.log(`[build-capacitor] Restored: ${path.relative(root, m.from)}`);
+function patchToolsSlug() {
+  if (fs.existsSync(toolsSlugDir)) {
+    if (!fs.existsSync(toolsSlugLayout)) {
+      fs.writeFileSync(toolsSlugLayout, "export function generateStaticParams() { return [{ slug: 'offline' }]; }\nexport const dynamic = 'force-static';\nexport default function Layout({ children }: { children: React.ReactNode }) { return children; }\n");
+      console.log(`[build-capacitor] Created: ${path.relative(root, toolsSlugLayout)}`);
     }
+  }
+}
+
+function unpatchToolsSlug() {
+  if (fs.existsSync(toolsSlugLayout)) {
+    fs.unlinkSync(toolsSlugLayout);
+    console.log(`[build-capacitor] Removed: ${path.relative(root, toolsSlugLayout)}`);
   }
 }
 
@@ -48,6 +59,7 @@ let buildFailed = false;
 
 try {
   moveOut();
+  patchToolsSlug();
   execSync("next build", {
     stdio: "inherit",
     cwd: root,
@@ -57,7 +69,13 @@ try {
   buildFailed = true;
   console.error("[build-capacitor] Build failed:", err.message);
 } finally {
-  restore();
+  for (const m of moves) {
+    if (fs.existsSync(m.to)) {
+      fs.renameSync(m.to, m.from);
+      console.log(`[build-capacitor] Restored: ${path.relative(root, m.from)}`);
+    }
+  }
+  unpatchToolsSlug();
 }
 
 if (buildFailed) {

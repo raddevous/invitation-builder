@@ -1,13 +1,14 @@
 {
-  "routes": [
-    {
-      "src": "/api/auth/access-code",
-      "headers": {
-        "Cache-Control": "no-cache, no-store, must-revalidate"
-      }
-    }
-  ],
   "headers": [
+    {
+      "source": "/api/auth/access-code",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
     {
       "source": "/((?!tools/live-frame).*)",
       "headers": [

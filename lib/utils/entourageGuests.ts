@@ -74,3 +74,15 @@ export function getEntourageGuestNames(entourage: InvitationData["entourage"] | 
 
   return guests;
 }
+
+/**
+ * Normalizes a guest name for matching: strips honorific prefixes (Mr., Ms., Mrs., M.),
+ * trims whitespace, and lowercases.
+ * Used to match RSVP responses against guest list entries regardless of title format.
+ */
+export function normalizeGuestName(name: string): string {
+  return name
+    .replace(/^(Mr\.|Ms\.|Mrs\.|M\.)\s+/i, "")
+    .trim()
+    .toLowerCase();
+}

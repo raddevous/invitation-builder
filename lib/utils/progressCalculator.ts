@@ -25,8 +25,13 @@ function getWeddingDetailsFields(data: InvitationData): (string | undefined)[] {
     data.timezone,
     data.venueName,
     data.venueAddress,
-    data.receptionVenueName,
-    data.receptionVenueAddress,
+  );
+
+  if (!data.oneVenueOnly) {
+    fields.push(data.receptionVenueName, data.receptionVenueAddress);
+  }
+
+  fields.push(
     data.heroMessage,
     data.heroClosingSentiment
   );
@@ -35,12 +40,21 @@ function getWeddingDetailsFields(data: InvitationData): (string | undefined)[] {
 }
 
 /**
+ * Returns filled and total fields for Wedding Details.
+ */
+export function getWeddingDetailsProgressData(data: InvitationData): { filled: number; total: number } {
+  const fields = getWeddingDetailsFields(data);
+  const filled = fields.filter((v) => v && v.trim() !== "").length;
+  return { filled, total: fields.length };
+}
+
+/**
  * Calculates the completion percentage for Wedding Details fields.
  */
 export function getWeddingDetailsProgress(data: InvitationData): number {
-  const fields = getWeddingDetailsFields(data);
-  const filled = fields.filter((v) => v && v.trim() !== "").length;
-  return Math.round((filled / fields.length) * 100);
+  const { filled, total } = getWeddingDetailsProgressData(data);
+  if (total === 0) return 0;
+  return Math.round((filled / total) * 100);
 }
 
 /**
@@ -53,6 +67,7 @@ export function getWeddingDetailsWeight(data: InvitationData): number {
 
 /** Number of items required to reach 100% for each Media sub-item. */
 const MEDIA_REQUIREMENTS: Record<string, number> = {
+  background: 2,
   logo: 1,
   gallery: 5,
   venue: 1,
@@ -67,22 +82,86 @@ const MEDIA_REQUIREMENTS: Record<string, number> = {
  */
 export function getMediaItemProgress(data: InvitationData, itemId: string): number | null {
   switch (itemId) {
+    case "background":
+      return ((data.heroBackgroundImages?.length ?? 0) >= 1 ? 50 : 0) + ((data.heroBackgroundImagesMobile?.length ?? 0) >= 1 ? 50 : 0);
     case "logo":
       return data.heroIcon && data.heroIcon.trim() !== "" ? 100 : 0;
     case "gallery":
       return Math.min(100, Math.round(((data.galleryImages?.length ?? 0) / MEDIA_REQUIREMENTS.gallery) * 100));
     case "venue":
-      return (data.venueImages?.length ?? 0) >= 1 ? 100 : 0;
+      if (data.oneVenueOnly) {
+        return (data.venueImages?.length ?? 0) >= 1 ? 100 : 0;
+      } else {
+        const ceremonyProgress = (data.venueImages?.length ?? 0) >= 1 ? 50 : 0;
+        const receptionProgress = (data.receptionVenueImages?.length ?? 0) >= 1 ? 50 : 0;
+        return ceremonyProgress + receptionProgress;
+      }
+    default:
+      return null;
+  }
+}
+
+export function getMediaItemProgressData(data: InvitationData, itemId: string): { filled: number; total: number } | null {
+  switch (itemId) {
+    case "background":
+      return { filled: ((data.heroBackgroundImages?.length ?? 0) >= 1 ? 1 : 0) + ((data.heroBackgroundImagesMobile?.length ?? 0) >= 1 ? 1 : 0), total: MEDIA_REQUIREMENTS.background };
+    case "logo":
+      return { filled: data.heroIcon && data.heroIcon.trim() !== "" ? 1 : 0, total: MEDIA_REQUIREMENTS.logo };
+    case "gallery":
+      return { filled: Math.min(data.galleryImages?.length ?? 0, MEDIA_REQUIREMENTS.gallery), total: MEDIA_REQUIREMENTS.gallery };
+    case "venue":
+      if (data.oneVenueOnly) {
+        return { filled: (data.venueImages?.length ?? 0) >= 1 ? 1 : 0, total: MEDIA_REQUIREMENTS.venue };
+      } else {
+        return {
+          filled: ((data.venueImages?.length ?? 0) >= 1 ? 1 : 0) + ((data.receptionVenueImages?.length ?? 0) >= 1 ? 1 : 0),
+          total: 2,
+        };
+      }
     default:
       return null;
   }
 }
 
 /**
+ * Returns filled and total items for Media category.
+ * logo: 0/1, gallery: min(count,5)/5, venue: 0/1
+ */
+export function getMediaProgressData(data: InvitationData): { filled: number; total: number } {
+  let filled = 0;
+  let total = 0;
+
+  // Background (1 desktop + 1 mobile = 2)
+  total += MEDIA_REQUIREMENTS.background;
+  if ((data.heroBackgroundImages?.length ?? 0) >= 1) filled += 1;
+  if ((data.heroBackgroundImagesMobile?.length ?? 0) >= 1) filled += 1;
+
+  // Logo
+  total += MEDIA_REQUIREMENTS.logo;
+  if (data.heroIcon && data.heroIcon.trim() !== "") filled += MEDIA_REQUIREMENTS.logo;
+
+  // Gallery
+  total += MEDIA_REQUIREMENTS.gallery;
+  filled += Math.min(data.galleryImages?.length ?? 0, MEDIA_REQUIREMENTS.gallery);
+
+  // Venue
+  if (data.oneVenueOnly) {
+    total += MEDIA_REQUIREMENTS.venue;
+    if ((data.venueImages?.length ?? 0) >= 1) filled += MEDIA_REQUIREMENTS.venue;
+  } else {
+    total += 2;
+    if ((data.venueImages?.length ?? 0) >= 1) filled += 1;
+    if ((data.receptionVenueImages?.length ?? 0) >= 1) filled += 1;
+  }
+
+  return { filled, total };
+}
+
+/**
  * Calculates the overall Media progress by averaging items that have progress.
  */
 export function getMediaOverallProgress(data: InvitationData): number {
-  const items = ["logo", "gallery", "venue"];
+  const items = ["background", "logo", "gallery", "venue"];
   const progresses = items
     .map((id) => getMediaItemProgress(data, id))
     .filter((p): p is number => p !== null);
@@ -175,10 +254,18 @@ export function getEntourageWeight(data: InvitationData): number {
  */
 const STORY_TIMELINE_TARGET_ITEMS = 3;
 
+/**
+ * Returns filled and total items for Story Timeline.
+ */
+export function getStoryTimelineProgressData(data: InvitationData): { filled: number; total: number } {
+  const count = Math.min(data.storyTimeline?.length ?? 0, STORY_TIMELINE_TARGET_ITEMS);
+  return { filled: count, total: STORY_TIMELINE_TARGET_ITEMS };
+}
+
 export function getStoryTimelineProgress(data: InvitationData): number {
-  const count = data.storyTimeline?.length ?? 0;
-  if (count === 0) return 0;
-  return Math.min(100, Math.round((count / STORY_TIMELINE_TARGET_ITEMS) * 100));
+  const { filled, total } = getStoryTimelineProgressData(data);
+  if (total === 0) return 0;
+  return Math.min(100, Math.round((filled / total) * 100));
 }
 
 /**
@@ -194,10 +281,18 @@ export function getStoryTimelineWeight(): number {
  */
 const WEDDING_PROGRAM_TARGET_ITEMS = 3;
 
+/**
+ * Returns filled and total items for Wedding Program.
+ */
+export function getWeddingProgramProgressData(data: InvitationData): { filled: number; total: number } {
+  const count = Math.min(data.weddingProgram?.length ?? 0, WEDDING_PROGRAM_TARGET_ITEMS);
+  return { filled: count, total: WEDDING_PROGRAM_TARGET_ITEMS };
+}
+
 export function getWeddingProgramProgress(data: InvitationData): number {
-  const count = data.weddingProgram?.length ?? 0;
-  if (count === 0) return 0;
-  return Math.min(100, Math.round((count / WEDDING_PROGRAM_TARGET_ITEMS) * 100));
+  const { filled, total } = getWeddingProgramProgressData(data);
+  if (total === 0) return 0;
+  return Math.min(100, Math.round((filled / total) * 100));
 }
 
 /**

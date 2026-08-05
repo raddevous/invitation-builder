@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
-import { getEntourageGuestNames, type EntourageGuest } from "@/lib/utils/entourageGuests";
+import { getEntourageGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
 import { USHER_INSTRUCTIONS, USHERETTE_INSTRUCTIONS, getNextMessage } from "@/lib/constants/heroMessages";
-import { supabase } from "@/lib/supabase/client";
+import { apiUrl } from "@/lib/utils/api";
 import FloatingActionMenu from "../shared/FloatingActionMenu";
 
 interface GuestEditorProps {
@@ -63,17 +63,17 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     }
   });
 
-  // Fetch RSVP responses from Supabase
+  // Fetch RSVP responses
   useEffect(() => {
     if (!invitationId) return;
     const fetchResponses = async () => {
       try {
-        const { data: responsesData, error } = await supabase
-          .from("rsvp_responses")
-          .select("*")
-          .eq("invitation_id", invitationId);
-        if (error) throw error;
-        setRsvpResponses(responsesData || []);
+        const res = await fetch(apiUrl(`/api/rsvp?invitationId=${encodeURIComponent(invitationId)}`), {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to fetch RSVP responses");
+        const { responses } = await res.json();
+        setRsvpResponses(responses || []);
       } catch (error) {
         console.error("Error fetching RSVP responses:", error);
       }
@@ -196,10 +196,9 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   // These are read-only here; edit/remove them from the Entourage List instead.
   const entourageGuests = useMemo(() => getEntourageGuestNames(data.entourage), [data.entourage]);
 
-  // Auto-prompt for guest count if no guests and no target set
+  // Auto-prompt for guest count if no target set yet
   useEffect(() => {
-    const totalGuests = pendingInvitees.filter(i => i.name.trim()).length + entourageGuests.length;
-    if (totalGuests === 0 && !data.targetGuestCount) {
+    if (!data.targetGuestCount) {
       setShowGuestCountDialog(true);
     }
   }, []); // Run once on mount
@@ -439,8 +438,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     // Apply RSVP status filter
     if (guestFilter !== "all") {
       allItems = allItems.filter(item => {
-        const guestName = item.name.split('\n')[0].toLowerCase();
-        const response = rsvpResponses.find(r => r.guest_name.toLowerCase() === guestName);
+        const guestName = normalizeGuestName(item.name.split('\n')[0]);
+        const response = rsvpResponses.find(r => normalizeGuestName(r.guest_name) === guestName);
         if (guestFilter === "pending") return !response;
         if (guestFilter === "confirmed") return response?.attendance === "attending";
         if (guestFilter === "declined") return response?.attendance === "not-attending";
@@ -467,7 +466,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       ...pendingInvitees.map(i => i.name)
     ].filter(n => n.trim() !== "");
 
-    const findResponse = (name: string) => rsvpResponses.find(r => r.guest_name.toLowerCase() === name.toLowerCase());
+    const findResponse = (name: string) => rsvpResponses.find(r => normalizeGuestName(r.guest_name) === normalizeGuestName(name));
 
     return {
       all: allGuestNames.length,
@@ -479,8 +478,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
 
   // Get RSVP response for a specific guest name
   const getGuestRsvp = (displayName: string) => {
-    const guestName = displayName.split('\n')[0].toLowerCase();
-    return rsvpResponses.find(r => r.guest_name.toLowerCase() === guestName);
+    const guestName = normalizeGuestName(displayName.split('\n')[0]);
+    return rsvpResponses.find(r => normalizeGuestName(r.guest_name) === guestName);
   };
 
   // Mark a message as read

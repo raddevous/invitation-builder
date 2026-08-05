@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, use, useRef } from "react";
+import { useState, useEffect, use, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { Invitation } from "@/lib/types/invitation";
-import EditorLogin from "@/components/editor/EditorLogin";
 import ToolsTab from "@/components/editor/tabs/ToolsTab";
 import EditorPanel from "@/components/editor/EditorPanel";
 import { debounce, updateFavicon } from "@/lib/utils";
@@ -12,27 +11,40 @@ import { getStoredItem, setStoredItem } from "@/lib/utils/storage";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 import { apiUrl } from "@/lib/utils/api";
+import { getCachedInvitation, cacheInvitation, isOnline, queueOfflineSave, flushSaveQueue, setLastUsedSlug } from "@/lib/utils/offline-cache";
+import { precacheInvitationMedia, sanitizeMediaForSave } from "@/lib/utils/media-cache";
+import { useMediaCache } from "@/lib/hooks/useMediaCache";
+import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
 
 interface AppSettings {
   isDarkMode: boolean;
   accentColor: string;
-  hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
   isPreviewDetached?: boolean;
 }
 
 export default function ToolsPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
+  const { slug: routeParamSlug } = use(params);
+  // When served offline, the native shell serves a generic pre-rendered page
+  // (baked with a placeholder "offline" slug — see scripts/build-capacitor.js)
+  // for any /tools/<slug> URL, since real slugs can't be statically exported.
+  // window.location always reflects the actual requested URL though, so use
+  // it to recover the real slug in that case.
+  const slug = (() => {
+    if (typeof window === "undefined") return routeParamSlug;
+    const match = window.location.pathname.match(/^\/tools\/([^/]+)/);
+    return match ? decodeURIComponent(match[1]) : routeParamSlug;
+  })();
   const router = useRouter();
   const { mode: systemMode } = useSystemTheme();
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [slugValid, setSlugValid] = useState<boolean | null>(null);
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     isDarkMode: false,
     accentColor: "#6998EE",
-    hideSaveConfirmationDialog: false,
     hideInstructions: false,
     showScreenDimensions: false,
     isPreviewDetached: false,
@@ -42,6 +54,14 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [showUnsavedToolsDialog, setShowUnsavedToolsDialog] = useState(false);
+  const { resolvedData: toolsResolvedData } = useMediaCache(invitation?.data ?? null);
+
+  // Redirect to /tools login page if auto-login was attempted but no invitation loaded
+  useEffect(() => {
+    if (autoLoginAttempted && !invitation) {
+      router.replace("/tools");
+    }
+  }, [autoLoginAttempted, invitation, router]);
 
   // Back gesture closes unsaved tools dialog
   useBackHandler(showUnsavedToolsDialog, () => setShowUnsavedToolsDialog(false));
@@ -54,12 +74,38 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const loadInvitation = (inv: Invitation) => {
     savedDataSnapshot.current = JSON.stringify(inv.data);
     setInvitation(inv);
+    // Fire-and-forget: download any not-yet-cached media (images/fonts/music)
+    // referenced by this invitation so they're available offline later. Only
+    // meaningful while online — skip the wasted network attempts otherwise.
+    if (typeof navigator !== "undefined" && navigator.onLine) {
+      console.log("[loadInvitation] triggering precacheInvitationMedia for slug:", inv.slug);
+      precacheInvitationMedia(inv.data).catch((e) => console.error("[loadInvitation] precache error:", e));
+    } else {
+      console.log("[loadInvitation] offline, skipping precache for slug:", inv.slug);
+    }
   };
 
   // Check if there are unsaved changes at tools level
   const hasToolsUnsavedChanges = invitation
     ? JSON.stringify(invitation.data) !== savedDataSnapshot.current
     : false;
+
+  // Derive account info for the Settings tab from the invitation record
+  const accountInfo = useMemo(() => {
+    if (!invitation) return null;
+    return {
+      email: invitation.email || "",
+      name: invitation.clientName || "",
+      createdAt: invitation.createdAt || "",
+      expiresAt: invitation.expiresAt || "",
+    };
+  }, [invitation?.email, invitation?.clientName, invitation?.createdAt, invitation?.expiresAt]);
+
+  // Check if editing access has expired
+  const isExpired = useMemo(() => {
+    if (!invitation?.expiresAt) return false;
+    return new Date(invitation.expiresAt) < new Date();
+  }, [invitation?.expiresAt]);
 
   // Prevent closing tab/browser when there are unsaved changes
   useEffect(() => {
@@ -80,22 +126,68 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     }
   }, [invitation?.id]);
 
+  // Flush queued saves when internet reconnects
+  useEffect(() => {
+    const handleOnline = () => {
+      flushSaveQueue();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
   // Check if slug exists on mount
   useEffect(() => {
+    // Guards against a stale run clobbering a newer one — when served
+    // offline, the generic pre-rendered shell briefly hydrates with a
+    // placeholder "offline" slug before this effect re-runs with the real
+    // slug recovered from window.location (see `slug` above). Both runs are
+    // async, so without this guard the stale "offline" run's result can
+    // resolve after (and overwrite) the correct run's result.
+    let cancelled = false;
+
     async function checkSlug() {
       try {
         const res = await fetch(apiUrl(`/api/invitation/${slug}`));
-        setSlugValid(res.ok);
+        if (!cancelled) setSlugValid(res.ok);
       } catch {
-        setSlugValid(false);
+        // Offline — check if we have a cached invitation for this slug
+        const cached = await getCachedInvitation(slug);
+        if (cached) {
+          if (!cancelled) setSlugValid(true);
+          return;
+        }
+        // Fall back to the native "invitation" storage key, which is
+        // populated whenever the user has ever logged into this invitation
+        // (even if the separate offline cache was never written to).
+        const stored = await getStoredItem("invitation");
+        if (stored) {
+          try {
+            const parsed: Invitation = JSON.parse(stored);
+            if (parsed.slug === slug) {
+              if (!cancelled) setSlugValid(true);
+              return;
+            }
+          } catch {
+            // ignore invalid stored data
+          }
+        }
+        if (!cancelled) setSlugValid(false);
       }
     }
     checkSlug();
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
   // Auto-load invitation from native storage or auth cookie to skip login
   useEffect(() => {
+    if (slugValid === false) {
+      setAutoLoginAttempted(true);
+      return;
+    }
     if (!slugValid) return;
+    let cancelled = false;
 
     async function autoLogin() {
       // Try native storage first (fast path)
@@ -104,7 +196,10 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         try {
           const parsed: Invitation = JSON.parse(stored);
           if (parsed.slug === slug) {
-            loadInvitation(parsed);
+            await setLastUsedSlug(slug);
+            await cacheInvitation(slug, parsed);
+            if (!cancelled) loadInvitation(parsed);
+            if (!cancelled) setAutoLoginAttempted(true);
             return;
           }
         } catch {
@@ -115,25 +210,43 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
       // Fallback: verify auth cookie and fetch from server
       try {
         const res = await fetch(apiUrl("/api/auth/verify"), { credentials: "include" });
-        if (!res.ok) return;
+        if (!res.ok) {
+          // Try cache when auth verify fails (offline)
+          const cached = await getCachedInvitation(slug);
+          if (cached && !cancelled) {
+            loadInvitation(cached);
+          }
+          if (!cancelled) setAutoLoginAttempted(true);
+          return;
+        }
         const data = await res.json();
         if (data.authenticated && data.invitation && data.invitation.slug === slug) {
           const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
           const inv = { ...data.invitation, data: invitationData };
           await setStoredItem("invitation", JSON.stringify(inv));
+          await setLastUsedSlug(slug);
+          await cacheInvitation(slug, inv);
           if (isDarkMode !== undefined || accentColor !== undefined) {
             localStorage.setItem("appSettings", JSON.stringify({
               isDarkMode: systemMode === "dark",
               accentColor: accentColor ?? "#6998EE",
             }));
           }
-          loadInvitation(inv);
+          if (!cancelled) loadInvitation(inv);
         }
       } catch {
-        // not authenticated
+        // Offline — try cached invitation
+        const cached = await getCachedInvitation(slug);
+        if (cached && !cancelled) {
+          loadInvitation(cached);
+        }
       }
+      if (!cancelled) setAutoLoginAttempted(true);
     }
     autoLogin();
+    return () => {
+      cancelled = true;
+    };
   }, [slugValid, slug]);
 
   // Fetch invitation by access code (called from EditorLogin)
@@ -143,6 +256,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode }),
+        credentials: "include",
       });
       if (!res.ok) return null;
       const data = await res.json();
@@ -176,8 +290,8 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
 
   // Use the user-defined display logo as the page favicon
   useEffect(() => {
-    updateFavicon(invitation?.data?.heroIcon);
-  }, [invitation?.data?.heroIcon]);
+    updateFavicon(toolsResolvedData?.heroIcon ?? invitation?.data?.heroIcon);
+  }, [toolsResolvedData?.heroIcon, invitation?.data?.heroIcon]);
 
   useEffect(() => {
     // Load settings from localStorage, or use system theme if none exist
@@ -212,13 +326,46 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     setShowEditorPanel(true);
   };
 
+  // Save and leave to editor
+  const handleToolsSaveAndLeave = async () => {
+    if (invitation) {
+      await saveToSupabase(invitation);
+    }
+    setShowEditorPanel(true);
+  };
+
+  // Discard changes and leave to editor
+  const handleToolsDiscardAndLeave = () => {
+    if (invitation) {
+      const snapshot = JSON.parse(savedDataSnapshot.current);
+      setInvitation({ ...invitation, data: snapshot });
+    }
+    setShowEditorPanel(true);
+  };
+
   // Immediate save function to Supabase
   const saveToSupabase = async (inv: Invitation) => {
     setSaveStatus("saving");
     setShowSaveStatus(true);
+
+    // Offline — queue the save and update cache locally
+    if (!isOnline()) {
+      const { isDarkMode, accentColor, ...rawDataToSave } = inv.data;
+      const dataToSave = await sanitizeMediaForSave(rawDataToSave);
+      await queueOfflineSave(inv.slug, inv.id, dataToSave as Record<string, unknown>);
+      await cacheInvitation(inv.slug, inv);
+      setSaveStatus("saved");
+      savedDataSnapshot.current = JSON.stringify(inv.data);
+      await setStoredItem('invitation', JSON.stringify(inv));
+      return;
+    }
+
     try {
-      // Exclude settings from the data being saved to Supabase
-      const { isDarkMode, accentColor, ...dataToSave } = inv.data;
+      // Exclude settings from the data being saved to Supabase, and reverse
+      // any device-local cached media URIs back to their original remote
+      // URL (or drop them if unmappable) so they never get persisted
+      const { isDarkMode, accentColor, ...rawDataToSave } = inv.data;
+      const dataToSave = await sanitizeMediaForSave(rawDataToSave);
       const res = await fetch(apiUrl(`/api/invitation/${inv.slug}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -228,10 +375,19 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
       setSaveStatus("saved");
       // Update snapshot after successful save
       savedDataSnapshot.current = JSON.stringify(inv.data);
-      // Update localStorage with the saved data
-      localStorage.setItem('invitation', JSON.stringify(inv));
+      // Update native storage with the saved data
+      await setStoredItem('invitation', JSON.stringify(inv));
+      // Also update offline cache
+      await cacheInvitation(inv.slug, inv);
     } catch {
-      setSaveStatus("error");
+      // Network error — queue for later
+      const { isDarkMode, accentColor, ...rawDataToSave } = inv.data;
+      const dataToSave = await sanitizeMediaForSave(rawDataToSave);
+      await queueOfflineSave(inv.slug, inv.id, dataToSave as Record<string, unknown>);
+      await cacheInvitation(inv.slug, inv);
+      setSaveStatus("saved");
+      savedDataSnapshot.current = JSON.stringify(inv.data);
+      await setStoredItem('invitation', JSON.stringify(inv));
     }
   };
 
@@ -266,11 +422,11 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         <div className="flex flex-col items-center gap-4">
           <div
             className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin"
-            style={{ borderColor: "#e8cfc3", borderTopColor: "#6998EE" }}
+            style={{ borderColor: "#6998EE", borderTopColor: "transparent" }}
           />
           <p
             className="text-sm italic"
-            style={{ color: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
+            style={{ color: "#6998EE", fontFamily: "Inter, sans-serif" }}
           >
             Checking invitation…
           </p>
@@ -310,7 +466,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   }
 
   if (!invitation) {
-    return <EditorLogin onLogin={loadInvitation} onTryDemo={() => router.push('/demo')} />;
+    return null;
   }
 
   if (showEditorPanel) {
@@ -324,6 +480,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           setShowEditorPanel(false);
         }}
         showScreenDimensions={settings.showScreenDimensions}
+        isExpired={isExpired}
       />
     );
   }
@@ -366,7 +523,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
       </div>
       <div className="w-full min-h-screen lg:max-w-[400px] lg:h-[calc(100vh-2rem)] lg:mx-4 lg:rounded-2xl lg:overflow-hidden lg:shadow-2xl" style={{ backgroundColor: settings.isDarkMode ? "#1f2937" : "#fff8f3" }}>
         <ToolsTab
-          data={invitation.data}
+          data={toolsResolvedData || invitation.data}
           slug={invitation.slug}
           invitationId={invitation.id}
           onChange={(field, value) => {
@@ -385,52 +542,24 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
             localStorage.setItem('appSettings', JSON.stringify(newSettings));
             setStoredItem("themeOverride", newSettings.isDarkMode ? "dark" : "light");
           }}
-          hideSaveConfirmationDialog={settings.hideSaveConfirmationDialog}
           hideInstructions={settings.hideInstructions}
           showScreenDimensions={settings.showScreenDimensions}
           isPreviewDetached={settings.isPreviewDetached}
+          accountInfo={accountInfo}
+          isExpired={isExpired}
         />
       </div>
 
       {/* Unsaved tools changes dialog - shown when trying to leave tools section */}
-      {showUnsavedToolsDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4">
-          <div className={`${settings.isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}>
-            <h3 className={`text-lg font-semibold mb-2 ${settings.isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Unsaved Changes
-            </h3>
-            <p className={`text-sm mb-6 ${settings.isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              You have unsaved changes in the tools section. Do you want to save them before leaving?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowUnsavedToolsDialog(false)}
-                className={`flex-1 px-4 py-2 border rounded-lg text-sm transition-colors ${
-                  settings.isDarkMode
-                    ? "border-gray-600 text-gray-300 hover:bg-gray-700"
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Stay
-              </button>
-              <button
-                onClick={async () => {
-                  setShowUnsavedToolsDialog(false);
-                  if (invitation) {
-                    await saveToSupabase(invitation);
-                  }
-                  setShowEditorPanel(true);
-                }}
-                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
-                style={{ backgroundColor: settings.accentColor, fontFamily: "Inter, sans-serif" }}
-              >
-                Save & Leave
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SaveConfirmationDialog
+        isOpen={showUnsavedToolsDialog}
+        pendingChangesCount={1}
+        isDarkMode={settings.isDarkMode}
+        accentColor={settings.accentColor}
+        onSave={handleToolsSaveAndLeave}
+        onDiscard={handleToolsDiscardAndLeave}
+        onClose={() => setShowUnsavedToolsDialog(false)}
+      />
     </div>
   );
 }

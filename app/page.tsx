@@ -6,6 +6,7 @@ import type { Invitation } from "@/lib/types/invitation";
 import { getStoredItem, setStoredItem, removeStoredItem } from "@/lib/utils/storage";
 import { openSignup } from "@/lib/utils/signup";
 import { apiUrl } from "@/lib/utils/api";
+import { getCachedInvitation, getLastUsedSlug, setLastUsedSlug, cacheInvitation, isOnline } from "@/lib/utils/offline-cache";
 import HomePreviewStage from "@/components/home/HomePreviewStage";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 
@@ -22,25 +23,32 @@ export default function Home() {
     async function autoLogin() {
       try {
         const stored = await getStoredItem("invitation");
+        console.log("[autoLogin] getStoredItem('invitation'):", stored ? "found" : "null");
         if (stored) {
           const parsed: Invitation = JSON.parse(stored);
+          console.log("[autoLogin] parsed slug:", parsed?.slug);
           if (parsed?.slug) {
+            console.log("[autoLogin] redirecting to /tools/" + parsed.slug);
             router.replace(`/tools/${parsed.slug}`);
             return;
           }
         }
-      } catch {
-        // ignore invalid stored data
+      } catch (err) {
+        console.log("[autoLogin] stored invitation error:", err);
       }
 
       try {
         const res = await fetch(apiUrl("/api/auth/verify"), { credentials: "include" });
+        console.log("[autoLogin] auth/verify status:", res.status);
         if (res.ok) {
           const data = await res.json();
+          console.log("[autoLogin] authenticated:", data.authenticated, "slug:", data.invitation?.slug);
           if (data.authenticated && data.invitation?.slug) {
             const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
             const inv = { ...data.invitation, data: invitationData };
             await setStoredItem("invitation", JSON.stringify(inv));
+            await setLastUsedSlug(data.invitation.slug);
+            await cacheInvitation(data.invitation.slug, inv);
             if (isDarkMode !== undefined || accentColor !== undefined) {
               localStorage.setItem("appSettings", JSON.stringify({
                 isDarkMode: mode === "dark",
@@ -51,10 +59,25 @@ export default function Home() {
             return;
           }
         }
-      } catch {
-        // not authenticated
+      } catch (err) {
+        console.log("[autoLogin] fetch error, isOnline:", isOnline(), err);
+        // Offline or network error — try cached invitation
+        if (!isOnline()) {
+          const lastSlug = await getLastUsedSlug();
+          console.log("[autoLogin] lastUsedSlug:", lastSlug);
+          if (lastSlug) {
+            const cached = await getCachedInvitation(lastSlug);
+            console.log("[autoLogin] cached invitation:", cached ? "found" : "null");
+            if (cached) {
+              await setStoredItem("invitation", JSON.stringify(cached));
+              router.replace(`/tools/${lastSlug}`);
+              return;
+            }
+          }
+        }
       }
 
+      console.log("[autoLogin] no session found, showing login page");
       setChecking(false);
     }
     autoLogin();
@@ -63,7 +86,11 @@ export default function Home() {
   const handleLogin = async (inv: Invitation) => {
     const { isDarkMode, accentColor, ...invitationData } = inv.data;
     const invitationToStore = { ...inv, data: invitationData };
+    console.log("[handleLogin] storing invitation, slug:", inv.slug);
     await setStoredItem("invitation", JSON.stringify(invitationToStore));
+    await setLastUsedSlug(inv.slug);
+    await cacheInvitation(inv.slug, inv);
+    console.log("[handleLogin] stored, lastUsedSlug set");
     localStorage.setItem("appSettings", JSON.stringify({
       isDarkMode: mode === "dark",
       accentColor: accentColor ?? "#6998EE",
@@ -88,6 +115,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode: code.trim() }),
+        credentials: "include",
       });
 
       const data = await res.json();

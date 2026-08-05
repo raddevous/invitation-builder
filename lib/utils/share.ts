@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { Share } from "@capacitor/share";
+import { Browser } from "@capacitor/browser";
 
 export async function shareInviteLink(url: string, title = "Invitation"): Promise<"shared" | "copied" | "cancelled"> {
   // If running inside Capacitor (native app), use the native share sheet
@@ -32,5 +33,13 @@ export async function shareInviteLink(url: string, title = "Invitation"): Promis
     return "copied";
   } catch {
     return "cancelled";
+  }
+}
+
+export async function openInviteUrl(url: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    await Browser.open({ url, windowName: "_self" });
+  } else {
+    window.open(url, "_blank");
   }
 }

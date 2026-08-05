@@ -280,7 +280,7 @@ function DragKnob({
             <circle
               cx="28" cy="28" r="22"
               fill="none"
-              stroke="#e8cfc3"
+              stroke="#6998EE"
               strokeWidth="3"
               strokeDasharray="138 200"
               strokeDashoffset="-31"

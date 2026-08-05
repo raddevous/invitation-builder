@@ -191,7 +191,7 @@ function ElementControl({ label, type, category, settings, constraints, onChange
             <div>
               <button
                 onClick={openPicker}
-                className="flex items-center gap-2 text-xs text-[#6998EE] border border-[#e8cfc3] rounded-xl px-3 py-2 hover:bg-[#fff8f3] transition-colors"
+                className="flex items-center gap-2 text-xs text-[#6998EE] border border-[#6998EE] rounded-xl px-3 py-2 hover:bg-blue-50 transition-colors"
               >
                 {settings.src ? (
                   <img src={settings.src} alt="" className="w-6 h-6 object-contain rounded" />
@@ -362,7 +362,7 @@ function SliderControl({
           onTouchEnd={onEnd}
         >
           <svg className="absolute inset-0 w-full h-full" viewBox="0 0 48 48">
-            <circle cx="24" cy="24" r="18" fill="none" stroke="#e8cfc3" strokeWidth="2.5"
+            <circle cx="24" cy="24" r="18" fill="none" stroke="#6998EE" strokeWidth="2.5"
               strokeDasharray="113 200" strokeDashoffset="-28" strokeLinecap="round" />
           </svg>
           <div

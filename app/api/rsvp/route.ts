@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { wpSubmitRsvp, wpGetRsvps, wpGetPushTokens } from "@/lib/wp/client";
 import { sendPushNotification } from "@/lib/firebase/admin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,19 +25,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("rsvp_responses")
-      .insert({
-        invitation_id: invitationId,
-        guest_name: guestName,
-        attendance,
-        guest_count: guestCount || 1,
-        message: message || null,
-      })
-      .select("id")
-      .single();
+    const { ok, body: result } = await wpSubmitRsvp({
+      invitationId,
+      guestName,
+      attendance,
+      guestCount: guestCount || 1,
+      message: message || null,
+    });
 
-    if (error) {
+    if (!ok || !result?.id) {
       return NextResponse.json(
         { error: "Failed to save RSVP" },
         { status: 500 }
@@ -43,17 +42,14 @@ export async function POST(request: NextRequest) {
 
     // Send push notification to the host (best-effort, non-blocking)
     try {
-      const { data: tokens } = await supabaseAdmin
-        .from("push_tokens")
-        .select("token")
-        .eq("invitation_id", invitationId);
+      const { ok: tokensOk, body: tokensBody } = await wpGetPushTokens(invitationId);
 
-      if (tokens && tokens.length > 0) {
+      if (tokensOk && tokensBody?.tokens && tokensBody.tokens.length > 0) {
         const attendanceLabel = attendance === "attending" ? "attending" : "not attending";
         const messageBody = `${guestName} is ${attendanceLabel}${guestCount > 1 ? ` (+${guestCount - 1})` : ""}`;
 
         await Promise.all(
-          tokens.map(({ token }) =>
+          tokensBody.tokens.map((token) =>
             sendPushNotification(
               token,
               "New RSVP",
@@ -67,7 +63,7 @@ export async function POST(request: NextRequest) {
       // push notification failure should not affect RSVP save
     }
 
-    return NextResponse.json({ success: true, id: data.id });
+    return NextResponse.json({ success: true, id: result.id });
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },
@@ -88,20 +84,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("rsvp_responses")
-      .select("*")
-      .eq("invitation_id", invitationId)
-      .order("submitted_at", { ascending: false });
+    const { ok, body } = await wpGetRsvps(invitationId);
 
-    if (error) {
+    if (!ok) {
       return NextResponse.json(
         { error: "Failed to fetch RSVPs" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ responses: data });
+    return NextResponse.json({ responses: body?.responses ?? [] });
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

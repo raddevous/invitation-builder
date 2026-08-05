@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import type { Invitation, InvitationData } from "@/lib/types/invitation";
-import { supabase } from "@/lib/supabase/client";
+import type { Invitation } from "@/lib/types/invitation";
 import { updateFavicon } from "@/lib/utils";
 import InvitationTemplate from "@/components/invitation/InvitationTemplate";
 import { apiUrl } from "@/lib/utils/api";
+import { cacheInvitation, getCachedInvitation, isOnline } from "@/lib/utils/offline-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -36,15 +36,36 @@ export default function InvitePage({ params }: InvitePageProps) {
 
   useEffect(() => {
     async function load() {
-      const res = await fetch(apiUrl(`/api/invitation/${slug}`));
-      if (!res.ok) {
+      try {
+        const res = await fetch(apiUrl(`/api/invitation/${slug}`));
+        if (!res.ok) {
+          // Try cache before showing not found
+          const cached = await getCachedInvitation(slug);
+          if (cached) {
+            setInvitation(cached);
+            setLoading(false);
+            return;
+          }
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+        const data = await res.json();
+        const inv = data.invitation as Invitation;
+        await cacheInvitation(slug, inv);
+        setInvitation(inv);
+        setLoading(false);
+      } catch {
+        // Network error — try cache
+        const cached = await getCachedInvitation(slug);
+        if (cached) {
+          setInvitation(cached);
+          setLoading(false);
+          return;
+        }
         setNotFound(true);
         setLoading(false);
-        return;
       }
-      const data = await res.json();
-      setInvitation(data.invitation);
-      setLoading(false);
     }
     load();
   }, [slug]);
@@ -72,35 +93,6 @@ export default function InvitePage({ params }: InvitePageProps) {
   useEffect(() => {
     updateFavicon(invitation?.data?.heroIcon);
   }, [invitation?.data?.heroIcon]);
-
-  // Subscribe to realtime changes so the public page updates live
-  useEffect(() => {
-    if (!invitation?.id) return;
-
-    const channel = supabase
-      .channel(`public-invite:${invitation.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "invitations",
-          filter: `id=eq.${invitation.id}`,
-        },
-        (payload) => {
-          if (payload.new && payload.new.data) {
-            setInvitation((prev) =>
-              prev ? { ...prev, data: payload.new.data as InvitationData } : prev
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [invitation?.id]);
 
   // Content protection for guest mode
   useEffect(() => {

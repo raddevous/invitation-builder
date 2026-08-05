@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { openSignup } from "@/lib/utils/signup";
 import { apiUrl } from "@/lib/utils/api";
+import { setStoredItem } from "@/lib/utils/storage";
+import { setLastUsedSlug } from "@/lib/utils/offline-cache";
 
 const hexToRgba = (hex: string, alpha: number): string => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -36,6 +38,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode: accessCode.trim() }),
+        credentials: "include",
       });
 
       const data = await res.json();
@@ -45,13 +48,16 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
         return;
       }
 
-      const { isDarkMode: invDarkMode, accentColor: invAccentColor, ...invitationData } = data.invitation;
+      const { isDarkMode: invDarkMode, accentColor: invAccentColor, ...invitationData } = data.invitation.data;
       const invitationToStore = { ...data.invitation, data: invitationData };
-      localStorage.setItem("invitation", JSON.stringify(invitationToStore));
-      localStorage.setItem("appSettings", JSON.stringify({
+      console.log("[LoginDialog] storing invitation, slug:", data.invitation.slug);
+      await setStoredItem("invitation", JSON.stringify(invitationToStore));
+      await setStoredItem("appSettings", JSON.stringify({
         isDarkMode: isDarkMode ?? invDarkMode,
         accentColor: accentColor ?? invAccentColor,
       }));
+      await setLastUsedSlug(data.invitation.slug);
+      console.log("[LoginDialog] stored, lastUsedSlug set");
 
       router.push(`/tools/${data.invitation.slug}`);
     } catch {
@@ -72,7 +78,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
     >
       <div
         className="w-full max-w-sm rounded-2xl p-6 space-y-4"
-        style={{ backgroundColor: isDarkMode ? "#1f2937" : "#fff8f3" }}
+        style={{ backgroundColor: isDarkMode ? "#1f2937" : "#ffffff" }}
       >
         <h2
           className="text-2xl text-center"
@@ -119,7 +125,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
             <div className="w-full border-t" style={{ borderColor: isDarkMode ? "#374151" : hexToRgba(accentColor, 0.3) }} />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="px-2" style={{ backgroundColor: isDarkMode ? "#1f2937" : "#fff8f3", color: isDarkMode ? "#9ca3af" : accentColor, fontFamily: "Inter, sans-serif" }}>
+            <span className="px-2" style={{ backgroundColor: isDarkMode ? "#1f2937" : "#ffffff", color: isDarkMode ? "#9ca3af" : accentColor, fontFamily: "Inter, sans-serif" }}>
               OR
             </span>
           </div>

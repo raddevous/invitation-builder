@@ -4619,7 +4619,7 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
       {/* Temporary background picker */}
       {showTempBackgroundPicker && createPortal(
         <PhotoGalleryPicker
-          galleryImages={data.galleryImages || []}
+          galleryImages={data.photosAndImages || []}
           selectedUrl={tempBackgroundImage || ""}
           isDarkMode={isDarkMode}
           accentColor={accentColor}

@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import QRCode from "qrcode";
 import type { InvitationData } from "@/lib/types/invitation";
 
-const DEFAULT_PHOTO_URL = "https://images.pexels.com/photos/17241434/pexels-photo-17241434.jpeg";
+const DEFAULT_PHOTO_URL = "/assets/ppaper-1.jpg";
 
 function getFontFamily(font: string | undefined, type: "heading" | "body"): string {
   if (!font) return type === "heading" ? "Playfair Display, serif" : "Inter, sans-serif";
@@ -619,7 +619,7 @@ export default function HomeDraftDesign({ designType, data, accentColor, dressCo
             ['--rot' as string]: 'rotate(-5deg)',
           }}
         >
-          <img src="https://images.pexels.com/photos/17241431/pexels-photo-17241431.jpeg" alt="" className="w-full aspect-[3/4] object-cover" draggable={false} onContextMenu={(e) => e.preventDefault()} />
+          <img src="/assets/ppaper-2.jpg" alt="" className="w-full aspect-[3/4] object-cover" draggable={false} onContextMenu={(e) => e.preventDefault()} />
         </div>
         <div
           className="absolute top-0 left-0 w-[45%] bg-white pt-2 px-2 pb-4 shadow-lg"

@@ -20,20 +20,27 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+interface AccountInfo {
+  email: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 interface SettingsEditorProps {
   data: InvitationData;
   onChange: (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => void;
   isDarkMode?: boolean;
   accentColor?: string;
   onClose: () => void;
-  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideSaveConfirmationDialog?: boolean; hideInstructions?: boolean; showScreenDimensions?: boolean; isPreviewDetached?: boolean }) => void;
-  hideSaveConfirmationDialog?: boolean;
+  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideInstructions?: boolean; showScreenDimensions?: boolean; isPreviewDetached?: boolean }) => void;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
   isPreviewDetached?: boolean;
   invitationId?: string;
   isDemoMode?: boolean;
   slug?: string;
+  accountInfo?: AccountInfo | null;
 }
 
 const ACCENT_COLORS = [
@@ -49,14 +56,13 @@ const ACCENT_COLORS = [
   "#D946EF", // Orchid Purple
 ];
 
-export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#6998EE", onClose, onSettingsChange, hideSaveConfirmationDialog = false, hideInstructions = false, showScreenDimensions = false, isPreviewDetached = false, invitationId, isDemoMode = false, slug }: SettingsEditorProps) {
+export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#6998EE", onClose, onSettingsChange, hideInstructions = false, showScreenDimensions = false, isPreviewDetached = false, invitationId, isDemoMode = false, slug, accountInfo }: SettingsEditorProps) {
   const [backupExists, setBackupExists] = useState(false);
   const [backupDate, setBackupDate] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [showBackupWarning, setShowBackupWarning] = useState(false);
   const [showImportWarning, setShowImportWarning] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -67,7 +73,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
   // Check for existing backup on mount
   useEffect(() => {
     checkBackup();
-    fetchExpiration();
   }, []);
 
   const generateQrCode = useCallback(async () => {
@@ -123,19 +128,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    }
-  };
-
-  const fetchExpiration = async () => {
-    if (!invitationId) return;
-    try {
-      const res = await fetch(apiUrl(`/api/invitation/${invitationId}`));
-      const data = await res.json();
-      if (data.invitation?.expires_at) {
-        setExpiresAt(data.invitation.expires_at);
-      }
-    } catch (error) {
-      console.error("Error fetching expiration:", error);
     }
   };
 
@@ -248,37 +240,95 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
   const handleDarkModeToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode: !isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached });
+      onSettingsChange({ isDarkMode: !isDarkMode, accentColor, hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleAccentColorChange = (color: string) => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor: color, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached });
-    }
-  };
-
-  const handleHideSaveConfirmationDialogToggle = () => {
-    if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: !hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached });
+      onSettingsChange({ isDarkMode, accentColor: color, hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleHideInstructionsToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions: !hideInstructions, showScreenDimensions, isPreviewDetached });
+      onSettingsChange({ isDarkMode, accentColor, hideInstructions: !hideInstructions, showScreenDimensions, isPreviewDetached });
     }
   };
 
   const handleScreenDimensionsToggle = () => {
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions: !showScreenDimensions, isPreviewDetached });
+      onSettingsChange({ isDarkMode, accentColor, hideInstructions, showScreenDimensions: !showScreenDimensions, isPreviewDetached });
     }
   };
 
   return (
     <div className={`w-full rounded-2xl flex flex-col ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
       <div className="p-4 space-y-6" style={{ fontFamily: "Inter, sans-serif" }}>
+        {/* Account Info - Collapsible (only for signed-in users, not demo) */}
+        {!isDemoMode && (
+          <div
+            className={`border rounded-xl overflow-hidden transition-all duration-300`}
+            onMouseEnter={() => setHoveredSection('account')}
+            onMouseLeave={() => setHoveredSection(null)}
+            style={{
+              backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+              borderColor: hoveredSection === 'account' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
+              ...(expandedSection === 'account' ? {
+                boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
+              } : {}),
+            }}
+          >
+            {/* Header */}
+            <div
+              className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
+              onClick={() => setExpandedSection(expandedSection === 'account' ? null : 'account')}
+            >
+              <div className="shrink-0 text-gray-400 order-2">
+                {expandedSection === 'account' ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1 order-1">
+                <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                  Account Info
+                </h3>
+                <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  Your registered account details
+                </p>
+              </div>
+            </div>
+
+            {/* Content */}
+            {expandedSection === 'account' && (
+              <div className={`p-4 space-y-3 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Email</span>
+                  <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.email || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Name</span>
+                  <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.name || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Created</span>
+                  <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.createdAt ? new Date(accountInfo.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Editing Expires</span>
+                  <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.expiresAt ? new Date(accountInfo.expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "—"}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Dark Mode Toggle */}
         <div
           className={`border rounded-xl overflow-hidden transition-all duration-300`}
@@ -432,41 +482,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                   showScreenDimensions ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Hide Save Confirmation Dialog Toggle */}
-        <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300`}
-          onMouseEnter={() => setHoveredSection('hidesavedialog')}
-          onMouseLeave={() => setHoveredSection(null)}
-          style={{
-            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            borderColor: hoveredSection === 'hidesavedialog' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-          }}
-        >
-          <div className="flex items-center gap-3 p-4">
-            <div className="flex-1">
-              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
-                Hide Save Confirmation Dialog
-              </h3>
-              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                Skip confirmation when saving changes
-              </p>
-            </div>
-            <button
-              onClick={handleHideSaveConfirmationDialogToggle}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                hideSaveConfirmationDialog ? "bg-gray-600" : "bg-gray-300"
-              }`}
-              style={hideSaveConfirmationDialog ? { backgroundColor: accentColor } : undefined}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  hideSaveConfirmationDialog ? "translate-x-6" : "translate-x-1"
                 }`}
               />
             </button>
@@ -631,10 +646,10 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           {/* Content */}
           {expandedSection === 'expiration' && (
             <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
-              {expiresAt ? (
+              {accountInfo?.expiresAt ? (
                 <div className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
                   <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
-                    Expires on: {new Date(expiresAt).toLocaleDateString()}
+                    Expires on: {new Date(accountInfo.expiresAt).toLocaleDateString()}
                   </p>
                 </div>
               ) : (
@@ -738,6 +753,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
               await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' }).catch(() => {});
               await removeStoredItem('invitation');
               await removeStoredItem('appSettings');
+              await removeStoredItem('last_used_slug');
               localStorage.removeItem('weddingChecklist');
               localStorage.removeItem('weddingBudget');
               window.location.href = '/tools';

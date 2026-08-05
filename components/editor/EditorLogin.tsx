@@ -28,6 +28,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessCode: code.trim() }),
+        credentials: "include",
       });
 
       const data = await res.json();

@@ -4,7 +4,11 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
+import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -15,20 +19,27 @@ import com.getcapacitor.BridgeWebViewClient;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
 
-  // Locally bundled static export (out/, synced into assets/public) used as an
-  // offline fallback when the remote server (https://instavow.com) is unreachable.
-  // Requests to this fake host are intercepted in shouldInterceptRequest below and
-  // served directly from assets/public, so no real network call is ever attempted
-  // and Next.js's root-absolute asset paths (e.g. /_next/...) resolve correctly.
-  private static final String LOCAL_FALLBACK_HOST = "local.instavow.app";
-  private static final String LOCAL_FALLBACK_URL = "https://" + LOCAL_FALLBACK_HOST + "/index.html";
+  // Remote server that hosts the live app. Capacitor's JS bridge/plugins
+  // (e.g. Preferences) and localStorage are only meaningful for this exact
+  // origin — they're never injected for, or shared with, any other origin.
+  // Rather than navigating to a separate fake "offline" host when there's no
+  // network (which broke the bridge and split storage across origins), we
+  // stay on this same origin at all times and transparently serve requests
+  // from the locally bundled static export (out/, synced into assets/public)
+  // whenever the device is offline.
   private static final String REMOTE_URL = "https://instavow.com";
-  private boolean offlineFallbackActive = false;
+  private static final String REMOTE_HOST = Uri.parse(REMOTE_URL).getHost();
   private ConnectivityManager connectivityManager;
   private ConnectivityManager.NetworkCallback networkCallback;
+  // Guards against an infinite reload loop: a main-frame URL that keeps
+  // failing (e.g. a dynamic route with no offline shell available at all)
+  // should only be retried once, not forever.
+  private String lastFailedMainFrameUrl = null;
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
@@ -36,69 +47,89 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
 
     WebView webView = getBridge().getWebView();
+    connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+
     webView.setWebViewClient(new BridgeWebViewClient(getBridge()) {
       @Override
-      public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        if (LOCAL_FALLBACK_HOST.equals(request.getUrl().getHost())) {
-          // Keep in-app navigation within the offline fallback host inside this
-          // WebView instead of letting Capacitor's default navigation policy treat
-          // it as an untrusted external link and hand it off to the system browser.
-          return false;
-        }
-        return super.shouldOverrideUrlLoading(view, request);
-      }
-
-      @Override
       public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-        if (LOCAL_FALLBACK_HOST.equals(request.getUrl().getHost())) {
-          WebResourceResponse local = loadLocalAsset(request.getUrl().getPath());
+        String host = request.getUrl().getHost();
+        String path = request.getUrl().getPath();
+
+        // "localhost" is the origin the CapacitorUpdater (Capgo) plugin always
+        // serves the built-in bundle from, regardless of capacitor.config's
+        // server.url — so /tools/<slug> requests need the offline-shell
+        // fallback here too, not just when REMOTE_HOST is offline.
+        boolean isLocalBundle = "localhost".equals(host);
+        if (isLocalBundle || (REMOTE_HOST.equals(host) && !isDeviceOnline())) {
+          WebResourceResponse local = loadLocalAsset(path, request.isForMainFrame());
           if (local != null) {
+            Log.d("Instavow", "[LOCAL] served local asset: " + path);
             return local;
           }
+          Log.w("Instavow", "[LOCAL] no local asset for: " + path);
         }
+
         return super.shouldInterceptRequest(view, request);
       }
 
       @Override
       public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-        if (request.isForMainFrame() && !offlineFallbackActive) {
-          offlineFallbackActive = true;
-          view.loadUrl(LOCAL_FALLBACK_URL);
+        String url = request.getUrl().toString();
+        if (request.isForMainFrame()) {
+          if (url.equals(lastFailedMainFrameUrl)) {
+            // Already retried this exact URL once and it failed again —
+            // stop here to avoid an infinite reload loop.
+            Log.w("Instavow", "[ERROR] main frame failed again, giving up: " + url + " Error: " + error.getDescription());
+            super.onReceivedError(view, request, error);
+            return;
+          }
+          // Retry the same URL — shouldInterceptRequest above will now
+          // correctly detect offline state and serve the local asset instead.
+          lastFailedMainFrameUrl = url;
+          Log.w("Instavow", "[ERROR] main frame failed, reloading: " + url + " Error: " + error.getDescription());
+          view.loadUrl(url);
           return;
         }
+        Log.w("Instavow", "[ERROR] sub-resource failed: " + url + " Error: " + error.getDescription());
         super.onReceivedError(view, request, error);
+      }
+
+      @Override
+      public void onPageFinished(WebView view, String url) {
+        lastFailedMainFrameUrl = null;
+        super.onPageFinished(view, url);
       }
     });
 
-    // Once real internet connectivity is restored while showing the offline
-    // fallback, navigate back to the real remote origin. Staying on the fake
-    // local origin would otherwise break same-origin API calls (CORS) and any
-    // window.location.origin-based link generation in the web app.
-    connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+    // Forward JS console.log/warn/error to Android Logcat so we can debug
+    // the web app's output (media caching, auto-login, etc.) alongside
+    // native-side logs. Filter Logcat by "JS" to see only these.
+    webView.setWebChromeClient(new WebChromeClient() {
+      @Override
+      public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+        String tag = "JS:" + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber();
+        switch (consoleMessage.messageLevel()) {
+          case ERROR:
+            Log.e("JS", consoleMessage.message());
+            break;
+          case WARNING:
+            Log.w("JS", consoleMessage.message());
+            break;
+          default:
+            Log.d("JS", consoleMessage.message());
+            break;
+        }
+        return true;
+      }
+    });
+
+    // No special handling is needed when connectivity returns — the WebView
+    // never leaves the https://instavow.com origin, so subsequent requests
+    // naturally hit the real network again via shouldInterceptRequest above.
     networkCallback = new ConnectivityManager.NetworkCallback() {
       @Override
       public void onAvailable(Network network) {
-        runOnUiThread(() -> {
-          if (offlineFallbackActive) {
-            String currentPath = getBridge().getWebView().getUrl();
-            // Don't auto-reload when the user is in demo mode — demo data is
-            // fully local (localStorage) and a reload would lose unsaved edits
-            // and send the user back to the login page.
-            if (currentPath != null && currentPath.contains("/demo")) {
-              offlineFallbackActive = false;
-              return;
-            }
-            // For non-demo pages, reload to the same path on the remote origin
-            // so the user stays on the same page rather than being sent to root.
-            String pathOnly = "";
-            if (currentPath != null) {
-              int pathStart = currentPath.indexOf("/", "https://".length());
-              if (pathStart >= 0) pathOnly = currentPath.substring(pathStart);
-            }
-            offlineFallbackActive = false;
-            getBridge().getWebView().loadUrl(REMOTE_URL + pathOnly);
-          }
-        });
+        Log.d("Instavow", "[ONLINE] connectivity restored");
       }
     };
     NetworkRequest networkRequest = new NetworkRequest.Builder()
@@ -106,6 +137,13 @@ public class MainActivity extends BridgeActivity {
       .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
       .build();
     connectivityManager.registerNetworkCallback(networkRequest, networkCallback);
+  }
+
+  private boolean isDeviceOnline() {
+    Network activeNetwork = connectivityManager.getActiveNetwork();
+    if (activeNetwork == null) return false;
+    NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(activeNetwork);
+    return caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
   }
 
   @Override
@@ -116,7 +154,7 @@ public class MainActivity extends BridgeActivity {
     super.onDestroy();
   }
 
-  private WebResourceResponse loadLocalAsset(String urlPath) {
+  private WebResourceResponse loadLocalAsset(String urlPath, boolean isForMainFrame) {
     if (urlPath == null || urlPath.isEmpty() || urlPath.equals("/")) {
       urlPath = "/index.html";
     }
@@ -130,14 +168,40 @@ public class MainActivity extends BridgeActivity {
       basePath.endsWith("/") ? basePath + "index.html" : basePath + "/index.html"
     };
     for (String candidate : candidates) {
-      try {
-        InputStream stream = getAssets().open(candidate);
-        return new WebResourceResponse(guessMimeType(candidate), null, stream);
-      } catch (IOException ignored) {
-        // try next candidate
-      }
+      WebResourceResponse response = tryOpenAsset(candidate);
+      if (response != null) return response;
     }
+
+    // /tools/<slug> is a fully dynamic, per-invitation route that can never be
+    // statically exported per real slug (see scripts/build-capacitor.js) — only
+    // a generic "offline" placeholder slug is pre-rendered so its JS chunk gets
+    // bundled. Serve that generic shell for any other /tools/<slug> request;
+    // the page reads the real slug from window.location at runtime, which
+    // still reflects the originally requested URL.
+    if (urlPath.startsWith("/tools/") && !urlPath.startsWith("/tools/offline") && !urlPath.startsWith("/tools/live-frame")) {
+      // A top-level (main frame) navigation always needs a real HTML document
+      // to render — a bare RSC ".txt" payload can't be displayed on its own,
+      // so use the HTML shell even if the original request targeted ".txt".
+      // Background prefetch requests can use the matching ".txt" payload.
+      String ext = (!isForMainFrame && urlPath.endsWith(".txt")) ? ".txt" : ".html";
+      WebResourceResponse response = tryOpenAsset("public/tools/offline" + ext);
+      if (response != null) return response;
+    }
+
+    Log.w("Instavow", "[ASSET] not found in any candidate: " + urlPath);
     return null;
+  }
+
+  private WebResourceResponse tryOpenAsset(String candidate) {
+    try {
+      InputStream stream = getAssets().open(candidate);
+      Map<String, String> headers = new HashMap<>();
+      headers.put("Cache-Control", "no-cache, no-store, must-revalidate");
+      Log.d("Instavow", "[ASSET] loaded: " + candidate);
+      return new WebResourceResponse(guessMimeType(candidate), null, 200, "OK", headers, stream);
+    } catch (IOException ignored) {
+      return null;
+    }
   }
 
   private String guessMimeType(String path) {

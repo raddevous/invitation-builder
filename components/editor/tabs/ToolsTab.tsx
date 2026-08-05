@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import EntourageEditor from "./EntourageEditor";
@@ -17,7 +17,7 @@ import { getEntourageGuestNames } from "@/lib/utils/entourageGuests";
 import ProgressCircle from "@/components/editor/shared/ProgressCircle";
 import ProgressBar from "@/components/editor/shared/ProgressBar";
 import HalfCircleGauge from "@/components/editor/shared/HalfCircleGauge";
-import { getWeddingDetailsProgress, getWeddingDetailsWeight, getMediaOverallProgress, getMediaWeight, getEntourageProgress, getEntourageWeight, getStoryTimelineProgress, getStoryTimelineWeight, getWeddingProgramProgress, getWeddingProgramWeight, getWeightedProgress } from "@/lib/utils/progressCalculator";
+import { getWeddingDetailsProgress, getWeddingDetailsWeight, getWeddingDetailsProgressData, getMediaOverallProgress, getMediaWeight, getMediaProgressData, getEntourageProgress, getEntourageWeight, getEntourageProgressData, getStoryTimelineProgress, getStoryTimelineWeight, getStoryTimelineProgressData, getWeddingProgramProgress, getWeddingProgramWeight, getWeddingProgramProgressData, getWeightedProgress } from "@/lib/utils/progressCalculator";
 import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
 
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -27,6 +27,13 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+interface AccountInfo {
+  email: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 interface ToolsTabProps {
   data: InvitationData;
   slug: string;
@@ -35,13 +42,14 @@ interface ToolsTabProps {
   isDarkMode?: boolean;
   accentColor?: string;
   onOpenEditor?: () => void;
-  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideSaveConfirmationDialog?: boolean; hideInstructions?: boolean; showScreenDimensions?: boolean; isPreviewDetached?: boolean }) => void;
+  onSettingsChange?: (settings: { isDarkMode: boolean; accentColor: string; hideInstructions?: boolean; showScreenDimensions?: boolean; isPreviewDetached?: boolean }) => void;
   onSave?: (updatedData: InvitationData) => Promise<void>;
-  hideSaveConfirmationDialog?: boolean;
   hideInstructions?: boolean;
   showScreenDimensions?: boolean;
   isPreviewDetached?: boolean;
   isDemoMode?: boolean;
+  accountInfo?: AccountInfo | null;
+  isExpired?: boolean;
 }
 
 interface ToolTileProps {
@@ -93,7 +101,7 @@ const TOOLS_NAV_TABS: { id: ToolsNavTab; label: string; icon: string }[] = [
   { id: "settings", label: "Settings", icon: "/assets/ico-settings.png" },
 ];
 
-export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#6998EE", onOpenEditor, onSettingsChange, onSave, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached = false, isDemoMode = false }: ToolsTabProps) {
+export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMode = true, accentColor = "#6998EE", onOpenEditor, onSettingsChange, onSave, hideInstructions, showScreenDimensions, isPreviewDetached = false, isDemoMode = false, accountInfo, isExpired = false }: ToolsTabProps) {
   const [showEntourageEditor, setShowEntourageEditor] = useState(false);
   const [showGuestEditor, setShowGuestEditor] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
@@ -103,15 +111,31 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [showWeddingProgramEditor, setShowWeddingProgramEditor] = useState(false);
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
   const [showEventDetails, setShowEventDetails] = useState(false);
+  const [showAllReminders, setShowAllReminders] = useState(false);
+  const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isMobile, setIsMobile] = useState(false);
   const [activeNavTab, setActiveNavTab] = useState<ToolsNavTab>("dashboard");
-  const [showWebBubbleMenu, setShowWebBubbleMenu] = useState(false);
+
+  // Guard onChange when expired — user can still interact with controls
+  // but changes won't propagate or save
+  const guardedOnChange = useCallback(
+    (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => {
+      if (isExpired) return;
+      onChange(field, value);
+    },
+    [isExpired, onChange]
+  );
+  const [showNumbers, setShowNumbers] = useState(() => {
+    try {
+      return localStorage.getItem('websiteProgressMode') === 'numbers';
+    } catch { return false; }
+  });
 
   const togglePreviewDetached = () => {
     const next = !isPreviewDetached;
     if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog, hideInstructions, showScreenDimensions, isPreviewDetached: next });
+      onSettingsChange({ isDarkMode, accentColor, hideInstructions, showScreenDimensions, isPreviewDetached: next });
     }
   };
 
@@ -127,13 +151,13 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const websiteGaugeSegments = useMemo(() => {
     const sections = data.sections || {};
     const allSegments = [
-      { label: "Wedding Details", percentage: weddingDetailsProgress, weight: getWeddingDetailsWeight(data), color: "#F59E30", onClick: () => handleEventDetailsClick() },
-      { label: "Media Files", percentage: mediaProgress, weight: getMediaWeight(), color: "#A15BA2", onClick: () => handleMediaClick() },
-      { label: "Entourage List", percentage: getEntourageProgress(data), weight: getEntourageWeight(data), color: "#EE5348", onClick: () => handleEntourageListClick(), excluded: sections.entourage === false },
-      { label: "Story Timeline", percentage: getStoryTimelineProgress(data), weight: getStoryTimelineWeight(), color: "#3697D4", onClick: () => handleStoryTimelineClick(), excluded: sections.timeline === false },
-      { label: "Event Program", percentage: getWeddingProgramProgress(data), weight: getWeddingProgramWeight(), color: "#3ABD98", onClick: () => handleWeddingProgramClick(), excluded: sections.eventdetails === false },
+      { label: "Wedding Details", percentage: weddingDetailsProgress, weight: getWeddingDetailsWeight(data), color: "#F59E30", onClick: () => handleEventDetailsClick(), excluded: false, ...getWeddingDetailsProgressData(data) },
+      { label: "Media Files", percentage: mediaProgress, weight: getMediaWeight(), color: "#A15BA2", onClick: () => handleMediaClick(), excluded: false, ...getMediaProgressData(data) },
+      { label: "Entourage List", percentage: getEntourageProgress(data), weight: getEntourageWeight(data), color: "#EE5348", onClick: () => handleEntourageListClick(), excluded: sections.entourage === false, ...getEntourageProgressData(data) },
+      { label: "Event Program", percentage: getWeddingProgramProgress(data), weight: getWeddingProgramWeight(), color: "#3ABD98", onClick: () => handleWeddingProgramClick(), excluded: sections.eventdetails === false, ...getWeddingProgramProgressData(data) },
+      { label: "Story Timeline", percentage: getStoryTimelineProgress(data), weight: getStoryTimelineWeight(), color: "#3697D4", onClick: () => handleStoryTimelineClick(), excluded: sections.timeline === false, ...getStoryTimelineProgressData(data) },
     ];
-    return allSegments.filter(s => !s.excluded).sort((a, b) => b.weight - a.weight);
+    return allSegments.filter(s => !s.excluded);
   }, [data, weddingDetailsProgress, mediaProgress, data.entourage, data.storyTimeline, data.weddingProgram, data.sections]);
 
   const websiteOverallProgress = useMemo(() => {
@@ -192,6 +216,177 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     }
   }, [showBudgetEditor]);
 
+  // Reminder items: checklist + budget items with deadlines within 1 month, not checked/paid
+  interface ReminderItem {
+    id: string;
+    name: string;
+    type: "checklist" | "budget";
+    containerId: string;
+    containerTitle: string;
+    deadline: string;
+    daysLeft: number;
+  }
+
+  const reminderItems = useMemo(() => {
+    void showChecklistEditor;
+    void showBudgetEditor;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const oneMonthLater = new Date(now);
+    oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+    const items: ReminderItem[] = [];
+
+    // Checklist items
+    try {
+      const stored = localStorage.getItem('weddingChecklist');
+      if (stored) {
+        const containers = JSON.parse(stored);
+        for (const c of containers) {
+          for (const item of (c.items || [])) {
+            if (item.checked || !item.deadline) continue;
+            const d = new Date(item.deadline);
+            d.setHours(0, 0, 0, 0);
+            if (d > oneMonthLater) continue;
+            const diffMs = d.getTime() - now.getTime();
+            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+            items.push({
+              id: item.id,
+              name: item.name,
+              type: "checklist",
+              containerId: c.id,
+              containerTitle: c.title,
+              deadline: item.deadline,
+              daysLeft,
+            });
+          }
+        }
+      }
+    } catch {}
+
+    // Budget items
+    try {
+      const stored = localStorage.getItem('weddingBudget');
+      if (stored) {
+        const containers = JSON.parse(stored);
+        for (const c of containers) {
+          for (const item of (c.items || [])) {
+            const cost = parseFloat(item.cost) || parseFloat(item.budget) || 0;
+            const paid = parseFloat(item.paid) || 0;
+            if (cost > 0 && paid >= cost) continue; // fully paid
+            if (!item.due) continue;
+            const d = new Date(item.due);
+            d.setHours(0, 0, 0, 0);
+            if (d > oneMonthLater) continue;
+            const diffMs = d.getTime() - now.getTime();
+            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+            items.push({
+              id: item.id,
+              name: item.name || c.title,
+              type: "budget",
+              containerId: c.id,
+              containerTitle: c.title,
+              deadline: item.due,
+              daysLeft,
+            });
+          }
+        }
+      }
+    } catch {}
+
+    // Sort by daysLeft ascending (most overdue first)
+    items.sort((a, b) => a.daysLeft - b.daysLeft);
+
+    // Show up to 4 items, max 2 per type
+    const checklistItems = items.filter(i => i.type === "checklist");
+    const budgetItems = items.filter(i => i.type === "budget");
+    const result: ReminderItem[] = [];
+
+    // Fill up to 2 from each, then top up from the other
+    const clTake = Math.min(2, checklistItems.length);
+    const blTake = Math.min(2, budgetItems.length);
+    let clAdded = 0, blAdded = 0;
+
+    // First pass: take up to 2 from each
+    for (const item of checklistItems) {
+      if (clAdded >= clTake || result.length >= 4) break;
+      result.push(item); clAdded++;
+    }
+    for (const item of budgetItems) {
+      if (blAdded >= blTake || result.length >= 4) break;
+      result.push(item); blAdded++;
+    }
+
+    // Second pass: top up from whichever has more
+    if (result.length < 4) {
+      for (const item of checklistItems) {
+        if (result.length >= 4) break;
+        if (result.find(r => r.id === item.id)) continue;
+        result.push(item);
+      }
+      for (const item of budgetItems) {
+        if (result.length >= 4) break;
+        if (result.find(r => r.id === item.id)) continue;
+        result.push(item);
+      }
+    }
+
+    // Re-sort the final 4 by daysLeft
+    result.sort((a, b) => a.daysLeft - b.daysLeft);
+    return result;
+  }, [showChecklistEditor, showBudgetEditor]);
+
+  const allReminderItems = useMemo(() => {
+    void showChecklistEditor;
+    void showBudgetEditor;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const oneMonthLater = new Date(now);
+    oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+    const items: ReminderItem[] = [];
+
+    try {
+      const stored = localStorage.getItem('weddingChecklist');
+      if (stored) {
+        const containers = JSON.parse(stored);
+        for (const c of containers) {
+          for (const item of (c.items || [])) {
+            if (item.checked || !item.deadline) continue;
+            const d = new Date(item.deadline);
+            d.setHours(0, 0, 0, 0);
+            if (d > oneMonthLater) continue;
+            const diffMs = d.getTime() - now.getTime();
+            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+            items.push({ id: item.id, name: item.name, type: "checklist", containerId: c.id, containerTitle: c.title, deadline: item.deadline, daysLeft });
+          }
+        }
+      }
+    } catch {}
+
+    try {
+      const stored = localStorage.getItem('weddingBudget');
+      if (stored) {
+        const containers = JSON.parse(stored);
+        for (const c of containers) {
+          for (const item of (c.items || [])) {
+            const cost = parseFloat(item.cost) || parseFloat(item.budget) || 0;
+            const paid = parseFloat(item.paid) || 0;
+            if (cost > 0 && paid >= cost) continue;
+            if (!item.due) continue;
+            const d = new Date(item.due);
+            d.setHours(0, 0, 0, 0);
+            if (d > oneMonthLater) continue;
+            const diffMs = d.getTime() - now.getTime();
+            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+            items.push({ id: item.id, name: item.name || c.title, type: "budget", containerId: c.id, containerTitle: c.title, deadline: item.due, daysLeft });
+          }
+        }
+      }
+    } catch {}
+
+    items.sort((a, b) => a.daysLeft - b.daysLeft);
+    return items;
+  }, [showChecklistEditor, showBudgetEditor]);
+
   // Back gesture closes sub-views instead of minimizing app
   useBackHandler(showEntourageEditor, () => setShowEntourageEditor(false));
   useBackHandler(showGuestEditor, () => setShowGuestEditor(false));
@@ -202,6 +397,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   useBackHandler(showWeddingProgramEditor, () => setShowWeddingProgramEditor(false));
   useBackHandler(showStoryTimelineEditor, () => setShowStoryTimelineEditor(false));
   useBackHandler(showEventDetails, () => setShowEventDetails(false));
+  useBackHandler(showAllReminders, () => setShowAllReminders(false));
 
   // Snapshot of data for change detection at tools level
   const dataSnapshot = useRef(JSON.stringify(data));
@@ -224,12 +420,20 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails)) sections.push("Guest List");
     // Media
     if (data.heroIcon !== snapshot.heroIcon ||
+        JSON.stringify(data.heroBackgroundImages) !== JSON.stringify(snapshot.heroBackgroundImages) ||
+        JSON.stringify(data.heroBackgroundImagesMobile) !== JSON.stringify(snapshot.heroBackgroundImagesMobile) ||
         JSON.stringify(data.galleryImages) !== JSON.stringify(snapshot.galleryImages) ||
+        JSON.stringify(data.photosAndImages) !== JSON.stringify(snapshot.photosAndImages) ||
         JSON.stringify(data.venueImages) !== JSON.stringify(snapshot.venueImages) ||
+        JSON.stringify(data.receptionVenueImages) !== JSON.stringify(snapshot.receptionVenueImages) ||
         data.customHeadingFont !== snapshot.customHeadingFont ||
         data.customBodyFont !== snapshot.customBodyFont ||
         JSON.stringify(data.backgroundMusic) !== JSON.stringify(snapshot.backgroundMusic) ||
         JSON.stringify(data.backgroundMusicFileNames) !== JSON.stringify(snapshot.backgroundMusicFileNames)) sections.push("Media");
+    // Wedding Details
+    const weddingDetailsFields = ['hisName', 'herName', 'andText', 'coupleName', 'nameType', 'date', 'time', 'timezone', 'venueName', 'venueAddress', 'receptionVenueName', 'receptionVenueAddress', 'oneVenueOnly', 'heroMessage', 'heroClosingSentiment', 'eventDetailsHeading', 'eventDetailsMessage'] as const;
+    const hasWeddingDetailsChanges = weddingDetailsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]));
+    if (hasWeddingDetailsChanges) sections.push("Wedding Details");
     // Wedding Program
     if (JSON.stringify(data.weddingProgram) !== JSON.stringify(snapshot.weddingProgram)) sections.push("Wedding Program");
     // Story Timeline
@@ -249,6 +453,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
 
   // Handle tools-level save
   const handleToolsSave = async () => {
+    if (isExpired) return;
     if (onSave) {
       await onSave(data);
       dataSnapshot.current = JSON.stringify(data);
@@ -278,11 +483,23 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     if (data.heroIcon !== snapshot.heroIcon) {
       onChange("heroIcon" as keyof InvitationData, snapshot.heroIcon);
     }
+    if (JSON.stringify(data.heroBackgroundImages) !== JSON.stringify(snapshot.heroBackgroundImages)) {
+      onChange("heroBackgroundImages" as keyof InvitationData, snapshot.heroBackgroundImages);
+    }
+    if (JSON.stringify(data.heroBackgroundImagesMobile) !== JSON.stringify(snapshot.heroBackgroundImagesMobile)) {
+      onChange("heroBackgroundImagesMobile" as keyof InvitationData, snapshot.heroBackgroundImagesMobile);
+    }
     if (JSON.stringify(data.galleryImages) !== JSON.stringify(snapshot.galleryImages)) {
       onChange("galleryImages" as keyof InvitationData, snapshot.galleryImages);
     }
+    if (JSON.stringify(data.photosAndImages) !== JSON.stringify(snapshot.photosAndImages)) {
+      onChange("photosAndImages" as keyof InvitationData, snapshot.photosAndImages);
+    }
     if (JSON.stringify(data.venueImages) !== JSON.stringify(snapshot.venueImages)) {
       onChange("venueImages" as keyof InvitationData, snapshot.venueImages);
+    }
+    if (JSON.stringify(data.receptionVenueImages) !== JSON.stringify(snapshot.receptionVenueImages)) {
+      onChange("receptionVenueImages" as keyof InvitationData, snapshot.receptionVenueImages);
     }
     if (data.customHeadingFont !== snapshot.customHeadingFont) {
       onChange("customHeadingFont" as keyof InvitationData, snapshot.customHeadingFont);
@@ -305,6 +522,13 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     if (JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) {
       onChange("venueLayout" as keyof InvitationData, snapshot.venueLayout);
     }
+    // Wedding Details fields
+    const weddingDetailsFields = ['hisName', 'herName', 'andText', 'coupleName', 'nameType', 'date', 'time', 'timezone', 'venueName', 'venueAddress', 'receptionVenueName', 'receptionVenueAddress', 'oneVenueOnly', 'heroMessage', 'heroClosingSentiment', 'eventDetailsHeading', 'eventDetailsMessage'] as const;
+    weddingDetailsFields.forEach(f => {
+      if (JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f])) {
+        onChange(f as keyof InvitationData, (snapshot as any)[f]);
+      }
+    });
     // Settings fields
     const settingsFields = ['musicEnabled', 'musicTrack', 'musicVolume', 'rsvpEnabled', 'rsvpDeadline', 'rsvpAllowPlusOne', 'rsvpAskPlusOneName', 'rsvpAllowKids', 'rsvpAskMealPreference', 'rsvpMealOptions', 'rsvpCustomQuestions', 'rsvpCollectPhone', 'rsvpCollectAddress', 'rsvpShowGuestCount', 'rsvpButtonText', 'rsvpSubmitMessage', 'rsvpClosedMessage'] as const;
     settingsFields.forEach(f => {
@@ -314,20 +538,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     });
   };
 
-  // Handle save bubble click - show confirmation dialog unless setting says always save
+  // Handle save bubble click - show confirmation dialog
   const handleSaveBubbleClick = () => {
-    if (hideSaveConfirmationDialog) {
-      handleToolsSave();
-    } else {
-      setShowSaveConfirmation(true);
-    }
-  };
-
-  // Handle hide save confirmation dialog change
-  const handleHideSaveConfirmationDialogChange = (value: boolean) => {
-    if (onSettingsChange) {
-      onSettingsChange({ isDarkMode, accentColor, hideSaveConfirmationDialog: value, hideInstructions, showScreenDimensions, isPreviewDetached });
-    }
+    setShowSaveConfirmation(true);
   };
 
   // Detect mobile screen size
@@ -374,6 +587,55 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       };
     } catch {
       return null;
+    }
+  };
+
+  // Deadline comment for reminder items
+  const getDeadlineComment = (daysLeft: number): string => {
+    if (daysLeft === 0) return "Due today — act now!";
+    if (daysLeft > 0) return `Due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`;
+    return `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}`;
+  };
+
+  // Format deadline date for display (M/D/YY)
+  const formatReminderDate = (deadline: string): string => {
+    if (!deadline) return "";
+    const d = new Date(deadline);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear().toString().slice(2)}`;
+  };
+
+  // Handle reminder item tap - open checklist or budget editor
+  const handleReminderTap = (item: ReminderItem) => {
+    setShowAllReminders(false);
+    setHighlightItemId(item.id);
+    if (item.type === "checklist") {
+      // Expand the container in localStorage before opening
+      try {
+        const stored = localStorage.getItem('weddingChecklist');
+        if (stored) {
+          const containers = JSON.parse(stored);
+          const updated = containers.map((c: any) => ({
+            ...c,
+            isExpanded: c.id === item.containerId,
+          }));
+          localStorage.setItem('weddingChecklist', JSON.stringify(updated));
+        }
+      } catch {}
+      setShowChecklistEditor(true);
+    } else {
+      try {
+        const stored = localStorage.getItem('weddingBudget');
+        if (stored) {
+          const containers = JSON.parse(stored);
+          const updated = containers.map((c: any) => ({
+            ...c,
+            isExpanded: c.id === item.containerId,
+          }));
+          localStorage.setItem('weddingBudget', JSON.stringify(updated));
+        }
+      } catch {}
+      setShowBudgetEditor(true);
     }
   };
 
@@ -472,7 +734,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-5" style={{ fontFamily: "Inter, sans-serif" }}>
-          <EventDetailsTab data={data} onChange={onChange} isDarkMode={isDarkMode} accentColor={accentColor} />
+          <EventDetailsTab data={data} onChange={guardedOnChange} isDarkMode={isDarkMode} accentColor={accentColor} />
         </div>
       </div>
     );
@@ -482,7 +744,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     return (
       <EntourageEditor
         data={data}
-        onChange={onChange}
+        onChange={guardedOnChange}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowEntourageEditor(false)}
@@ -496,7 +758,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       <GuestEditor
         data={data}
         invitationId={invitationId}
-        onChange={onChange}
+        onChange={guardedOnChange}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowGuestEditor(false)}
@@ -509,14 +771,124 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     return (
       <MediaEditor
         data={data}
-        onChange={onChange}
+        onChange={guardedOnChange}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowMediaEditor(false)}
         invitationId={invitationId}
         onSave={onSave}
         isDemoMode={isDemoMode}
+        showNumbers={showNumbers}
       />
+    );
+  }
+
+  if (showAllReminders) {
+    const checklistReminders = allReminderItems.filter(i => i.type === "checklist");
+    const budgetReminders = allReminderItems.filter(i => i.type === "budget");
+    return (
+      <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+        {/* Header */}
+        <div className={`flex items-center gap-3 p-4 shrink-0 border-b ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+          <button
+            onClick={() => setShowAllReminders(false)}
+            className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
+            All Reminders
+          </h2>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ fontFamily: "Inter, sans-serif" }}>
+          {allReminderItems.length === 0 ? (
+            <p className={`text-sm text-center py-8 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+              No reminders
+            </p>
+          ) : (
+            <>
+              {/* CHECKLIST section */}
+              {checklistReminders.length > 0 && (
+                <div>
+                  <h3 className={`text-xs font-medium uppercase tracking-wide mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                    Checklist
+                  </h3>
+                  <div className="space-y-2">
+                    {checklistReminders.map((item) => (
+                      <div
+                        key={`cl-${item.id}`}
+                        onClick={() => handleReminderTap(item)}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors"
+                        style={{ backgroundColor: isDarkMode ? "#253143" : "white" }}
+                      >
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: hexToRgba(accentColor, 0.15) }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 11l3 3L22 4" />
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                            {item.name}
+                          </p>
+                          <p className={`text-xs ${item.daysLeft < 0 ? "text-red-500" : item.daysLeft === 0 ? "text-orange-500" : isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                            {getDeadlineComment(item.daysLeft)} • {formatReminderDate(item.deadline)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* BUDGETLIST section */}
+              {budgetReminders.length > 0 && (
+                <div>
+                  <h3 className={`text-xs font-medium uppercase tracking-wide mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                    Budget List
+                  </h3>
+                  <div className="space-y-2">
+                    {budgetReminders.map((item) => (
+                      <div
+                        key={`bl-${item.id}`}
+                        onClick={() => handleReminderTap(item)}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors"
+                        style={{ backgroundColor: isDarkMode ? "#253143" : "white" }}
+                      >
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: hexToRgba("#F59E0B", 0.15) }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="1" x2="12" y2="23" />
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                            {item.name}
+                          </p>
+                          <p className={`text-xs ${item.daysLeft < 0 ? "text-red-500" : item.daysLeft === 0 ? "text-orange-500" : isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                            {getDeadlineComment(item.daysLeft)} • {formatReminderDate(item.deadline)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          <div className="h-8"></div>
+        </div>
+      </div>
     );
   }
 
@@ -525,7 +897,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       <ChecklistEditor
         isDarkMode={isDarkMode}
         accentColor={accentColor}
-        onClose={() => setShowChecklistEditor(false)}
+        showNumbers={showNumbers}
+        highlightItemId={highlightItemId}
+        onClose={() => { setShowChecklistEditor(false); setHighlightItemId(null); }}
       />
     );
   }
@@ -535,7 +909,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       <BudgetEditor
         isDarkMode={isDarkMode}
         accentColor={accentColor}
-        onClose={() => setShowBudgetEditor(false)}
+        showNumbers={showNumbers}
+        highlightItemId={highlightItemId}
+        onClose={() => { setShowBudgetEditor(false); setHighlightItemId(null); }}
       />
     );
   }
@@ -544,7 +920,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     return (
       <TableMapEditor
         data={data}
-        onChange={onChange}
+        onChange={guardedOnChange}
         onImmediateSave={onSave}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
@@ -560,7 +936,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         onClose={() => setShowWeddingProgramEditor(false)}
         data={data}
-        onChange={onChange}
+        onChange={guardedOnChange}
         onSave={onSave}
       />
     );
@@ -572,9 +948,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowStoryTimelineEditor(false)}
-        galleryImages={data.galleryImages || []}
+        galleryImages={data.photosAndImages || []}
         data={data}
-        onChange={onChange}
+        onChange={guardedOnChange}
         onSave={onSave}
       />
     );
@@ -582,112 +958,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
 
   return (
     <div className={`flex flex-col ${isDemoMode ? "h-full" : "h-dvh"} lg:h-full overflow-hidden`}>
-      {/* Web bubble - only on dashboard */}
-      {activeNavTab === "dashboard" && (
-        <div className="fixed top-4 right-4 z-[59] no-print">
-          <button
-            onClick={() => setShowWebBubbleMenu(!showWebBubbleMenu)}
-            aria-label="Web options"
-            className="p-4 rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
-            style={{ backgroundColor: accentColor }}
-          >
-            <div className="w-7 h-7" style={{
-              backgroundColor: "white",
-              WebkitMaskImage: "url(/assets/ico-globe.png)",
-              WebkitMaskSize: "contain",
-              WebkitMaskPosition: "center",
-              WebkitMaskRepeat: "no-repeat",
-              maskImage: "url(/assets/ico-globe.png)",
-              maskSize: "contain",
-              maskPosition: "center",
-              maskRepeat: "no-repeat",
-            }} />
-          </button>
-
-          {showWebBubbleMenu && (
-            <>
-              <div className="fixed inset-0 z-[-1]" onClick={() => setShowWebBubbleMenu(false)} />
-              <div
-                className="absolute right-0 mt-2 rounded-2xl shadow-xl overflow-hidden min-w-[200px]"
-                style={{
-                  backgroundColor: isDarkMode ? "#1C2531" : "#ffffff",
-                  border: `1px solid ${isDarkMode ? "#374151" : "#E5E7EB"}`,
-                }}
-              >
-                <button
-                  onClick={() => {
-                    setShowWebBubbleMenu(false);
-                    if (onOpenEditor) onOpenEditor();
-                  }}
-                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full text-left ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}
-                  style={{ fontFamily: "Inter, sans-serif" }}
-                >
-                  <span style={{ color: accentColor }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                  </span>
-                  Edit Web Invitation
-                </button>
-                <button
-                  onClick={() => {
-                    setShowWebBubbleMenu(false);
-                    if (isDemoMode) {
-                      // Demo edits live in this origin's localStorage, so navigate
-                      // in-app (same WebView, same origin) rather than an external
-                      // browser. This works both online and offline.
-                      window.location.href = "/invite/demo";
-                      return;
-                    }
-                    window.open(buildInviteUrl(slug), "_blank");
-                  }}
-                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full text-left ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}
-                  style={{ fontFamily: "Inter, sans-serif" }}
-                >
-                  <span style={{ color: accentColor }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </span>
-                  Open Invitation Link
-                </button>
-                <button
-                  onClick={() => {
-                    setShowWebBubbleMenu(false);
-                    togglePreviewDetached();
-                  }}
-                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5 w-full text-left ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}
-                  style={{ fontFamily: "Inter, sans-serif" }}
-                >
-                  <span style={{ color: accentColor }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      {isPreviewDetached ? (
-                        <>
-                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                        </>
-                      ) : (
-                        <>
-                          <path d="M15 3h6v6" />
-                          <path d="M9 21H3v-6" />
-                          <path d="M21 3l-7 7" />
-                          <path d="M3 21l7-7" />
-                        </>
-                      )}
-                    </svg>
-                  </span>
-                  {isPreviewDetached ? "Attach Preview" : "Detach Preview"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Save bubble - shows when there are unsaved changes at tools level - rendered after web bubble for stacking */}
-      {hasUnsavedChanges && (
+      {/* Save bubble - shows when there are unsaved changes at tools level (hidden when expired) */}
+      {hasUnsavedChanges && !isExpired && (
         <button
           onClick={handleSaveBubbleClick}
           aria-label={`Save ${changedSections.length} unsaved change${changedSections.length === 1 ? "" : "s"}`}
@@ -1003,7 +1275,6 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
 
       {/* Progress container - overlaps hero preview slightly - only on dashboard */}
       {activeNavTab === "dashboard" && (
-        <>
         <div className={`relative z-20 ${isPreviewDetached ? "mt-3 mx-4" : "-mt-6 mx-3"} rounded-2xl p-4 shadow-lg ${isDarkMode ? "bg-[#253143]" : "bg-white"}`}>
           <div className="flex items-center justify-around">
             <ProgressCircle
@@ -1032,24 +1303,91 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
             />
           </div>
         </div>
-
-        {/* Website progress gauge - segmented by included tiles */}
-        <div className={`relative z-20 mx-3 mt-3 rounded-2xl p-4 shadow-lg flex flex-col items-center ${isDarkMode ? "bg-[#253143]" : "bg-white"}`}>
-          <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-            Website Progress
-          </p>
-          <HalfCircleGauge
-            segments={websiteGaugeSegments}
-            overallPercentage={websiteOverallProgress}
-            accentColor={accentColor}
-            isDarkMode={isDarkMode}
-            centerLabel="Overall"
-          />
-        </div>
-        </>
       )}
 
-      <div className="p-4 flex-1 overflow-y-auto">
+      <div className="px-4 pb-4 mt-3 flex-1 overflow-y-auto" style={{ paddingTop: 0 }}>
+        {/* Reminder section - only on dashboard */}
+        {activeNavTab === "dashboard" && reminderItems.length > 0 && (
+          <div className="mb-4">
+            {/* REMINDER label button + SHOW ALL */}
+            <div className="flex items-center justify-between mb-2">
+              <button
+                className={`px-3 py-1 rounded-full text-[10px] font-medium uppercase tracking-wide transition-colors ${isDarkMode ? "bg-[#1e2a3a] text-gray-400 hover:text-gray-200" : "bg-gray-100 text-gray-500 hover:text-gray-700"}`}
+                style={{ fontFamily: "Inter, sans-serif" }}
+              >
+                Reminder
+              </button>
+              {allReminderItems.length > 4 && (
+                <button
+                  onClick={() => setShowAllReminders(true)}
+                  className="text-[10px] font-medium uppercase tracking-wide transition-colors"
+                  style={{ color: accentColor, fontFamily: "Inter, sans-serif" }}
+                >
+                  Show All
+                </button>
+              )}
+            </div>
+            {/* Reminder items */}
+            <div className="space-y-1.5">
+              {reminderItems.map((item) => (
+                <div
+                  key={`${item.type}-${item.id}`}
+                  onClick={() => handleReminderTap(item)}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors"
+                  style={{
+                    backgroundColor: isDarkMode ? "#253143" : "white",
+                  }}
+                >
+                  {/* Icon */}
+                  <div
+                    className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: item.type === "checklist" ? hexToRgba(accentColor, 0.15) : hexToRgba("#F59E0B", 0.15) }}
+                  >
+                    {item.type === "checklist" ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 11l3 3L22 4" />
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                      </svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="1" x2="12" y2="23" />
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                      </svg>
+                    )}
+                  </div>
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-medium truncate ${isDarkMode ? "text-gray-200" : "text-gray-900"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                      {item.name}
+                    </p>
+                    <p className={`text-[10px] ${item.daysLeft < 0 ? "text-red-500" : item.daysLeft === 0 ? "text-orange-500" : isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                      {getDeadlineComment(item.daysLeft)} • {formatReminderDate(item.deadline)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Website progress gauge - segmented by included tiles - only on dashboard */}
+        {activeNavTab === "dashboard" && (
+          <div className={`relative z-20 mb-4 rounded-2xl p-4 shadow-lg flex flex-col items-center ${isDarkMode ? "bg-[#253143]" : "bg-white"}`}>
+            <HalfCircleGauge
+              segments={websiteGaugeSegments}
+              overallPercentage={websiteOverallProgress}
+              accentColor={accentColor}
+              isDarkMode={isDarkMode}
+              centerLabel="Overall"
+              onDesignWebsite={handleWeddingWebsiteClick}
+              showNumbers={showNumbers}
+              onToggleNumbers={() => {
+                const next = !showNumbers;
+                setShowNumbers(next);
+                try { localStorage.setItem('websiteProgressMode', next ? 'numbers' : 'percentage'); } catch {}
+              }}
+            />
+          </div>
+        )}
         {activeNavTab === "list" && (
           <div className="grid grid-cols-2 gap-4">
             <ToolTile
@@ -1126,18 +1464,18 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         {activeNavTab === "settings" && (
           <SettingsEditor
             data={data}
-            onChange={onChange}
+            onChange={guardedOnChange}
             isDarkMode={isDarkMode}
             accentColor={accentColor}
             onClose={() => setActiveNavTab("dashboard")}
             onSettingsChange={onSettingsChange}
-            hideSaveConfirmationDialog={hideSaveConfirmationDialog}
             hideInstructions={hideInstructions}
             showScreenDimensions={showScreenDimensions}
             isPreviewDetached={isPreviewDetached}
             invitationId={invitationId}
             isDemoMode={isDemoMode}
             slug={slug}
+            accountInfo={accountInfo}
           />
         )}
       </div>
@@ -1180,11 +1518,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         pendingChangesCount={changedSections.length}
         isDarkMode={isDarkMode}
         accentColor={accentColor}
-        hideSaveConfirmationDialog={hideSaveConfirmationDialog}
         onSave={handleToolsSave}
         onDiscard={handleToolsDiscard}
         onClose={() => setShowSaveConfirmation(false)}
-        onHideSaveConfirmationDialogChange={handleHideSaveConfirmationDialogChange}
       />
     </div>
   );
