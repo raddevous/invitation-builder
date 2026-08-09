@@ -527,7 +527,6 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           slug={invitation.slug}
           invitationId={invitation.id}
           onChange={(field, value) => {
-            console.log("[page.tsx] onChange called, field:", field, "value type:", typeof value, Array.isArray(value) ? `array(${value.length})` : "");
             setInvitation(prev => prev ? { ...prev, data: { ...prev.data, [field]: value } } : prev);
           }}
           onSave={async (updatedData) => {

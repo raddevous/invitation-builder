@@ -122,6 +122,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const guardedOnChange = useCallback(
     (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => {
       if (isExpired) return;
+      userChangeOccurred.current = true;
       onChange(field, value);
     },
     [isExpired, onChange]
@@ -385,6 +386,10 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const dataSnapshot = useRef(JSON.stringify(data));
   // State version to force recompute of changedSections after save updates the ref
   const [snapshotVersion, setSnapshotVersion] = useState(0);
+  // Track whether any user-initiated change has occurred (vs automatic media
+  // cache resolution on native, which swaps remote URLs for local URIs and
+  // would otherwise falsely trigger the save bubble on every dashboard load)
+  const userChangeOccurred = useRef(false);
 
   // Detect which sections have changed by comparing current data against snapshot
   const changedSections = useMemo(() => {
@@ -431,19 +436,22 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     const hasSettingsChanges = settingsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]));
     if (hasSettingsChanges) sections.push("Settings");
 
-    if (sections.length > 0) {
-      console.log("[ToolsTab] changedSections:", sections, "rsvpInvitees changed:", JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees));
-    }
     return sections;
   }, [data, snapshotVersion]);
 
-  const hasUnsavedChanges = changedSections.length > 0;
+  const hasUnsavedChanges = changedSections.length > 0 && userChangeOccurred.current;
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
 
-  // Debug: trace save bubble visibility
+  // On native, media cache resolution swaps remote URLs for local URIs after
+  // the initial render. This automatic transformation would falsely trigger
+  // the save bubble. Silently update the snapshot when no user change has
+  // occurred so the baseline matches the resolved data.
   useEffect(() => {
-    console.log("[ToolsTab] hasUnsavedChanges:", hasUnsavedChanges, "changedSections:", changedSections, "snapshot length:", dataSnapshot.current.length, "data length:", JSON.stringify(data).length);
-  }, [hasUnsavedChanges, changedSections]);
+    if (!userChangeOccurred.current && dataSnapshot.current !== JSON.stringify(data)) {
+      dataSnapshot.current = JSON.stringify(data);
+      setSnapshotVersion(v => v + 1);
+    }
+  }, [data]);
 
   // Handle tools-level save
   const handleToolsSave = async () => {
@@ -452,6 +460,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       await onSave(data);
       dataSnapshot.current = JSON.stringify(data);
       setSnapshotVersion(v => v + 1);
+      userChangeOccurred.current = false;
     }
   };
 
@@ -530,6 +539,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         onChange(f as keyof InvitationData, (snapshot as any)[f]);
       }
     });
+    userChangeOccurred.current = false;
   };
 
   // Handle save bubble click - show confirmation dialog
