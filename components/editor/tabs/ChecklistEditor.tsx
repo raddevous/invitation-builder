@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import FloatingActionMenu from "../shared/FloatingActionMenu";
+import type { ChecklistItem, ChecklistContainer } from "@/lib/types/invitation";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -9,25 +10,13 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-interface ChecklistItem {
-  id: string;
-  name: string;
-  checked: boolean;
-  deadline?: string;
-}
-
-interface ChecklistContainer {
-  id: string;
-  title: string;
-  items: ChecklistItem[];
-  isExpanded: boolean;
-}
-
 interface ChecklistEditorProps {
   isDarkMode?: boolean;
   accentColor?: string;
   showNumbers?: boolean;
   highlightItemId?: string | null;
+  initialData?: ChecklistContainer[];
+  onChange?: (data: ChecklistContainer[]) => void;
   onClose: () => void;
 }
 
@@ -143,10 +132,13 @@ function getDefaultChecklist(): ChecklistContainer[] {
   ];
 }
 
-export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, onClose }: ChecklistEditorProps) {
+export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialData, onChange, onClose }: ChecklistEditorProps) {
   const [isEditMode, setIsEditMode] = useState(false);
-  // Initialize from localStorage directly
+  // Initialize from initialData prop, fallback to localStorage, then defaults
   const getInitialContainers = (): ChecklistContainer[] => {
+    if (initialData && initialData.length > 0) {
+      return initialData.map((c: ChecklistContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
+    }
     try {
       const stored = localStorage.getItem('weddingChecklist');
       if (stored) {
@@ -210,20 +202,22 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
     setHasUnsavedChanges(JSON.stringify(containers) !== initialDataSnapshot.current);
   }, [containers]);
 
-  // Helper function to save to localStorage
-  const saveToLocalStorage = (data: ChecklistContainer[]) => {
+  // Helper function to save to localStorage (cache) and notify parent
+  const saveData = (data: ChecklistContainer[]) => {
     try {
       localStorage.setItem('weddingChecklist', JSON.stringify(data));
     } catch (error) {
       console.error('Failed to save checklist to localStorage:', error);
-      throw error;
+    }
+    if (onChange) {
+      onChange(data);
     }
   };
 
   // Handle close - auto-apply pending changes, no save prompt
   const handleClose = () => {
     if (hasUnsavedChanges) {
-      saveToLocalStorage(containers);
+      saveData(containers);
     }
     onClose();
   };

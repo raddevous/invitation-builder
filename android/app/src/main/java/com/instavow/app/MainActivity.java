@@ -13,6 +13,8 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
+import android.graphics.Color;
+import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
 
@@ -43,10 +45,21 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    // Enable edge-to-edge: app draws behind status bar and navigation bar
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    // Force window to extend behind system bars
+    getWindow().getAttributes().flags |= android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+    getWindow().setFlags(
+      android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+      android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+    );
     registerPlugin(SystemBrowserPlugin.class);
     super.onCreate(savedInstanceState);
 
     WebView webView = getBridge().getWebView();
+    webView.setBackgroundColor(Color.TRANSPARENT);
+    // Ensure WebView fills the entire window
+    webView.setFitsSystemWindows(false);
     connectivityManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
 
     webView.setWebViewClient(new BridgeWebViewClient(getBridge()) {

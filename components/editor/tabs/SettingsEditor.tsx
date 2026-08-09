@@ -1,7 +1,5 @@
 import type { InvitationData } from "@/lib/types/invitation";
 import { useState, useEffect, useRef, useCallback } from "react";
-import BackupWarningDialog from "@/components/shared/BackupWarningDialog";
-import ImportWarningDialog from "@/components/shared/ImportWarningDialog";
 import LoginDialog from "@/components/editor/LoginDialog";
 import QRCode from "qrcode";
 import { Capacitor } from "@capacitor/core";
@@ -57,23 +55,12 @@ const ACCENT_COLORS = [
 ];
 
 export default function SettingsEditor({ data, onChange, isDarkMode = true, accentColor = "#6998EE", onClose, onSettingsChange, hideInstructions = false, showScreenDimensions = false, isPreviewDetached = false, invitationId, isDemoMode = false, slug, accountInfo }: SettingsEditorProps) {
-  const [backupExists, setBackupExists] = useState(false);
-  const [backupDate, setBackupDate] = useState<string | null>(null);
-  const [isBackingUp, setIsBackingUp] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
-  const [showBackupWarning, setShowBackupWarning] = useState(false);
-  const [showImportWarning, setShowImportWarning] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Check for existing backup on mount
-  useEffect(() => {
-    checkBackup();
-  }, []);
 
   const generateQrCode = useCallback(async () => {
     if (!slug) return;
@@ -128,113 +115,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    }
-  };
-
-  const checkBackup = async () => {
-    try {
-      const userId = localStorage.getItem('invitation') ? JSON.parse(localStorage.getItem('invitation')!).id : null;
-      if (!userId) return;
-
-      const res = await fetch(apiUrl(`/api/backup?user_id=${userId}`));
-      const data = await res.json();
-      if (data.exists) {
-        setBackupExists(true);
-        setBackupDate(data.updated_at || data.created_at);
-      }
-    } catch (error) {
-      console.error("Error checking backup:", error);
-    }
-  };
-
-  const handleBackup = async () => {
-    // Show warning if backup already exists
-    if (backupExists && backupDate) {
-      setShowBackupWarning(true);
-      return;
-    }
-
-    // Proceed with backup if no existing backup
-    performBackup();
-  };
-
-  const performBackup = async () => {
-    setIsBackingUp(true);
-    try {
-      const userId = localStorage.getItem('invitation') ? JSON.parse(localStorage.getItem('invitation')!).id : null;
-      if (!userId) return;
-
-      // Collect local data
-      const appSettings = localStorage.getItem('appSettings') ? JSON.parse(localStorage.getItem('appSettings')!) : null;
-      const weddingChecklist = localStorage.getItem('weddingChecklist') ? JSON.parse(localStorage.getItem('weddingChecklist')!) : null;
-      const weddingBudget = localStorage.getItem('weddingBudget') ? JSON.parse(localStorage.getItem('weddingBudget')!) : null;
-
-      const backupData = {
-        appSettings,
-        weddingChecklist,
-        weddingBudget,
-      };
-
-      const res = await fetch(apiUrl('/api/backup'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, backup_data: backupData }),
-      });
-
-      if (res.ok) {
-        setBackupExists(true);
-        setBackupDate(new Date().toISOString());
-        alert('Backup created successfully!');
-      } else {
-        alert('Failed to create backup');
-      }
-    } catch (error) {
-      console.error("Error creating backup:", error);
-      alert('Failed to create backup');
-    } finally {
-      setIsBackingUp(false);
-    }
-  };
-
-  const handleImport = async () => {
-    setShowImportWarning(true);
-  };
-
-  const performImport = async () => {
-    setIsImporting(true);
-    try {
-      const userId = localStorage.getItem('invitation') ? JSON.parse(localStorage.getItem('invitation')!).id : null;
-      if (!userId) return;
-
-      const res = await fetch(apiUrl(`/api/backup?user_id=${userId}&download=true`));
-      const data = await res.json();
-
-      if (data.exists && data.data) {
-        // Restore local data
-        if (data.data.appSettings) {
-          localStorage.setItem('appSettings', JSON.stringify(data.data.appSettings));
-          if (onSettingsChange) {
-            onSettingsChange(data.data.appSettings);
-          }
-        }
-
-        if (data.data.weddingChecklist) {
-          localStorage.setItem('weddingChecklist', JSON.stringify(data.data.weddingChecklist));
-        }
-
-        if (data.data.weddingBudget) {
-          localStorage.setItem('weddingBudget', JSON.stringify(data.data.weddingBudget));
-        }
-
-        alert('Backup imported successfully! Refresh to see changes.');
-      } else {
-        alert('Failed to import backup');
-      }
-    } catch (error) {
-      console.error("Error importing backup:", error);
-      alert('Failed to import backup');
-    } finally {
-      setIsImporting(false);
     }
   };
 
@@ -322,7 +202,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                 </div>
                 <div className="flex items-center justify-between">
                   <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Editing Expires</span>
-                  <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.expiresAt ? new Date(accountInfo.expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "—"}</span>
+                  <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                    {accountInfo?.expiresAt ? (() => {
+                      const days = Math.ceil((new Date(accountInfo.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                      return days > 0 ? `${days} days remaining` : "Expired";
+                    })() : "—"}
+                  </span>
                 </div>
               </div>
             )}
@@ -523,150 +408,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           </div>
         </div>
 
-        {/* Backup / Import - Collapsible */}
-        {!isDemoMode && (
-        <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300`}
-          onMouseEnter={() => setHoveredSection('backup')}
-          onMouseLeave={() => setHoveredSection(null)}
-          style={{
-            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            borderColor: hoveredSection === 'backup' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-            ...(expandedSection === 'backup' ? {
-              boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
-            } : {})
-          }}
-        >
-          {/* Header */}
-          <div
-            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
-            onClick={() => setExpandedSection(expandedSection === 'backup' ? null : 'backup')}
-          >
-            <div className="shrink-0 text-gray-400 order-2">
-              {expandedSection === 'backup' ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 15l-6-6-6 6" />
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              )}
-            </div>
-            <div className="flex-1 order-1">
-              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
-                Backup & Import
-              </h3>
-              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                Save your local settings to the cloud or restore from backup
-              </p>
-            </div>
-          </div>
-
-          {/* Content */}
-          {expandedSection === 'backup' && (
-            <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
-              {backupExists && backupDate && (
-                <div className={`p-3 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
-                  <p className={`text-xs ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
-                    Last backup: {new Date(backupDate).toLocaleDateString()} at {new Date(backupDate).toLocaleTimeString()}
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleBackup}
-                  disabled={isBackingUp}
-                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isBackingUp ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
-                  style={{ backgroundColor: accentColor, color: "white" }}
-                >
-                  {isBackingUp ? "Backing up..." : "Backup Data"}
-                </button>
-
-                {backupExists && (
-                  <button
-                    onClick={handleImport}
-                    disabled={isImporting}
-                    className={`flex-1 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                      isImporting ? "opacity-50 cursor-not-allowed" : ""
-                    } ${isDarkMode ? "border-gray-500 text-gray-200 hover:bg-gray-600" : "border-gray-200 text-gray-700 hover:bg-gray-100"}`}
-                  >
-                    {isImporting ? "Importing..." : "Import Data"}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Builder Expiration - Collapsible */}
-        {!isDemoMode && (
-        <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300`}
-          onMouseEnter={() => setHoveredSection('expiration')}
-          onMouseLeave={() => setHoveredSection(null)}
-          style={{
-            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            borderColor: hoveredSection === 'expiration' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-            ...(expandedSection === 'expiration' ? {
-              boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
-            } : {})
-          }}
-        >
-          {/* Header */}
-          <div
-            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
-            onClick={() => setExpandedSection(expandedSection === 'expiration' ? null : 'expiration')}
-          >
-            <div className="shrink-0 text-gray-400 order-2">
-              {expandedSection === 'expiration' ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 15l-6-6-6 6" />
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              )}
-            </div>
-            <div className="flex-1 order-1">
-              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
-                Builder Expiration
-              </h3>
-              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                You can no longer edit when your builder expires 1 year during creation
-              </p>
-            </div>
-          </div>
-
-          {/* Content */}
-          {expandedSection === 'expiration' && (
-            <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
-              {accountInfo?.expiresAt ? (
-                <div className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
-                  <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
-                    Expires on: {new Date(accountInfo.expiresAt).toLocaleDateString()}
-                  </p>
-                </div>
-              ) : (
-                <div className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
-                  <p className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
-                    Expiration date not set
-                  </p>
-                </div>
-              )}
-              <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                Your builder will expire 1 year from the signup date or 30 days after the wedding day, whichever is earlier.
-              </p>
-            </div>
-          )}
-        </div>
-        )}
-
         {/* QR Code - Collapsible */}
         {!isDemoMode && (
         <div
@@ -793,31 +534,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
 
       <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} isDarkMode={isDarkMode} accentColor={accentColor} />
 
-      {/* Backup warning dialog */}
-      <BackupWarningDialog
-        isOpen={showBackupWarning}
-        lastBackupDate={backupDate || ""}
-        isDarkMode={isDarkMode}
-        accentColor={accentColor}
-        onConfirm={() => {
-          setShowBackupWarning(false);
-          performBackup();
-        }}
-        onCancel={() => setShowBackupWarning(false)}
-      />
-
-      {/* Import warning dialog */}
-      <ImportWarningDialog
-        isOpen={showImportWarning}
-        lastBackupDate={backupDate || ""}
-        isDarkMode={isDarkMode}
-        accentColor={accentColor}
-        onConfirm={() => {
-          setShowImportWarning(false);
-          performImport();
-        }}
-        onCancel={() => setShowImportWarning(false)}
-      />
     </div>
   );
 }

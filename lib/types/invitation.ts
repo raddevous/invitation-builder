@@ -55,6 +55,36 @@ export interface ImageTransform {
   objectPosition: string;
 }
 
+export interface BudgetItem {
+  id: string;
+  name: string;
+  budget: string;
+  cost: string;
+  paid: string;
+  due: string;
+}
+
+export interface BudgetContainer {
+  id: string;
+  title: string;
+  items: BudgetItem[];
+  isExpanded?: boolean;
+}
+
+export interface ChecklistItem {
+  id: string;
+  name: string;
+  checked: boolean;
+  deadline?: string;
+}
+
+export interface ChecklistContainer {
+  id: string;
+  title: string;
+  items: ChecklistItem[];
+  isExpanded?: boolean;
+}
+
 export interface InvitationData {
   nameType: "couple" | "event";
   coupleName: string;
@@ -792,6 +822,8 @@ export interface InvitationData {
       name?: string;
     };
   };
+  budgetData?: BudgetContainer[];
+  checklistData?: ChecklistContainer[];
 }
 
 export interface Invitation {

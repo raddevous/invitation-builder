@@ -113,5 +113,12 @@ export function useMediaCache(
     return () => window.removeEventListener("online", handleOnline);
   }, [shouldCache, data, precache]);
 
+  // On web (non-native), return data directly to avoid a one-render-cycle delay
+  // caused by useEffect. This ensures ToolsTab receives updated data immediately
+  // when editors apply changes, so the save bubble appears correctly.
+  if (!shouldCache) {
+    return { resolvedData: data, isCaching: false, precache };
+  }
+
   return { resolvedData, isCaching, precache };
 }

@@ -1836,7 +1836,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
               style={{
                 width: '100%',
                 maxWidth: '500px',
-                aspectRatio: '3/4',
+                maxHeight: '85vh',
                 borderRadius: '8px',
                 isolation: 'isolate',
                 ...(!tempRemoveBackground && data.rsvpPaperBackground && data.rsvpPaperBackground !== 'none' ? {
@@ -1903,13 +1903,16 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 />
               )}
               {/* Paper Container Content */}
-              <div id="rsvp-content-wrapper" className="h-full flex flex-col items-center justify-start p-8 space-y-6 relative z-40">
+              <div id="rsvp-content-wrapper" className="flex flex-col items-center justify-between p-4 sm:p-6 md:p-8 relative z-40" style={{ gap: 'clamp(0.5rem, 2vh, 1.5rem)', maxHeight: '85vh' }}>
+                {/* Top section: heading + deadline + guest info */}
+                <div className="flex flex-col items-center w-full" style={{ gap: 'clamp(0.25rem, 1vh, 0.75rem)', flexShrink: 0 }}>
                 {/* RSVP Heading */}
                 <h2
-                  className="text-3xl font-bold text-center"
+                  className="font-bold text-center"
                   style={{ 
                     color: data.rsvpPaperTextColor || data.mainColor2,
-                    fontFamily: `${data.rsvpPaperHeadingFont || data.headingFont}, serif`
+                    fontFamily: `${data.rsvpPaperHeadingFont || data.headingFont}, serif`,
+                    fontSize: 'clamp(1.25rem, 5vh, 1.875rem)'
                   }}
                 >
                   {data.rsvpCardHeadingText || "RSVP"}
@@ -1924,21 +1927,21 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                     return (
                       <div className="text-center">
                         <p
-                          className="text-xs"
                           style={{ 
                             color: data.rsvpPaperTextColor || data.mainColor2,
                             opacity: 0.7,
-                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                            fontSize: 'clamp(0.625rem, 2vh, 0.75rem)'
                           }}
                         >
                           {deadlineFormat.prefix}
                         </p>
                         <p
-                          className="text-xs"
                           style={{ 
                             color: data.rsvpPaperTextColor || data.mainColor2,
                             opacity: 0.7,
-                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                            fontSize: 'clamp(0.625rem, 2vh, 0.75rem)'
                           }}
                         >
                           {data.rsvpDeadline}
@@ -1948,11 +1951,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   } else {
                     return (
                       <p
-                        className="text-sm text-center"
+                        className="text-center"
                         style={{ 
                           color: data.rsvpPaperTextColor || data.mainColor2,
                           opacity: 0.7,
-                          fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                          fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                          fontSize: 'clamp(0.625rem, 2vh, 0.875rem)'
                         }}
                       >
                         {deadlineFormat.prefix} {data.rsvpDeadline}
@@ -1961,16 +1965,16 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   }
                 })()}
                 
-                <div className="h-4" />
                 
                 {/* Guest Name */}
                 <div className="w-full justify-center">
                   <span
                     data-rsvp-guest-name
-                    className={`text-sm block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
+                    className={`block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
                     style={{
                       color: data.rsvpPaperTextColor || data.mainColor2,
-                      fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                      fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                      fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
                     }}
                   >
                     {(() => {
@@ -1988,11 +1992,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 {/* Reserved Text */}
                 <p
                   data-rsvp-reserved-text
-                  className="text-center text-sm"
+                  className="text-center"
                   style={{
                     color: data.rsvpPaperTextColor || data.mainColor2,
                     fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
-                    whiteSpace: 'pre-wrap'
+                    whiteSpace: 'pre-wrap',
+                    fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
                   }}
                   dangerouslySetInnerHTML={{
                     __html: getReservedTextForGuest(selectedGuest?.name || "")
@@ -2007,11 +2012,13 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                     const sentences = entDetails.instruction.match(/[^.!?]+[.!?]+/g) || [entDetails.instruction];
                     return (
                       <div
-                        className="text-center text-sm mt-4"
+                        className="text-center"
                         style={{
                           color: data.rsvpPaperTextColor || data.mainColor2,
                           fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
                           opacity: 0.8,
+                          fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)',
+                          marginTop: 'clamp(0.25rem, 1vh, 1rem)'
                         }}
                       >
                         {sentences.map((sentence, i) => (
@@ -2026,13 +2033,13 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 {/* Response Display or Form */}
                 {existingResponse ? (
                   /* Guest has already responded - show thank you message */
-                  <div className="mt-6 flex flex-col items-center gap-4">
+                  <div className="flex flex-col items-center" style={{ gap: 'clamp(0.5rem, 2vh, 1rem)', marginTop: 'clamp(0.5rem, 2vh, 1.5rem)' }}>
                     {/* Icon in circle */}
                     <div
                       className="flex items-center justify-center"
                       style={{
-                        width: '48px',
-                        height: '48px',
+                        width: 'clamp(36px, 6vh, 48px)',
+                        height: 'clamp(36px, 6vh, 48px)',
                         borderRadius: '50%',
                         backgroundColor: data.rsvpPaperTextColor || data.mainColor2
                       }}
@@ -2041,17 +2048,18 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         src="/assets/ico-sent.png"
                         alt="Sent"
                         style={{
-                          width: '24px',
-                          height: '24px',
+                          width: 'clamp(18px, 3vh, 24px)',
+                          height: 'clamp(18px, 3vh, 24px)',
                           filter: 'brightness(0) invert(1)'
                         }}
                       />
                     </div>
                     <p
-                      className="text-center text-sm"
+                      className="text-center"
                       style={{
                         color: data.rsvpPaperTextColor || data.mainColor2,
-                        fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                        fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                        fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
                       }}
                     >
                       {existingResponse.attendance === 'attending' 
@@ -2066,7 +2074,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   /* Guest has not responded - show form */
                   <>
                     {/* Attendance Options */}
-                    <div className="flex flex-col items-start gap-4">
+                    <div className="flex flex-col items-start" style={{ gap: 'clamp(0.5rem, 2vh, 1rem)' }}>
                       <div
                         onClick={() => setSelectedAttendance('celebrate')}
                         className="flex items-center gap-3 cursor-pointer"
@@ -2075,8 +2083,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         }}
                       >
                         <div
-                          className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                          className="rounded-full border-2 flex items-center justify-center"
                           style={{
+                            width: 'clamp(18px, 3vh, 24px)',
+                            height: 'clamp(18px, 3vh, 24px)',
                             color: data.rsvpPaperTextColor || data.mainColor2,
                             borderColor: 'currentColor',
                             backgroundColor: selectedAttendance === 'celebrate' ? 'currentColor' : 'transparent'
@@ -2089,10 +2099,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                           )}
                         </div>
                         <span
-                          className="text-xs"
                           style={{
                             color: data.rsvpPaperTextColor || data.mainColor2,
-                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                            fontSize: 'clamp(0.625rem, 2vh, 0.75rem)'
                           }}
                         >
                           {(() => {
@@ -2112,8 +2122,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         }}
                       >
                         <div
-                          className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                          className="rounded-full border-2 flex items-center justify-center"
                           style={{
+                            width: 'clamp(18px, 3vh, 24px)',
+                            height: 'clamp(18px, 3vh, 24px)',
                             color: data.rsvpPaperTextColor || data.mainColor2,
                             borderColor: 'currentColor',
                             backgroundColor: selectedAttendance === 'toast' ? 'currentColor' : 'transparent'
@@ -2126,10 +2138,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                           )}
                         </div>
                         <span
-                          className="text-xs"
                           style={{
                             color: data.rsvpPaperTextColor || data.mainColor2,
-                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                            fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                            fontSize: 'clamp(0.625rem, 2vh, 0.75rem)'
                           }}
                         >
                           {(() => {
@@ -2143,21 +2155,22 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                     </div>
 
                     {/* Message Input + Submit Button - wrapped for print removal */}
-                    <div data-rsvp-message-box className="space-y-3">
+                    <div data-rsvp-message-box className="w-full" style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(0.5rem, 2vh, 0.75rem)' }}>
                       <div className="w-full mx-auto relative">
                         <textarea
                           id="rsvp-message-input"
                           value={guestMessage}
                           onChange={(e) => setGuestMessage(e.target.value.slice(0, 160))}
                           placeholder="Add a message (optional)"
-                          className="w-full px-3 py-2 rounded-lg text-sm resize-none focus:outline-none"
+                          className="w-full px-3 py-2 rounded-lg resize-none focus:outline-none"
                           style={{
                             backgroundColor: `${data.rsvpPaperTextColor || data.mainColor2}15`,
                             color: data.rsvpPaperTextColor || data.mainColor2,
                             fontFamily: `${data.bodyFont}, serif`,
-                            border: `1px solid ${data.rsvpPaperTextColor || data.mainColor2}33`
+                            border: `1px solid ${data.rsvpPaperTextColor || data.mainColor2}33`,
+                            fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
                           }}
-                          rows={4}
+                          rows={2}
                           maxLength={160}
                         />
                         <span 
@@ -2186,11 +2199,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         <button
                           onClick={handleLightboxSubmit}
                           disabled={isSubmitting || submitSuccess || !selectedAttendance}
-                          className="px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+                          className="px-6 py-2 rounded-lg font-medium transition-colors"
                           style={{
                             backgroundColor: data.rsvpPaperTextColor || data.mainColor2,
                             color: '#ffffff',
                             fontFamily: `${data.bodyFont}, serif`,
+                            fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)',
                             opacity: (isSubmitting || submitSuccess || !selectedAttendance) ? 0.7 : 1
                           }}
                         >
@@ -2200,6 +2214,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                     </div>
                   </>
                 )}
+                </div>
               </div>
             </div>
           </div>

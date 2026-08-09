@@ -132,7 +132,7 @@ export default function InvitePage({ params }: InvitePageProps) {
     const mc2 = invitation?.data?.mainColor2 || "#6998EE";
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
+        className="min-h-screen flex items-center justify-center safe-area"
         style={{ backgroundColor: mc1 }}
       >
         <div className="flex flex-col items-center gap-4">
@@ -154,7 +154,7 @@ export default function InvitePage({ params }: InvitePageProps) {
   if (notFound || !invitation) {
     return (
       <div
-        className="min-h-screen flex flex-col items-center justify-center px-6 text-center"
+        className="min-h-screen flex flex-col items-center justify-center px-6 text-center safe-area"
         style={{ backgroundColor: "#fff8f3" }}
       >
         <p

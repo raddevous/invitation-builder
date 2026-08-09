@@ -143,16 +143,16 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     return () => {
       if (hasAppliedRef.current) return;
       hasAppliedRef.current = true;
-      const hasDuplicates = Object.values(duplicateErrorsRef.current).some(error => error);
-      if (hasDuplicates) return;
       const currentData = JSON.stringify({
         invitees: pendingInviteesRef.current,
         entourageHonorifics: pendingEntourageHonorificsRef.current,
         entourageGuestDetails: pendingEntourageGuestDetailsRef.current,
         guestDetails: pendingGuestDetailsRef.current
       });
+      console.log("[GuestEditor] unmount cleanup, changed:", currentData !== initialSnapshotRef.current, "invitees:", pendingInviteesRef.current.length);
       if (currentData !== initialSnapshotRef.current) {
         const filteredInvitees = pendingInviteesRef.current.filter(invitee => invitee.name.trim() !== "");
+        console.log("[GuestEditor] unmount cleanup applying", filteredInvitees.length, "invitees");
         onChangeRef.current("rsvpInvitees", filteredInvitees as unknown as InvitationData[keyof InvitationData]);
         onChangeRef.current("rsvpEntourageHonorifics", pendingEntourageHonorificsRef.current as unknown as InvitationData[keyof InvitationData]);
         onChangeRef.current("rsvpEntourageGuestDetails", pendingEntourageGuestDetailsRef.current as unknown as InvitationData[keyof InvitationData]);
@@ -335,13 +335,9 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
 
   // Apply changes to parent state (no API save)
   const applyPendingChanges = () => {
-    // Check for any duplicate errors before applying
-    const hasDuplicates = Object.values(duplicateErrors).some(error => error);
-    if (hasDuplicates) {
-      return; // Don't apply if there are duplicates
-    }
     // Filter out guests with blank names
     const filteredInvitees = pendingInvitees.filter(invitee => invitee.name.trim() !== "");
+    console.log("[GuestEditor] applyPendingChanges calling onChange with", filteredInvitees.length, "invitees");
     onChange("rsvpInvitees", filteredInvitees as unknown as InvitationData[keyof InvitationData]);
     onChange("rsvpEntourageHonorifics", pendingEntourageHonorifics as unknown as InvitationData[keyof InvitationData]);
     onChange("rsvpEntourageGuestDetails", pendingEntourageGuestDetails as unknown as InvitationData[keyof InvitationData]);
@@ -356,6 +352,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       entourageGuestDetails: pendingEntourageGuestDetails,
       guestDetails: pendingGuestDetails
     });
+    console.log("[GuestEditor] handleClose called, changed:", currentData !== initialGuestDataSnapshot.current, "pendingInvitees:", pendingInvitees.length);
     if (currentData !== initialGuestDataSnapshot.current) {
       applyPendingChanges();
     }

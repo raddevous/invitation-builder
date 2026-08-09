@@ -341,7 +341,7 @@ export default function InvitationTemplate({
 
       {/* Main invitation content */}
       <div
-        className={`transition-opacity duration-700 ${opened ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`transition-opacity duration-700 safe-area ${opened ? "opacity-100" : "opacity-0 pointer-events-none"}`}
       >
         <HeroSection 
           data={localData} 

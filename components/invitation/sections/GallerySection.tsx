@@ -734,24 +734,25 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
 
           {/* Full-size image */}
           <div 
-            className="flex-1 flex items-center justify-center p-4"
+            className="flex-1 flex items-center justify-center p-4 min-h-0"
             onClick={(e) => e.stopPropagation()}
           >
             <img
               src={mergedData.galleryImages[galleryDialogIndex].startsWith("http") || mergedData.galleryImages[galleryDialogIndex].startsWith("/") ? mergedData.galleryImages[galleryDialogIndex] : `/stock/gallery/${mergedData.galleryImages[galleryDialogIndex]}`}
               alt={`Gallery ${galleryDialogIndex + 1}`}
-              className="max-w-full max-h-full object-contain max-w-4xl max-h-[70vh]"
+              className="max-w-full max-h-full object-contain"
             />
           </div>
 
           {/* Thumbnail strip */}
           <div 
             ref={thumbnailStripRef}
-            className="h-28 bg-black/80 flex items-center gap-2 px-4 overflow-x-auto snap-x snap-mandatory"
+            className="h-28 bg-black/80 flex items-center gap-2 px-4 overflow-x-auto"
             style={{ 
               scrollBehavior: 'smooth',
               scrollbarWidth: 'thin',
               scrollbarColor: `${accentColor} #1a1a1a`,
+              overscrollBehavior: 'contain',
               '--scrollbar-thumb': accentColor,
               '--scrollbar-track': '#1a1a1a'
             } as React.CSSProperties}
@@ -780,7 +781,7 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
                   e.stopPropagation();
                   setGalleryDialogIndex(idx);
                 }}
-                className={`shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all snap-center ${
+                className={`shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
                   idx === galleryDialogIndex ? 'border-white ring-2 ring-white/50' : 'border-transparent hover:border-white/50'
                 }`}
               >

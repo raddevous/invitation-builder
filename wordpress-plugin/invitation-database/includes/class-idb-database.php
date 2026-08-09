@@ -769,6 +769,8 @@ class IDB_Database
             'giftguideMessageFontSize' => 100,
             'giftguideMessageFontSizeMobile' => 100,
             'accentColor' => '#6998EE',
+            'budgetData' => array(),
+            'checklistData' => array(),
         );
     }
 

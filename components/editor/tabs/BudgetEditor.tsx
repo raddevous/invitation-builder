@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import FloatingActionMenu from "../shared/FloatingActionMenu";
+import type { BudgetItem, BudgetContainer } from "@/lib/types/invitation";
 
 // Helper to convert hex to rgba
 const hexToRgba = (hex: string, alpha: number): string => {
@@ -9,27 +10,13 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-interface BudgetItem {
-  id: string;
-  name: string;
-  budget: string;
-  cost: string;
-  paid: string;
-  due: string;
-}
-
-interface BudgetContainer {
-  id: string;
-  title: string;
-  items: BudgetItem[];
-  isExpanded: boolean;
-}
-
 interface BudgetEditorProps {
   isDarkMode?: boolean;
   accentColor?: string;
   showNumbers?: boolean;
   highlightItemId?: string | null;
+  initialData?: BudgetContainer[];
+  onChange?: (data: BudgetContainer[]) => void;
   onClose: () => void;
 }
 
@@ -83,10 +70,13 @@ const formatDisplay = (value: string): string => {
   return num.toLocaleString();
 };
 
-export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, onClose }: BudgetEditorProps) {
+export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialData, onChange, onClose }: BudgetEditorProps) {
   const [isEditMode, setIsEditMode] = useState(false);
-  // Initialize from localStorage directly
+  // Initialize from initialData prop, fallback to localStorage, then defaults
   const getInitialContainers = (): BudgetContainer[] => {
+    if (initialData && initialData.length > 0) {
+      return initialData.map((c: BudgetContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
+    }
     try {
       const stored = localStorage.getItem('weddingBudget');
       if (stored) {
@@ -132,15 +122,17 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
 
   // Show dialog when defaults are loaded for the first time
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('weddingBudget');
-      if (!stored) {
-        setShowDefaultDialog(true);
+    if (!initialData) {
+      try {
+        const stored = localStorage.getItem('weddingBudget');
+        if (!stored) {
+          setShowDefaultDialog(true);
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
-  }, []);
+  }, [initialData]);
 
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
@@ -162,20 +154,22 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
     setHasUnsavedChanges(JSON.stringify(containers) !== initialDataSnapshot.current);
   }, [containers]);
 
-  // Helper function to save to localStorage
-  const saveToLocalStorage = (data: BudgetContainer[]) => {
+  // Helper function to save to localStorage (cache) and notify parent
+  const saveData = (data: BudgetContainer[]) => {
     try {
       localStorage.setItem('weddingBudget', JSON.stringify(data));
     } catch (error) {
       console.error('Failed to save budget to localStorage:', error);
-      throw error;
+    }
+    if (onChange) {
+      onChange(data);
     }
   };
 
   // Handle close - auto-apply pending changes, no save prompt
   const handleClose = () => {
     if (hasUnsavedChanges) {
-      saveToLocalStorage(containers);
+      saveData(containers);
     }
     onClose();
   };

@@ -185,36 +185,42 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     return { percentage: Math.min(100, Math.round((currentCount / target) * 100)), current: currentCount, target };
   }, [data.rsvpInvitees, data.targetGuestCount, data.entourage]);
 
-  const checklistProgress = useMemo(() => {
-    void showChecklistEditor;
+  // Helper: get checklist containers from data prop with localStorage fallback
+  const getChecklistContainers = useCallback((): any[] => {
+    if (data.checklistData && data.checklistData.length > 0) return data.checklistData;
     try {
       const stored = localStorage.getItem('weddingChecklist');
-      if (!stored) return { percentage: 0, completed: 0, total: 0 };
-      const containers = JSON.parse(stored);
-      const allItems = containers.flatMap((c: any) => c.items || []);
-      if (allItems.length === 0) return { percentage: 0, completed: 0, total: 0 };
-      const checked = allItems.filter((item: any) => item.checked).length;
-      return { percentage: Math.round((checked / allItems.length) * 100), completed: checked, total: allItems.length };
-    } catch {
-      return { percentage: 0, completed: 0, total: 0 };
-    }
-  }, [showChecklistEditor]);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [];
+  }, [data.checklistData]);
 
-  const budgetProgress = useMemo(() => {
-    void showBudgetEditor;
+  // Helper: get budget containers from data prop with localStorage fallback
+  const getBudgetContainers = useCallback((): any[] => {
+    if (data.budgetData && data.budgetData.length > 0) return data.budgetData;
     try {
       const stored = localStorage.getItem('weddingBudget');
-      if (!stored) return { percentage: 0, paid: 0, budget: 0 };
-      const containers = JSON.parse(stored);
-      const allItems = containers.flatMap((c: any) => c.items || []);
-      const totalBudget = allItems.reduce((sum: number, item: any) => sum + (parseFloat(item.cost) || parseFloat(item.budget) || 0), 0);
-      const totalPaid = allItems.reduce((sum: number, item: any) => sum + (parseFloat(item.paid) || 0), 0);
-      if (totalBudget === 0) return { percentage: 0, paid: 0, budget: 0 };
-      return { percentage: Math.round((totalPaid / totalBudget) * 100), paid: totalPaid, budget: totalBudget };
-    } catch {
-      return { percentage: 0, paid: 0, budget: 0 };
-    }
-  }, [showBudgetEditor]);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [];
+  }, [data.budgetData]);
+
+  const checklistProgress = useMemo(() => {
+    const containers = getChecklistContainers();
+    const allItems = containers.flatMap((c: any) => c.items || []);
+    if (allItems.length === 0) return { percentage: 0, completed: 0, total: 0 };
+    const checked = allItems.filter((item: any) => item.checked).length;
+    return { percentage: Math.round((checked / allItems.length) * 100), completed: checked, total: allItems.length };
+  }, [getChecklistContainers]);
+
+  const budgetProgress = useMemo(() => {
+    const containers = getBudgetContainers();
+    const allItems = containers.flatMap((c: any) => c.items || []);
+    const totalBudget = allItems.reduce((sum: number, item: any) => sum + (parseFloat(item.cost) || parseFloat(item.budget) || 0), 0);
+    const totalPaid = allItems.reduce((sum: number, item: any) => sum + (parseFloat(item.paid) || 0), 0);
+    if (totalBudget === 0) return { percentage: 0, paid: 0, budget: 0 };
+    return { percentage: Math.round((totalPaid / totalBudget) * 100), paid: totalPaid, budget: totalBudget };
+  }, [getBudgetContainers]);
 
   // Reminder items: checklist + budget items with deadlines within 1 month, not checked/paid
   interface ReminderItem {
@@ -228,8 +234,6 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   }
 
   const reminderItems = useMemo(() => {
-    void showChecklistEditor;
-    void showBudgetEditor;
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     const oneMonthLater = new Date(now);
@@ -237,61 +241,51 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     const items: ReminderItem[] = [];
 
     // Checklist items
-    try {
-      const stored = localStorage.getItem('weddingChecklist');
-      if (stored) {
-        const containers = JSON.parse(stored);
-        for (const c of containers) {
-          for (const item of (c.items || [])) {
-            if (item.checked || !item.deadline) continue;
-            const d = new Date(item.deadline);
-            d.setHours(0, 0, 0, 0);
-            if (d > oneMonthLater) continue;
-            const diffMs = d.getTime() - now.getTime();
-            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
-            items.push({
-              id: item.id,
-              name: item.name,
-              type: "checklist",
-              containerId: c.id,
-              containerTitle: c.title,
-              deadline: item.deadline,
-              daysLeft,
-            });
-          }
-        }
+    const checklistContainers = getChecklistContainers();
+    for (const c of checklistContainers) {
+      for (const item of (c.items || [])) {
+        if (item.checked || !item.deadline) continue;
+        const d = new Date(item.deadline);
+        d.setHours(0, 0, 0, 0);
+        if (d > oneMonthLater) continue;
+        const diffMs = d.getTime() - now.getTime();
+        const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        items.push({
+          id: item.id,
+          name: item.name,
+          type: "checklist",
+          containerId: c.id,
+          containerTitle: c.title,
+          deadline: item.deadline,
+          daysLeft,
+        });
       }
-    } catch {}
+    }
 
     // Budget items
-    try {
-      const stored = localStorage.getItem('weddingBudget');
-      if (stored) {
-        const containers = JSON.parse(stored);
-        for (const c of containers) {
-          for (const item of (c.items || [])) {
-            const cost = parseFloat(item.cost) || parseFloat(item.budget) || 0;
-            const paid = parseFloat(item.paid) || 0;
-            if (cost > 0 && paid >= cost) continue; // fully paid
-            if (!item.due) continue;
-            const d = new Date(item.due);
-            d.setHours(0, 0, 0, 0);
-            if (d > oneMonthLater) continue;
-            const diffMs = d.getTime() - now.getTime();
-            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
-            items.push({
-              id: item.id,
-              name: item.name || c.title,
-              type: "budget",
-              containerId: c.id,
-              containerTitle: c.title,
-              deadline: item.due,
-              daysLeft,
-            });
-          }
-        }
+    const budgetContainers = getBudgetContainers();
+    for (const c of budgetContainers) {
+      for (const item of (c.items || [])) {
+        const cost = parseFloat(item.cost) || parseFloat(item.budget) || 0;
+        const paid = parseFloat(item.paid) || 0;
+        if (cost > 0 && paid >= cost) continue; // fully paid
+        if (!item.due) continue;
+        const d = new Date(item.due);
+        d.setHours(0, 0, 0, 0);
+        if (d > oneMonthLater) continue;
+        const diffMs = d.getTime() - now.getTime();
+        const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        items.push({
+          id: item.id,
+          name: item.name || c.title,
+          type: "budget",
+          containerId: c.id,
+          containerTitle: c.title,
+          deadline: item.due,
+          daysLeft,
+        });
       }
-    } catch {}
+    }
 
     // Sort by daysLeft ascending (most overdue first)
     items.sort((a, b) => a.daysLeft - b.daysLeft);
@@ -333,59 +327,47 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     // Re-sort the final 4 by daysLeft
     result.sort((a, b) => a.daysLeft - b.daysLeft);
     return result;
-  }, [showChecklistEditor, showBudgetEditor]);
+  }, [getChecklistContainers, getBudgetContainers]);
 
   const allReminderItems = useMemo(() => {
-    void showChecklistEditor;
-    void showBudgetEditor;
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     const oneMonthLater = new Date(now);
     oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
     const items: ReminderItem[] = [];
 
-    try {
-      const stored = localStorage.getItem('weddingChecklist');
-      if (stored) {
-        const containers = JSON.parse(stored);
-        for (const c of containers) {
-          for (const item of (c.items || [])) {
-            if (item.checked || !item.deadline) continue;
-            const d = new Date(item.deadline);
-            d.setHours(0, 0, 0, 0);
-            if (d > oneMonthLater) continue;
-            const diffMs = d.getTime() - now.getTime();
-            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
-            items.push({ id: item.id, name: item.name, type: "checklist", containerId: c.id, containerTitle: c.title, deadline: item.deadline, daysLeft });
-          }
-        }
+    const checklistContainers = getChecklistContainers();
+    for (const c of checklistContainers) {
+      for (const item of (c.items || [])) {
+        if (item.checked || !item.deadline) continue;
+        const d = new Date(item.deadline);
+        d.setHours(0, 0, 0, 0);
+        if (d > oneMonthLater) continue;
+        const diffMs = d.getTime() - now.getTime();
+        const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        items.push({ id: item.id, name: item.name, type: "checklist", containerId: c.id, containerTitle: c.title, deadline: item.deadline, daysLeft });
       }
-    } catch {}
+    }
 
-    try {
-      const stored = localStorage.getItem('weddingBudget');
-      if (stored) {
-        const containers = JSON.parse(stored);
-        for (const c of containers) {
-          for (const item of (c.items || [])) {
-            const cost = parseFloat(item.cost) || parseFloat(item.budget) || 0;
-            const paid = parseFloat(item.paid) || 0;
-            if (cost > 0 && paid >= cost) continue;
-            if (!item.due) continue;
-            const d = new Date(item.due);
-            d.setHours(0, 0, 0, 0);
-            if (d > oneMonthLater) continue;
-            const diffMs = d.getTime() - now.getTime();
-            const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
-            items.push({ id: item.id, name: item.name || c.title, type: "budget", containerId: c.id, containerTitle: c.title, deadline: item.due, daysLeft });
-          }
-        }
+    const budgetContainers = getBudgetContainers();
+    for (const c of budgetContainers) {
+      for (const item of (c.items || [])) {
+        const cost = parseFloat(item.cost) || parseFloat(item.budget) || 0;
+        const paid = parseFloat(item.paid) || 0;
+        if (cost > 0 && paid >= cost) continue;
+        if (!item.due) continue;
+        const d = new Date(item.due);
+        d.setHours(0, 0, 0, 0);
+        if (d > oneMonthLater) continue;
+        const diffMs = d.getTime() - now.getTime();
+        const daysLeft = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        items.push({ id: item.id, name: item.name || c.title, type: "budget", containerId: c.id, containerTitle: c.title, deadline: item.due, daysLeft });
       }
-    } catch {}
+    }
 
     items.sort((a, b) => a.daysLeft - b.daysLeft);
     return items;
-  }, [showChecklistEditor, showBudgetEditor]);
+  }, [getChecklistContainers, getBudgetContainers]);
 
   // Back gesture closes sub-views instead of minimizing app
   useBackHandler(showEntourageEditor, () => setShowEntourageEditor(false));
@@ -440,16 +422,28 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     if (JSON.stringify(data.storyTimeline) !== JSON.stringify(snapshot.storyTimeline)) sections.push("Story Timeline");
     // Table Map
     if (JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) sections.push("Table Map");
+    // Budget
+    if (JSON.stringify(data.budgetData) !== JSON.stringify(snapshot.budgetData)) sections.push("Budget");
+    // Checklist
+    if (JSON.stringify(data.checklistData) !== JSON.stringify(snapshot.checklistData)) sections.push("Checklist");
     // Settings (exclude isDarkMode/accentColor which are app settings, not invitation data)
     const settingsFields = ['musicEnabled', 'musicTrack', 'musicVolume', 'rsvpEnabled', 'rsvpDeadline', 'rsvpAllowPlusOne', 'rsvpAskPlusOneName', 'rsvpAllowKids', 'rsvpAskMealPreference', 'rsvpMealOptions', 'rsvpCustomQuestions', 'rsvpCollectPhone', 'rsvpCollectAddress', 'rsvpShowGuestCount', 'rsvpButtonText', 'rsvpSubmitMessage', 'rsvpClosedMessage'];
     const hasSettingsChanges = settingsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]));
     if (hasSettingsChanges) sections.push("Settings");
 
+    if (sections.length > 0) {
+      console.log("[ToolsTab] changedSections:", sections, "rsvpInvitees changed:", JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees));
+    }
     return sections;
   }, [data, snapshotVersion]);
 
   const hasUnsavedChanges = changedSections.length > 0;
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+
+  // Debug: trace save bubble visibility
+  useEffect(() => {
+    console.log("[ToolsTab] hasUnsavedChanges:", hasUnsavedChanges, "changedSections:", changedSections, "snapshot length:", dataSnapshot.current.length, "data length:", JSON.stringify(data).length);
+  }, [hasUnsavedChanges, changedSections]);
 
   // Handle tools-level save
   const handleToolsSave = async () => {
@@ -610,31 +604,21 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     setShowAllReminders(false);
     setHighlightItemId(item.id);
     if (item.type === "checklist") {
-      // Expand the container in localStorage before opening
-      try {
-        const stored = localStorage.getItem('weddingChecklist');
-        if (stored) {
-          const containers = JSON.parse(stored);
-          const updated = containers.map((c: any) => ({
-            ...c,
-            isExpanded: c.id === item.containerId,
-          }));
-          localStorage.setItem('weddingChecklist', JSON.stringify(updated));
-        }
-      } catch {}
+      // Expand the target container in data before opening
+      const containers = getChecklistContainers();
+      const updated = containers.map((c: any) => ({
+        ...c,
+        isExpanded: c.id === item.containerId,
+      }));
+      guardedOnChange('checklistData', updated);
       setShowChecklistEditor(true);
     } else {
-      try {
-        const stored = localStorage.getItem('weddingBudget');
-        if (stored) {
-          const containers = JSON.parse(stored);
-          const updated = containers.map((c: any) => ({
-            ...c,
-            isExpanded: c.id === item.containerId,
-          }));
-          localStorage.setItem('weddingBudget', JSON.stringify(updated));
-        }
-      } catch {}
+      const containers = getBudgetContainers();
+      const updated = containers.map((c: any) => ({
+        ...c,
+        isExpanded: c.id === item.containerId,
+      }));
+      guardedOnChange('budgetData', updated);
       setShowBudgetEditor(true);
     }
   };
@@ -899,6 +883,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         showNumbers={showNumbers}
         highlightItemId={highlightItemId}
+        initialData={data.checklistData}
+        onChange={(newData) => guardedOnChange('checklistData', newData)}
         onClose={() => { setShowChecklistEditor(false); setHighlightItemId(null); }}
       />
     );
@@ -911,6 +897,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         showNumbers={showNumbers}
         highlightItemId={highlightItemId}
+        initialData={data.budgetData}
+        onChange={(newData) => guardedOnChange('budgetData', newData)}
         onClose={() => { setShowBudgetEditor(false); setHighlightItemId(null); }}
       />
     );
