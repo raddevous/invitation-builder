@@ -12,7 +12,7 @@ import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 import { apiUrl } from "@/lib/utils/api";
 import { getCachedInvitation, cacheInvitation, isOnline, queueOfflineSave, flushSaveQueue, setLastUsedSlug } from "@/lib/utils/offline-cache";
-import { precacheInvitationMedia, sanitizeMediaForSave } from "@/lib/utils/media-cache";
+import { precacheInvitationMedia, sanitizeMediaForSave, uploadPendingBlobs, deletePendingFiles, clearPendingMediaOperations } from "@/lib/utils/media-cache";
 import { useMediaCache } from "@/lib/hooks/useMediaCache";
 import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
 
@@ -329,13 +329,15 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   // Save and leave to editor
   const handleToolsSaveAndLeave = async () => {
     if (invitation) {
-      await saveToSupabase(invitation);
+      const savedInv = await saveToSupabase(invitation);
+      setInvitation(savedInv);
     }
     setShowEditorPanel(true);
   };
 
   // Discard changes and leave to editor
   const handleToolsDiscardAndLeave = () => {
+    clearPendingMediaOperations();
     if (invitation) {
       const snapshot = JSON.parse(savedDataSnapshot.current);
       setInvitation({ ...invitation, data: snapshot });
@@ -343,51 +345,66 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     setShowEditorPanel(true);
   };
 
-  // Immediate save function to Supabase
-  const saveToSupabase = async (inv: Invitation) => {
+  // Immediate save function — uploads blobs, deletes pending files, saves to server
+  // Returns the sanitized invitation (with real URLs) so caller can update local state
+  const saveToSupabase = async (inv: Invitation): Promise<Invitation> => {
     setSaveStatus("saving");
     setShowSaveStatus(true);
 
+    // Upload any pending blob: URLs to WordPress and replace with real URLs
+    const dataWithUploadedBlobs = await uploadPendingBlobs(inv.data);
+    // Delete any files marked for deletion from WordPress
+    await deletePendingFiles();
+    const sanitizedData = await sanitizeMediaForSave(dataWithUploadedBlobs);
+    const sanitizedInv: Invitation = { ...inv, data: sanitizedData };
+
+    // rawDataToSave is already sanitized (remote URLs), just strip settings
+    // for the server payload
+    const { isDarkMode, accentColor, ...rawDataToSave } = sanitizedData;
+
     // Offline — queue the save and update cache locally
     if (!isOnline()) {
-      const { isDarkMode, accentColor, ...rawDataToSave } = inv.data;
-      const dataToSave = await sanitizeMediaForSave(rawDataToSave);
-      await queueOfflineSave(inv.slug, inv.id, dataToSave as Record<string, unknown>);
-      await cacheInvitation(inv.slug, inv);
+      await queueOfflineSave(inv.slug, inv.id, rawDataToSave as Record<string, unknown>);
+      await cacheInvitation(inv.slug, sanitizedInv);
       setSaveStatus("saved");
-      savedDataSnapshot.current = JSON.stringify(inv.data);
-      await setStoredItem('invitation', JSON.stringify(inv));
-      return;
+      savedDataSnapshot.current = JSON.stringify(sanitizedData);
+      await setStoredItem('invitation', JSON.stringify(sanitizedInv));
+      return sanitizedInv;
     }
 
     try {
-      // Exclude settings from the data being saved to Supabase, and reverse
-      // any device-local cached media URIs back to their original remote
-      // URL (or drop them if unmappable) so they never get persisted
-      const { isDarkMode, accentColor, ...rawDataToSave } = inv.data;
-      const dataToSave = await sanitizeMediaForSave(rawDataToSave);
       const res = await fetch(apiUrl(`/api/invitation/${inv.slug}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invitationId: inv.id, data: dataToSave }),
+        body: JSON.stringify({ invitationId: inv.id, data: rawDataToSave }),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[tools] Save failed:', res.status, errorData);
+        throw new Error("Save failed");
+      }
       setSaveStatus("saved");
-      // Update snapshot after successful save
-      savedDataSnapshot.current = JSON.stringify(inv.data);
-      // Update native storage with the saved data
-      await setStoredItem('invitation', JSON.stringify(inv));
-      // Also update offline cache
-      await cacheInvitation(inv.slug, inv);
-    } catch {
+      // Update snapshot after successful save (use sanitized data so it matches server)
+      savedDataSnapshot.current = JSON.stringify(sanitizedData);
+      // Update native storage with sanitized data (remote URLs) so next
+      // launch doesn't re-resolve already-local URIs
+      await setStoredItem('invitation', JSON.stringify(sanitizedInv));
+      // Also update offline cache with sanitized data
+      await cacheInvitation(inv.slug, sanitizedInv);
+      return sanitizedInv;
+    } catch (err) {
+      console.error('[tools] Save error, queuing offline:', err);
       // Network error — queue for later
-      const { isDarkMode, accentColor, ...rawDataToSave } = inv.data;
-      const dataToSave = await sanitizeMediaForSave(rawDataToSave);
-      await queueOfflineSave(inv.slug, inv.id, dataToSave as Record<string, unknown>);
-      await cacheInvitation(inv.slug, inv);
+      try {
+        await queueOfflineSave(inv.slug, inv.id, rawDataToSave as Record<string, unknown>);
+        await cacheInvitation(inv.slug, sanitizedInv);
+      } catch (queueErr) {
+        console.error('[tools] Failed to queue offline save:', queueErr);
+      }
       setSaveStatus("saved");
-      savedDataSnapshot.current = JSON.stringify(inv.data);
-      await setStoredItem('invitation', JSON.stringify(inv));
+      savedDataSnapshot.current = JSON.stringify(sanitizedData);
+      await setStoredItem('invitation', JSON.stringify(sanitizedInv));
+      return sanitizedInv;
     }
   };
 
@@ -455,7 +472,7 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           This invitation link may be invalid or has been removed.
         </p>
         <button
-          onClick={() => window.location.href = '/'}
+          onClick={() => window.location.href = "https://instavow.com"}
           className="px-6 py-3 rounded-lg text-white font-medium transition-all"
           style={{ backgroundColor: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
         >
@@ -531,8 +548,10 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
           }}
           onSave={async (updatedData) => {
             const updatedInvitation = { ...invitation, data: updatedData };
-            setInvitation(updatedInvitation);
-            await saveToSupabase(updatedInvitation);
+            // saveToSupabase uploads blobs and returns sanitized data with real URLs
+            const savedInv = await saveToSupabase(updatedInvitation);
+            // Update local state with sanitized data (real URLs, not blob URLs)
+            setInvitation(savedInv);
           }}
           isDarkMode={settings.isDarkMode}
           accentColor={settings.accentColor}

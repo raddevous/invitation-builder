@@ -57,6 +57,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   const [guestMessage, setGuestMessage] = useState("");
   const [existingResponse, setExistingResponse] = useState<{ attendance: string; message: string | null } | null>(null);
   const [previewCardIndex, setPreviewCardIndex] = useState(0);
+  const [notAttendingGuests, setNotAttendingGuests] = useState<Set<string>>(new Set());
+  const [allRsvpResponses, setAllRsvpResponses] = useState<Array<{ guest_name: string; attendance: string; message: string | null }>>([]);
 
   // Print settings state
   const [showPrintSettings, setShowPrintSettings] = useState(false);
@@ -486,14 +488,15 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
       }
 
       setSubmitSuccess(true);
-      // Close lightbox after successful submission
-      setTimeout(() => {
-        setShowLightbox(false);
-        setSubmitSuccess(false);
-        setSelectedGuest(null);
-        setSelectedAttendance(null);
-        setGuestMessage("");
-      }, 2000);
+      // Update local responses cache so the response is immediately available
+      setAllRsvpResponses(prev => {
+        const filtered = prev.filter(r => normalizeGuestName(r.guest_name) !== normalizeGuestName(guestName));
+        return [...filtered, { guest_name: guestName, attendance: selectedAttendance === 'celebrate' ? 'attending' : 'not-attending', message: guestMessage.trim() || null }];
+      });
+      // Also update not-attending set if needed
+      if (selectedAttendance !== 'celebrate') {
+        setNotAttendingGuests(prev => new Set([...prev, normalizeGuestName(guestName)]));
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to submit RSVP');
     } finally {
@@ -513,44 +516,51 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     };
   }, [showLightbox, showRsvpSettingsPanel]);
 
-  // Fetch existing guest response when guest is selected
+  // Look up existing guest response from pre-fetched data (instant, no extra fetch)
   useEffect(() => {
     if (selectedGuest && invitationId) {
-      const fetchGuestResponse = async () => {
-        try {
-          // Normalize the selected guest's name for matching
-          const normalizedSelectedName = normalizeGuestName(selectedGuest.name);
-          
-          const res = await fetch(apiUrl(`/api/rsvp?invitationId=${invitationId}`), {
-            cache: "no-store",
-          });
-          const data = await res.json();
-          
-          if (res.ok && data.responses) {
-            // Match by normalized name (title-insensitive)
-            const guestResponse = data.responses.find(
-              (r: any) => normalizeGuestName(r.guest_name) === normalizedSelectedName
-            );
-            if (guestResponse) {
-              setExistingResponse({
-                attendance: guestResponse.attendance,
-                message: guestResponse.message
-              });
-            } else {
-              setExistingResponse(null);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch guest response:', error);
-          setExistingResponse(null);
-        }
-      };
-      
-      fetchGuestResponse();
+      const normalizedSelectedName = normalizeGuestName(selectedGuest.name);
+      const guestResponse = allRsvpResponses.find(
+        (r) => normalizeGuestName(r.guest_name) === normalizedSelectedName
+      );
+      if (guestResponse) {
+        setExistingResponse({
+          attendance: guestResponse.attendance,
+          message: guestResponse.message
+        });
+      } else {
+        setExistingResponse(null);
+      }
     } else {
       setExistingResponse(null);
     }
-  }, [selectedGuest, invitationId]);
+  }, [selectedGuest, invitationId, allRsvpResponses]);
+
+  // Fetch all RSVP responses to identify not-attending guests (for search filtering)
+  // and to enable instant lookup of existing responses when a guest is selected
+  useEffect(() => {
+    if (!invitationId) return;
+    const fetchNotAttending = async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/rsvp?invitationId=${invitationId}`), { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.responses) {
+          setAllRsvpResponses(data.responses);
+          const notAttending = new Set<string>();
+          for (const r of data.responses) {
+            if (r.attendance === "not-attending") {
+              notAttending.add(normalizeGuestName(r.guest_name));
+            }
+          }
+          setNotAttendingGuests(notAttending);
+        }
+      } catch {
+        // Silently fail — search will still work without filtering
+      }
+    };
+    fetchNotAttending();
+  }, [invitationId]);
 
   // Fetch predefined options
   const { options: predefinedHeadingFonts } = usePredefinedOptions('heading_fonts');
@@ -1291,7 +1301,12 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   // Filter guests based on search query
   const filteredGuests = combinedGuests.filter(guest => {
     const guestName = typeof guest === 'string' ? guest : guest.name;
-    return guestName.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!guestName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    // Hide not-attending guests from search if enabled (default: on)
+    if (data.rsvpHideNotAttending !== false) {
+      if (notAttendingGuests.has(normalizeGuestName(guestName))) return false;
+    }
+    return true;
   });
 
   // Helper function to convert hex to rgba
@@ -1825,7 +1840,14 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
           <div 
             className="fixed inset-0 z-50"
             style={{ backgroundColor: data.mainColor1 ? data.mainColor1 + 'CC' : 'rgba(255, 255, 255, 0.8)' }}
-            onClick={() => setShowLightbox(false)}
+            onClick={() => {
+              setShowLightbox(false);
+              setSubmitSuccess(false);
+              setSelectedGuest(null);
+              setSelectedAttendance(null);
+              setGuestMessage("");
+              setSubmitError("");
+            }}
           />
           
           {/* Lightbox Content */}
@@ -1903,7 +1925,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 />
               )}
               {/* Paper Container Content */}
-              <div id="rsvp-content-wrapper" className="flex flex-col items-center justify-between p-4 sm:p-6 md:p-8 relative z-40" style={{ gap: 'clamp(0.5rem, 2vh, 1.5rem)', maxHeight: '85vh' }}>
+              <div id="rsvp-content-wrapper" className="flex flex-col items-center justify-between p-6 sm:p-8 md:p-10 relative z-40" style={{ gap: 'clamp(0.5rem, 2vh, 1.5rem)', paddingTop: 'clamp(1.5rem, 5vh, 3rem)', paddingBottom: 'clamp(1.5rem, 5vh, 3rem)', maxHeight: '85vh' }}>
                 {/* Top section: heading + deadline + guest info */}
                 <div className="flex flex-col items-center w-full" style={{ gap: 'clamp(0.25rem, 1vh, 0.75rem)', flexShrink: 0 }}>
                 {/* RSVP Heading */}
@@ -1989,23 +2011,25 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                   </span>
                 </div>
                 
-                {/* Reserved Text */}
-                <p
-                  data-rsvp-reserved-text
-                  className="text-center"
-                  style={{
-                    color: data.rsvpPaperTextColor || data.mainColor2,
-                    fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
-                    whiteSpace: 'pre-wrap',
-                    fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
-                  }}
-                  dangerouslySetInnerHTML={{
-                    __html: getReservedTextForGuest(selectedGuest?.name || "")
-                  }}
-                />
+                {/* Reserved Text - hidden after submission or if already responded */}
+                {!submitSuccess && !existingResponse && (
+                  <p
+                    data-rsvp-reserved-text
+                    className="text-center"
+                    style={{
+                      color: data.rsvpPaperTextColor || data.mainColor2,
+                      fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                      whiteSpace: 'pre-wrap',
+                      fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: getReservedTextForGuest(selectedGuest?.name || "")
+                    }}
+                  />
+                )}
                 
-                {/* Usher/Usherette Instruction */}
-                {(() => {
+                {/* Usher/Usherette Instruction - hidden after submission or if already responded */}
+                {!submitSuccess && !existingResponse && (() => {
                   const entGuest = entourageGuestNames.find(g => g.name.toLowerCase() === selectedGuest?.name.toLowerCase());
                   const entDetails = data.rsvpEntourageGuestDetails?.[selectedGuest?.name || ""];
                   if (entGuest && (entGuest.title === "Ushers" || entGuest.title === "Usherettes") && entDetails?.instruction) {
@@ -2031,8 +2055,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                 })()}
                 
                 {/* Response Display or Form */}
-                {existingResponse ? (
-                  /* Guest has already responded - show thank you message */
+                {existingResponse || submitSuccess ? (
+                  /* Guest has already responded or just submitted - show confirmation */
                   <div className="flex flex-col items-center" style={{ gap: 'clamp(0.5rem, 2vh, 1rem)', marginTop: 'clamp(0.5rem, 2vh, 1.5rem)' }}>
                     {/* Icon in circle */}
                     <div
@@ -2062,13 +2086,20 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)'
                       }}
                     >
-                      {existingResponse.attendance === 'attending' 
-                        ? (data.rsvpAttendingThankYouText || "Thank you for attending!")
-                        : existingResponse.message 
+                      {(() => {
+                        const att = submitSuccess ? selectedAttendance : existingResponse?.attendance;
+                        const hasMsg = submitSuccess ? !!guestMessage.trim() : !!existingResponse?.message;
+                        if (att === 'attending' || att === 'celebrate') {
+                          return hasMsg
+                            ? (data.rsvpAttendingThankYouText || "Thank you for attending!")
+                            : (data.rsvpAttendingThankYouText || "Thank you for attending!");
+                        }
+                        return hasMsg
                           ? (data.rsvpNotAttendingWithMessageThankYouText || "Thank You For Your Well Wishes")
-                          : (data.rsvpNotAttendingThankYouText || "Thank you for letting us know.")
-                      }
+                          : (data.rsvpNotAttendingThankYouText || "Thank you for letting us know.");
+                      })()}
                     </p>
+                    {/* Response summary */}
                   </div>
                 ) : (
                   /* Guest has not responded - show form */
@@ -2421,7 +2452,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
               {/* Preview */}
               <div className="space-y-4">
                 <h4 className={`text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                  PREVIEW ({previewCardIndex === 0 ? 'DEFAULT' : previewCardIndex === 1 ? 'ATTENDING' : previewCardIndex === 2 ? 'NOT ATTENDING' : previewCardIndex === 3 ? 'ATTENDING + MESSAGE' : 'SPECIAL GUEST MESSAGE'})
+                  PREVIEW ({previewCardIndex === 0 ? 'DEFAULT' : previewCardIndex === 1 ? 'ATTENDING' : previewCardIndex === 2 ? 'NOT ATTENDING' : previewCardIndex === 3 ? 'ATTENDING + MESSAGE' : previewCardIndex === 4 ? 'NOT ATTENDING + MESSAGE' : 'SPECIAL GUEST MESSAGE'})
                 </h4>
                 <div className="w-full flex justify-center p-4 rounded-lg" style={{ backgroundColor: isDarkMode ? '#1C2531' : '#F3F4F6' }}>
                   <div className="w-full" style={{ maxWidth: '350px' }}>
@@ -2442,7 +2473,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         if (Math.abs(diff) > 50) {
                           if (diff > 0 && previewCardIndex > 0) {
                             setPreviewCardIndex(previewCardIndex - 1);
-                          } else if (diff < 0 && previewCardIndex < 4) {
+                          } else if (diff < 0 && previewCardIndex < 5) {
                             setPreviewCardIndex(previewCardIndex + 1);
                           }
                         }
@@ -2465,7 +2496,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                         if (Math.abs(diff) > 50) {
                           if (diff > 0 && previewCardIndex > 0) {
                             setPreviewCardIndex(previewCardIndex - 1);
-                          } else if (diff < 0 && previewCardIndex < 4) {
+                          } else if (diff < 0 && previewCardIndex < 5) {
                             setPreviewCardIndex(previewCardIndex + 1);
                           }
                         }
@@ -2912,7 +2943,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   );
                                 }
                               })()}
-                              <div className="h-8" />
                               <div className="w-full flex justify-center">
                                 <span
                                   className={`text-sm block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
@@ -2928,15 +2958,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   })()}Guest Name
                                 </span>
                               </div>
-                              <p
-                                className="text-center text-sm"
-                                style={{
-                                  color: data.rsvpPaperTextColor || data.mainColor2,
-                                  fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
-                                }}
-                              >
-                                {data.rsvpReservedText || "We have reserve a seat in your honor."}
-                              </p>
                               <div className="mt-6 flex flex-col items-center gap-4">
                                 <div
                                   className="flex items-center justify-center"
@@ -3084,7 +3105,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   );
                                 }
                               })()}
-                              <div className="h-8" />
                               <div className="w-full flex justify-center">
                                 <span
                                   className={`text-sm block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
@@ -3100,15 +3120,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   })()}Guest Name
                                 </span>
                               </div>
-                              <p
-                                className="text-center text-sm"
-                                style={{
-                                  color: data.rsvpPaperTextColor || data.mainColor2,
-                                  fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
-                                }}
-                              >
-                                {data.rsvpReservedText || "We have reserve a seat in your honor."}
-                              </p>
                               <div className="mt-6 flex flex-col items-center gap-4">
                                 <div
                                   className="flex items-center justify-center"
@@ -3256,7 +3267,6 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   );
                                 }
                               })()}
-                              <div className="h-8" />
                               <div className="w-full flex justify-center">
                                 <span
                                   className={`text-sm block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
@@ -3272,15 +3282,168 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   })()}Guest Name
                                 </span>
                               </div>
-                              <p
-                                className="text-center text-sm"
-                                style={{
+                              <div className="mt-6 flex flex-col items-center gap-4">
+                                <div
+                                  className="flex items-center justify-center"
+                                  style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '50%',
+                                    backgroundColor: data.rsvpPaperTextColor || data.mainColor2
+                                  }}
+                                >
+                                  <img
+                                    src="/assets/ico-sent.png"
+                                    alt="Sent"
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      filter: 'brightness(0) invert(1)'
+                                    }}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentIndex = predefinedAttendingThankYouTexts.indexOf(data.rsvpAttendingThankYouText || "Thank you for attending!");
+                                    const nextIndex = (currentIndex + 1) % predefinedAttendingThankYouTexts.length;
+                                    onChange("rsvpAttendingThankYouText", predefinedAttendingThankYouTexts[nextIndex]);
+                                  }}
+                                  className="flex items-center gap-1 group"
+                                >
+                                  <p
+                                    className="text-center text-sm"
+                                    style={{
+                                      color: data.rsvpPaperTextColor || data.mainColor2,
+                                      fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                                    }}
+                                  >
+                                    {data.rsvpAttendingThankYouText || "Thank you for attending!"}
+                                  </p>
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
+                                    }}
+                                  >
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card 4: Not Attending with Message */}
+                        <div className="w-full flex-shrink-0 h-full">
+                          <div 
+                            className="shadow-2xl relative overflow-hidden h-full"
+                            style={{
+                              borderRadius: '8px',
+                              isolation: 'isolate',
+                              ...(data.rsvpPaperBackground && data.rsvpPaperBackground !== 'none' ? {
+                                backgroundImage: `url(/assets/texturebg${data.rsvpPaperBackground.replace('texture', '')}.jpg)`,
+                                backgroundSize: `${data.rsvpPaperBackgroundZoom || 100}%`,
+                                backgroundPosition: `center ${data.rsvpPaperBackgroundYPosition || 0}%`,
+                                backgroundRepeat: 'no-repeat'
+                              } : {})
+                            }}
+                          >
+                            <div
+                              className="absolute inset-0 pointer-events-none"
+                              style={{
+                                backgroundColor: data.rsvpPaperColor || '#ffffff',
+                                mixBlendMode: 'hue'
+                              }}
+                            />
+                            <div className="h-full flex flex-col items-center justify-center p-4 space-y-3 relative z-10">
+                              <h2
+                                className="text-3xl font-bold text-center"
+                                style={{ 
                                   color: data.rsvpPaperTextColor || data.mainColor2,
-                                  fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                                  fontFamily: `${data.rsvpPaperHeadingFont || data.headingFont}, serif`
                                 }}
                               >
-                                {data.rsvpReservedText || "We have reserve a seat in your honor."}
-                              </p>
+                                {data.rsvpCardHeadingText || "RSVP"}
+                              </h2>
+                              {data.rsvpDeadline && (() => {
+                                const deadlineFormat = predefinedDeadlineTexts.find(
+                                  dt => dt.prefix === (data.rsvpDeadlineText || "RSVP by")
+                                ) || predefinedDeadlineTexts[0];
+                                if (deadlineFormat.hasLineBreak) {
+                                  return (
+                                    <div className="text-center">
+                                      <p
+                                        className="text-xs"
+                                        style={{ 
+                                          color: data.rsvpPaperTextColor || data.mainColor2,
+                                          opacity: 0.7,
+                                          fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                                        }}
+                                      >
+                                        {deadlineFormat.prefix}
+                                      </p>
+                                      <p
+                                        className="text-xs"
+                                        style={{ 
+                                          color: data.rsvpPaperTextColor || data.mainColor2,
+                                          opacity: 0.7,
+                                          fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                                        }}
+                                      >
+                                        {data.rsvpDeadline}
+                                      </p>
+                                    </div>
+                                  );
+                                } else {
+                                  return (
+                                    <p
+                                      className="text-xs text-center"
+                                      style={{ 
+                                        color: data.rsvpPaperTextColor || data.mainColor2,
+                                        opacity: 0.7,
+                                        fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                                      }}
+                                    >
+                                      {deadlineFormat.prefix} {data.rsvpDeadline}
+                                    </p>
+                                  );
+                                }
+                              })()}
+                              <div className="w-full flex justify-center">
+                                <span
+                                  className={`text-sm block text-center ${(data.rsvpGuestNameStyle || 0) < 2 ? 'underline' : ''}`}
+                                  style={{
+                                    color: data.rsvpPaperTextColor || data.mainColor2,
+                                    fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`
+                                  }}
+                                >
+                                  {(() => {
+                                    const style = data.rsvpGuestNameStyle || 0;
+                                    const showHonorific = style === 0 || style === 2;
+                                    return showHonorific ? "M. " : "";
+                                  })()}Guest Name
+                                </span>
+                              </div>
                               <div className="mt-6 flex flex-col items-center gap-4">
                                 <div
                                   className="flex items-center justify-center"
@@ -3352,7 +3515,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                           </div>
                         </div>
 
-                        {/* Card 4: Special Guest Message */}
+                        {/* Card 5: Special Guest Message */}
                         <div className="w-full flex-shrink-0 h-full">
                           <div 
                             className="shadow-2xl relative overflow-hidden h-full"
@@ -3451,7 +3614,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
 
                     {/* Pagination Dots */}
                     <div className="flex justify-center gap-2 mt-4">
-                      {[0, 1, 2, 3, 4].map((index) => (
+                      {[0, 1, 2, 3, 4, 5].map((index) => (
                         <button
                           key={index}
                           type="button"

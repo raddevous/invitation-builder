@@ -199,6 +199,11 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
 
   // Handler for icon changes
   const handleIconChange = (key: keyof InvitationData, value: any) => {
+    setPendingCountdownChanges(prev => ({ ...prev, [key]: value }));
+    setHasUnsavedCountdownChanges(true);
+    if (onHasUnsavedChangesChange) {
+      onHasUnsavedChangesChange(true);
+    }
     onChange?.(key, value);
   };
 

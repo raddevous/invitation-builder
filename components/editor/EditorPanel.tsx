@@ -11,7 +11,7 @@ import { useBackHandler } from "@/lib/hooks/useBackHandler";
 import { apiUrl } from "@/lib/utils/api";
 import { isOnline, queueOfflineSave, cacheInvitation, flushSaveQueue } from "@/lib/utils/offline-cache";
 import { useMediaCache } from "@/lib/hooks/useMediaCache";
-import { sanitizeMediaForSave } from "@/lib/utils/media-cache";
+import { sanitizeMediaForSave, uploadPendingBlobs, deletePendingFiles, clearPendingMediaOperations } from "@/lib/utils/media-cache";
 import SectionsTab from "./tabs/SectionsTab";
 import LiveEditView from "./live-edit/LiveEditView";
 import DesignTab from "./tabs/DesignTab";
@@ -290,9 +290,13 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         const dataToSave = { ...data, ...pendingChangesRef.current };
         // Exclude settings from the data being saved
         const { isDarkMode, accentColor, ...rawFinalDataToSave } = dataToSave;
+        // Upload any pending blob: URLs to WordPress and replace with real URLs
+        const dataWithUploadedBlobs = await uploadPendingBlobs(rawFinalDataToSave);
+        // Delete any files marked for deletion from WordPress
+        await deletePendingFiles();
         // Reverse any device-local cached media URIs back to their original
         // remote URL (or drop them if unmappable) so they never get persisted
-        const finalDataToSave = await sanitizeMediaForSave(rawFinalDataToSave);
+        const finalDataToSave = await sanitizeMediaForSave(dataWithUploadedBlobs);
 
         if (demoMode) {
           // Save to localStorage in demo mode
@@ -309,14 +313,14 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
         // Offline — queue save and update cache locally
         if (!isOnline()) {
           await queueOfflineSave(slug, id, finalDataToSave as Record<string, unknown>);
-          await cacheInvitation(slug, { id, slug, data: dataToSave } as Invitation);
+          await cacheInvitation(slug, { id, slug, data: finalDataToSave as InvitationData } as Invitation);
           setSaveStatus("saved");
           setHasUnsavedChanges(false);
           setHasEverSaved(true);
           setPendingChanges({});
           isSavingRef.current = false;
           try {
-            localStorage.setItem('invitation', JSON.stringify({ id, slug, data: dataToSave }));
+            localStorage.setItem('invitation', JSON.stringify({ id, slug, data: finalDataToSave }));
           } catch (e) {
             console.error('[EditorPanel] Failed to update localStorage:', e);
           }
@@ -349,7 +353,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
         // Update localStorage so the builder reloads the latest data after refresh
         try {
-          localStorage.setItem('invitation', JSON.stringify({ id, slug, data: dataToSave }));
+          localStorage.setItem('invitation', JSON.stringify({ id, slug, data: finalDataToSave }));
         } catch (e) {
           console.error('[EditorPanel] Failed to update localStorage:', e);
         }
@@ -423,17 +427,21 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
       // Exclude settings from the data being saved
       const { isDarkMode, accentColor, ...rawFinalDataToSave } = dataToSave;
+      // Upload any pending blob: URLs to WordPress and replace with real URLs
+      const dataWithUploadedBlobs = await uploadPendingBlobs(rawFinalDataToSave);
+      // Delete any files marked for deletion from WordPress
+      await deletePendingFiles();
       // Reverse any device-local cached media URIs back to their original
       // remote URL (or drop them if unmappable) so they never get persisted
-      const finalDataToSave = await sanitizeMediaForSave(rawFinalDataToSave);
+      const finalDataToSave = await sanitizeMediaForSave(dataWithUploadedBlobs);
 
       console.log('[EditorPanel] Immediate save:', { id: invitation.id, slug: invitation.slug, demoMode: isDemoMode, dataKeys: Object.keys(finalDataToSave) });
 
-      // Update local state
+      // Update local state — use finalDataToSave so blob URLs are replaced with real URLs
       if (Object.keys(pendingChanges).length > 0 || Object.keys(pendingCountdownChanges).length > 0 || Object.keys(pendingHeroChanges).length > 0 || pendingEntourageChanges || Object.keys(localVisibleSections).length > 0) {
         setInvitation((prev) => ({
           ...prev,
-          data: dataToSave,
+          data: finalDataToSave as InvitationData,
         }));
         setPendingChanges({});
         setPendingCountdownChanges({});
@@ -456,13 +464,13 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
       // Offline — queue save and update cache locally
       if (!isOnline()) {
         await queueOfflineSave(invitation.slug, invitation.id, finalDataToSave as Record<string, unknown>);
-        await cacheInvitation(invitation.slug, { ...invitation, data: dataToSave });
+        await cacheInvitation(invitation.slug, { ...invitation, data: finalDataToSave as InvitationData });
         setSaveStatus("saved");
         setHasUnsavedChanges(false);
         setHasEverSaved(true);
         isSavingRef.current = false;
         try {
-          localStorage.setItem('invitation', JSON.stringify({ ...invitation, data: dataToSave }));
+          localStorage.setItem('invitation', JSON.stringify({ ...invitation, data: finalDataToSave }));
         } catch (e) {
           console.error('[EditorPanel] Failed to update localStorage:', e);
         }
@@ -486,7 +494,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
       // Update localStorage so the builder reloads the latest data after refresh
       try {
-        localStorage.setItem('invitation', JSON.stringify({ ...invitation, data: dataToSave }));
+        localStorage.setItem('invitation', JSON.stringify({ ...invitation, data: finalDataToSave }));
       } catch (e) {
         console.error('[EditorPanel] Failed to update localStorage:', e);
       }
@@ -521,6 +529,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   // Handle discard from confirmation dialog
   const handleDiscardFromDialog = useCallback(() => {
+    clearPendingMediaOperations();
     setPendingChanges({});
     setPendingCountdownChanges({});
     setPendingHeroChanges({});
@@ -629,6 +638,7 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
 
   const handleDiscardChanges = () => {
     setShowUnsavedDialog(false);
+    clearPendingMediaOperations();
     // Reset invitation data to original state
     setInvitation(initial);
     setHasUnsavedChanges(false);

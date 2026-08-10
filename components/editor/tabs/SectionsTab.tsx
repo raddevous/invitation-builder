@@ -755,6 +755,26 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                   />
                 </div>
 
+                {/* Hide Not Attending Guests from search toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium tracking-wide uppercase" style={{ fontFamily: "Inter, sans-serif", color: isDarkMode ? "#d1d5db" : "#4b5563" }}>
+                    Hide "Not Attending" Guests from search
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = data.rsvpHideNotAttending ?? true;
+                      onChange("rsvpHideNotAttending", !current);
+                    }}
+                    className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200"
+                    style={{ backgroundColor: (data.rsvpHideNotAttending ?? true) ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 ${(data.rsvpHideNotAttending ?? true) ? "translate-x-4" : "translate-x-1"}`}
+                    />
+                  </button>
+                </div>
+
               </div>
             )}
 

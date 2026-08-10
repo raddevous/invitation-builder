@@ -3,6 +3,7 @@ import type { InvitationData } from "@/lib/types/invitation";
 import ProgressCircle from "../shared/ProgressCircle";
 import { getMediaItemProgress, getMediaItemProgressData } from "@/lib/utils/progressCalculator";
 import { apiUrl } from "@/lib/utils/api";
+import { isOnline } from "@/lib/utils/offline-cache";
 
 function useImageValidation(urls: string[]): { broken: Set<string>; checking: boolean } {
   const [broken, setBroken] = useState<Set<string>>(new Set());
@@ -86,7 +87,7 @@ const MEDIA_ITEMS = [
   { id: "logo", label: "Logo", description: "Display logo" },
   { id: "gallery", label: "Photo Gallery", description: "Photo gallery settings" },
   { id: "venue", label: "Venue Photo", description: "Ceremony &/or Reception photos" },
-  { id: "photos", label: "Photos and Images", description: "Additional photos and images (max 50)" },
+  { id: "photos", label: "Photos & Images Picker", description: "Upload images or add image URLs" },
   { id: "fonts", label: "Fonts", description: "Custom font settings" },
   { id: "music", label: "Music", description: "Background music settings" },
 ];
@@ -132,9 +133,16 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   const [receptionVenueDragIdx, setReceptionVenueDragIdx] = useState<number | null>(null);
   const receptionVenueDragStart = useRef({ x: 0, y: 0 });
   const receptionVenueDragTriggered = useRef(false);
-  const [pendingPhotos, setPendingPhotos] = useState<string[]>(data.photosAndImages || []);
+  const [pendingPhotos, setPendingPhotos] = useState<string[]>(() => {
+    // Split existing photos: WordPress-uploaded URLs go to pendingUploadedPhotos,
+    // rest stay in pendingPhotos (URL-based)
+    const all = data.photosAndImages || [];
+    return all; // Will be split in the effect below
+  });
+  const [pendingUploadedPhotos, setPendingUploadedPhotos] = useState<string[]>([]);
   const [photosUrlInput, setPhotosUrlInput] = useState("");
   const [showPhotosUrlInput, setShowPhotosUrlInput] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photosDragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [photosDeleteIdx, setPhotosDeleteIdx] = useState<number | null>(null);
   const [photosDragIdx, setPhotosDragIdx] = useState<number | null>(null);
@@ -176,6 +184,57 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   const [pendingBodyFont, setPendingBodyFont] = useState(data.customBodyFont || "");
   const [pendingBackgroundMusic, setPendingBackgroundMusic] = useState<string[]>(data.backgroundMusic || []);
   const [pendingBackgroundMusicFileNames, setPendingBackgroundMusicFileNames] = useState<string[]>(data.backgroundMusicFileNames || []);
+
+  // Track pending file uploads (blob URLs that need to be uploaded to WordPress on Save)
+  // This is a module-level Map shared across components so EditorPanel can access it at save time
+  // Maps blob URL -> { file, field, invitationId }
+  const pendingFileUploadsRef = useRef<Map<string, { file: File; field: string; invitationId: string }>>(new Map());
+
+  // Register/unregister blob URLs with the global pending uploads tracker
+  const addPendingUpload = (blobUrl: string, file: File, field: string) => {
+    pendingFileUploadsRef.current.set(blobUrl, { file, field, invitationId: invitationId! });
+    // Also register globally so EditorPanel can find them at save time
+    if (typeof window !== 'undefined') {
+      (window as any).__pendingUploads = (window as any).__pendingUploads || new Map();
+      (window as any).__pendingUploads.set(blobUrl, { file, field, invitationId });
+    }
+  };
+
+  const removePendingUpload = (blobUrl: string) => {
+    pendingFileUploadsRef.current.delete(blobUrl);
+    if (typeof window !== 'undefined' && (window as any).__pendingUploads) {
+      (window as any).__pendingUploads.delete(blobUrl);
+    }
+  };
+
+  // Track a file for deferred deletion (will be deleted from WordPress on Save)
+  const addPendingDeletion = (url: string) => {
+    if (typeof window !== 'undefined') {
+      (window as any).__pendingDeletions = (window as any).__pendingDeletions || [];
+      if (!(window as any).__pendingDeletions.includes(url)) {
+        (window as any).__pendingDeletions.push(url);
+      }
+    }
+  };
+
+  // Split existing photos into uploaded vs URL-based on mount
+  // WordPress-uploaded URLs match pattern: contains invitationId and "photosAndImages"
+  useEffect(() => {
+    if (!invitationId) return;
+    const all = data.photosAndImages || [];
+    const uploaded: string[] = [];
+    const urlBased: string[] = [];
+    for (const url of all) {
+      if (url && url.includes(invitationId) && url.includes('photosAndImages')) {
+        uploaded.push(url);
+      } else {
+        urlBased.push(url);
+      }
+    }
+    setPendingUploadedPhotos(uploaded);
+    setPendingPhotos(urlBased);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Track if there are unsaved changes
   const [hasBackgroundChanges, setHasBackgroundChanges] = useState(false);
@@ -232,11 +291,12 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
 
   useEffect(() => {
     const currentPhotos = data.photosAndImages || [];
+    const combined = [...pendingUploadedPhotos, ...pendingPhotos];
     setHasPhotosChanges(
-      pendingPhotos.length !== currentPhotos.length ||
-      pendingPhotos.some((url, i) => url !== currentPhotos[i])
+      combined.length !== currentPhotos.length ||
+      combined.some((url, i) => url !== currentPhotos[i])
     );
-  }, [pendingPhotos, data.photosAndImages]);
+  }, [pendingUploadedPhotos, pendingPhotos, data.photosAndImages]);
 
   useEffect(() => {
     setHasFontsChanges(
@@ -265,15 +325,15 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     galleryImages: pendingGallery,
     venueImages: pendingVenue,
     receptionVenueImages: pendingReceptionVenue,
-    photosAndImages: pendingPhotos,
-  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingPhotos]);
+    photosAndImages: [...pendingUploadedPhotos, ...pendingPhotos],
+  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos]);
 
   // Image validation for logo, gallery, venue, photos
   const logoValidation = useImageValidation(pendingLogo ? [pendingLogo] : []);
   const galleryValidation = useImageValidation(pendingGallery);
   const venueValidation = useImageValidation(pendingVenue);
   const receptionVenueValidation = useImageValidation(pendingReceptionVenue);
-  const photosValidation = useImageValidation(pendingPhotos);
+  const photosValidation = useImageValidation([...pendingUploadedPhotos, ...pendingPhotos]);
 
   // Adjusted live data excluding broken images from progress
   const liveDataAdjusted = useMemo<InvitationData>(() => ({
@@ -295,7 +355,8 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     return () => document.removeEventListener('touchmove', handleTouchMove);
   }, []);
 
-  // Apply pending changes to parent state (no API save)
+  // Apply pending changes to parent state (blob URLs are passed through as-is;
+  // actual upload to WordPress happens at Save time in EditorPanel)
   const applyPendingChanges = () => {
     if (hasBackgroundChanges) {
       onChange("heroBackgroundImages", pendingBgDesktop as unknown as string);
@@ -314,7 +375,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       onChange("receptionVenueImages", pendingReceptionVenue as unknown as string);
     }
     if (hasPhotosChanges) {
-      onChange("photosAndImages", pendingPhotos as unknown as string);
+      onChange("photosAndImages", [...pendingUploadedPhotos, ...pendingPhotos] as unknown as string);
     }
     if (hasFontsChanges) {
       onChange("customHeadingFont", pendingHeadingFont);
@@ -377,6 +438,13 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       return;
     }
 
+    if (!isOnline()) {
+      setDeleteToast("You need to be online to upload files");
+      if (deleteToastTimer.current) clearTimeout(deleteToastTimer.current);
+      deleteToastTimer.current = setTimeout(() => setDeleteToast(null), 3000);
+      return;
+    }
+
     // Validate file size (10MB limit)
     const maxSize = 10 * 1024 * 1024; // 10MB in bytes
     if (file.size > maxSize) {
@@ -387,28 +455,16 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     setUploadingIndex(index);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("field", `backgroundMusic-${index}`);
-      formData.append("invitationId", invitationId);
+      // Create a blob URL for local preview — file will be uploaded to WordPress on Save
+      const blobUrl = URL.createObjectURL(file);
 
-      const response = await fetch(apiUrl("/api/upload"), {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+      // Track this file for upload on Save (globally so EditorPanel can access it)
+      addPendingUpload(blobUrl, file, `backgroundMusic-${index}`);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Upload failed");
-      }
-
-      const result = await response.json();
-      
-      // Update pending state only - save happens via Apply button
+      // Update pending state with blob URL
       const newMusic = [...pendingBackgroundMusic];
       const newFileNames = [...pendingBackgroundMusicFileNames];
-      newMusic[index] = result.url;
+      newMusic[index] = blobUrl;
       newFileNames[index] = file.name;
       setPendingBackgroundMusic(newMusic);
       setPendingBackgroundMusicFileNames(newFileNames);
@@ -431,6 +487,13 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       return;
     }
 
+    if (!isOnline()) {
+      setDeleteToast("You need to be online to upload files");
+      if (deleteToastTimer.current) clearTimeout(deleteToastTimer.current);
+      deleteToastTimer.current = setTimeout(() => setDeleteToast(null), 3000);
+      return;
+    }
+
     // Validate file size (10MB limit)
     const maxSize = 10 * 1024 * 1024; // 10MB in bytes
     if (file.size > maxSize) {
@@ -450,28 +513,17 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     setUploadingIndex(type === 'heading' ? -1 : -2);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("field", type === 'heading' ? 'customHeadingFont' : 'customBodyFont');
-      formData.append("invitationId", invitationId);
+      // Create a blob URL for local preview — file will be uploaded to WordPress on Save
+      const blobUrl = URL.createObjectURL(file);
+      const field = type === 'heading' ? 'customHeadingFont' : 'customBodyFont';
 
-      const response = await fetch(apiUrl("/api/upload"), {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Upload failed");
-      }
-
-      const result = await response.json();
+      // Track this file for upload on Save (globally so EditorPanel can access it)
+      addPendingUpload(blobUrl, file, field);
 
       if (type === 'heading') {
-        setPendingHeadingFont(result.url);
+        setPendingHeadingFont(blobUrl);
       } else {
-        setPendingBodyFont(result.url);
+        setPendingBodyFont(blobUrl);
       }
     } catch (error) {
       console.error("Font upload error:", error);
@@ -493,16 +545,13 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
 
     const url = type === 'heading' ? pendingHeadingFont : pendingBodyFont;
     if (url) {
-      const pathMatch = url.match(/\/user-uploads\/(.+)$/);
-      if (pathMatch && invitationId) {
-        fetch(apiUrl("/api/delete-file"), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ path: pathMatch[1] }),
-          credentials: "include",
-        }).catch((error) => console.error("Delete font error:", error));
+      // If it's a blob URL (not yet uploaded), just revoke and remove from pending uploads
+      if (url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+        removePendingUpload(url);
+      } else {
+        // Real URL on WordPress — defer deletion until Save
+        addPendingDeletion(url);
       }
     }
 
@@ -530,23 +579,77 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     setMusicDeleteIdx(null);
     setShowDeleteDialog(false);
 
-    // Attempt to delete from storage if it's a user-uploaded file
-    if (!isDemoMode && url && invitationId) {
-      const pathMatch = url.match(/\/user-uploads\/(.+)$/);
-      if (pathMatch) {
-        try {
-          await fetch(apiUrl("/api/delete-file"), {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ path: pathMatch[1] }),
-            credentials: "include",
-          });
-        } catch (error) {
-          console.error("Delete error:", error);
-        }
+    // Handle deletion: blob URLs are local-only, real URLs are deferred until Save
+    console.log('[MediaEditor] handleDeleteMusic: url =', url, 'isBlob =', url?.startsWith('blob:'));
+    if (!isDemoMode && url) {
+      if (url.startsWith('blob:')) {
+        // Blob URL — just revoke and remove from pending uploads
+        URL.revokeObjectURL(url);
+        removePendingUpload(url);
+      } else {
+        // Real URL on WordPress — defer deletion until Save
+        addPendingDeletion(url);
       }
+    }
+  };
+
+  const handlePhotoUpload = async (file: File) => {
+    if (isDemoMode) {
+      alert("Image upload is available after you sign up and purchase your invitation.");
+      return;
+    }
+
+    if (!invitationId) {
+      alert("Invitation ID is required for file upload");
+      return;
+    }
+
+    if (!isOnline()) {
+      setDeleteToast("You need to be online to upload files");
+      if (deleteToastTimer.current) clearTimeout(deleteToastTimer.current);
+      deleteToastTimer.current = setTimeout(() => setDeleteToast(null), 3000);
+      return;
+    }
+
+    // Validate file size (5MB limit for images)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert("File size exceeds 5MB limit. Please use a smaller image or compress it.");
+      return;
+    }
+
+    // Validate image file type
+    const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+    const fileName = file.name.toLowerCase();
+    const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+    if (!hasValidExtension) {
+      alert("Please upload a valid image file (.jpg, .jpeg, .png, .gif, .webp, .svg).");
+      return;
+    }
+
+    // Check max upload limit (6)
+    if (pendingUploadedPhotos.length >= 6) {
+      alert("Maximum of 6 uploaded images reached.");
+      return;
+    }
+
+    setUploadingPhoto(true);
+
+    try {
+      // Create a blob URL for local preview — file will be uploaded to WordPress on Save
+      const blobUrl = URL.createObjectURL(file);
+      const field = `photosAndImages-upload-${pendingUploadedPhotos.length}`;
+
+      // Track this file for upload on Save
+      addPendingUpload(blobUrl, file, field);
+
+      // Add to uploaded photos
+      setPendingUploadedPhotos([...pendingUploadedPhotos, blobUrl]);
+    } catch (error) {
+      console.error("Photo upload error:", error);
+      alert("Failed to upload image. Please try again.");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -782,7 +885,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                       </div>
                       <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10">
                         <div className="grid grid-cols-3 gap-3">
-                          {(pendingPhotos).filter(Boolean).map((url, i) => (
+                          {([...pendingUploadedPhotos, ...pendingPhotos]).filter(Boolean).map((url, i) => (
                             <button
                               key={`photos-${i}`}
                               onClick={() => {
@@ -800,11 +903,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                               <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
                             </button>
                           ))}
-                          {(pendingPhotos).filter(Boolean).length === 0 && (
+                          {([...pendingUploadedPhotos, ...pendingPhotos]).filter(Boolean).length === 0 && (
                             <div className="col-span-3 text-center py-8 text-gray-400 text-sm">
                               No images available.
                               <br />
-                              Add photos in Photos and Images below.
+                              Add photos in Photos & Images below.
                             </div>
                           )}
                         </div>
@@ -1182,238 +1285,384 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
               </div>
             )}
 
-            {/* Photos and Images settings */}
+            {/* Photos & Images Picker settings */}
             {!collapsedSections.has("photos") && item.id === "photos" && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                 <div className="space-y-4">
-                  <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>PHOTOS & IMAGES</label>
+                  <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>PHOTOS & IMAGES PICKER</label>
 
-                  {/* Image Grid */}
-                  {pendingPhotos.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2">
-                      {pendingPhotos.map((imgUrl, idx) => (
-                        <div
-                          key={idx}
-                          data-photos-idx={idx}
-                          className="relative aspect-square rounded-lg overflow-hidden cursor-pointer select-none group"
-                          style={{
-                            outline: photosDeleteIdx === idx ? `2px solid #ef4444` : photosDragIdx === idx ? `2px solid ${accentColor}` : "none",
-                            outlineOffset: photosDeleteIdx === idx || photosDragIdx === idx ? "2px" : "0",
-                            boxShadow: photosDragIdx === idx ? `0 0 12px 4px ${hexToRgba(accentColor, 0.6)}, 0 0 4px 2px ${hexToRgba(accentColor, 0.4)}` : "none",
-                            opacity: photosDragIdx === idx ? 0.6 : 1,
-                            touchAction: 'pan-y',
-                            WebkitTouchCallout: 'none',
+                  {/* === UPLOAD SECTION (top) — max 6 === */}
+                  <div className="space-y-2">
+                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Upload Image {pendingUploadedPhotos.length > 0 && `(${pendingUploadedPhotos.length}/6)`}</label>
+
+                    {pendingUploadedPhotos.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {pendingUploadedPhotos.map((imgUrl, idx) => (
+                          <div
+                            key={`upload-${idx}`}
+                            data-photos-upload-idx={idx}
+                            className="relative aspect-square rounded-lg overflow-hidden cursor-pointer select-none group"
+                            style={{
+                              outline: photosDeleteIdx === idx + 1000 ? `2px solid #ef4444` : "none",
+                              outlineOffset: photosDeleteIdx === idx + 1000 ? "2px" : "0",
+                            }}
+                            onClick={() => {
+                              if (photosDeleteIdx === idx + 1000) {
+                                setPhotosDeleteIdx(null);
+                              } else {
+                                setPhotosDeleteIdx(idx + 1000);
+                              }
+                            }}
+                          >
+                            <img src={imgUrl} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
+                            {photosDeleteIdx === idx + 1000 && (
+                              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const url = pendingUploadedPhotos[idx];
+                                    if (url.startsWith('blob:')) {
+                                      URL.revokeObjectURL(url);
+                                      removePendingUpload(url);
+                                    } else {
+                                      addPendingDeletion(url);
+                                    }
+                                    setPendingUploadedPhotos(pendingUploadedPhotos.filter((_, i) => i !== idx));
+                                    setPhotosDeleteIdx(null);
+                                  }}
+                                  className="px-4 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
+                                >
+                                  Delete
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPhotosDeleteIdx(null);
+                                  }}
+                                  className="px-4 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Upload button (dashed, upload icon) — shown when < 6 */}
+                        {pendingUploadedPhotos.length < 6 && !isDemoMode && (
+                          <label
+                            className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer"
+                            style={{
+                              borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                              color: isDarkMode ? "#6b7280" : "#9ca3af",
+                              opacity: uploadingPhoto ? 0.5 : 1,
+                            }}
+                          >
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                              className="hidden"
+                              disabled={uploadingPhoto}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handlePhotoUpload(file);
+                                e.target.value = "";
+                              }}
+                            />
+                            {uploadingPhoto ? (
+                              <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17 8 12 3 7 8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                              </svg>
+                            )}
+                          </label>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Upload button (full width, dashed) — shown when no uploads yet */}
+                    {pendingUploadedPhotos.length === 0 && !isDemoMode && (
+                      <label
+                        className="w-full py-6 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer"
+                        style={{
+                          borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                          color: isDarkMode ? "#6b7280" : "#9ca3af",
+                          opacity: uploadingPhoto ? 0.5 : 1,
+                        }}
+                      >
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                          className="hidden"
+                          disabled={uploadingPhoto}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handlePhotoUpload(file);
+                            e.target.value = "";
                           }}
-                          onContextMenu={(e) => e.preventDefault()}
-                          onDragStart={(e) => e.preventDefault()}
-                          onClick={() => {
-                            if (photosDragTriggered.current) {
+                        />
+                        {uploadingPhoto ? (
+                          <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                          </svg>
+                        )}
+                        <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Upload Image</span>
+                        <span className={`text-[10px] ${isDarkMode ? "text-gray-600" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Max 6 · 5MB limit</span>
+                      </label>
+                    )}
+
+                    {pendingUploadedPhotos.length >= 6 && (
+                      <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        Maximum of 6 uploaded images reached
+                      </p>
+                    )}
+                  </div>
+
+                  {/* === DIVIDER === */}
+                  <div className="flex items-center gap-3 py-1">
+                    <div className={`flex-1 h-px ${isDarkMode ? "bg-gray-700" : "bg-gray-300"}`} />
+                  </div>
+
+                  {/* === URL SECTION (bottom) — existing behavior === */}
+                  <div className="space-y-2">
+                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Add Image URL</label>
+
+                    {/* URL Image Grid */}
+                    {pendingPhotos.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {pendingPhotos.map((imgUrl, idx) => (
+                          <div
+                            key={`url-${idx}`}
+                            data-photos-idx={idx}
+                            className="relative aspect-square rounded-lg overflow-hidden cursor-pointer select-none group"
+                            style={{
+                              outline: photosDeleteIdx === idx ? `2px solid #ef4444` : photosDragIdx === idx ? `2px solid ${accentColor}` : "none",
+                              outlineOffset: photosDeleteIdx === idx || photosDragIdx === idx ? "2px" : "0",
+                              boxShadow: photosDragIdx === idx ? `0 0 12px 4px ${hexToRgba(accentColor, 0.6)}, 0 0 4px 2px ${hexToRgba(accentColor, 0.4)}` : "none",
+                              opacity: photosDragIdx === idx ? 0.6 : 1,
+                              touchAction: 'pan-y',
+                              WebkitTouchCallout: 'none',
+                            }}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                            onClick={() => {
+                              if (photosDragTriggered.current) {
+                                photosDragTriggered.current = false;
+                                return;
+                              }
+                              if (photosDeleteIdx === idx) {
+                                setPhotosDeleteIdx(null);
+                              } else {
+                                setPhotosDeleteIdx(idx);
+                              }
+                            }}
+                            onPointerDown={(e) => {
+                              photosDragStart.current = { x: e.clientX, y: e.clientY };
                               photosDragTriggered.current = false;
-                              return;
-                            }
-                            if (photosDeleteIdx === idx) {
-                              setPhotosDeleteIdx(null);
-                            } else {
-                              setPhotosDeleteIdx(idx);
-                            }
-                          }}
-                          onPointerDown={(e) => {
-                            photosDragStart.current = { x: e.clientX, y: e.clientY };
-                            photosDragTriggered.current = false;
-                            if (photosDragTimer.current) clearTimeout(photosDragTimer.current);
-                            photosDragTimer.current = setTimeout(() => {
-                              photosDragTriggered.current = true;
-                              isDraggingImage.current = true;
-                              setPhotosDragIdx(idx);
-                              setPhotosDeleteIdx(null);
-                              setDragToast("Drag to reorder photos");
-                            }, 350);
-                          }}
-                          onPointerMove={(e) => {
-                            if (photosDragTimer.current && !photosDragTriggered.current) {
-                              const dx = e.clientX - photosDragStart.current.x;
-                              const dy = e.clientY - photosDragStart.current.y;
-                              if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                              if (photosDragTimer.current) clearTimeout(photosDragTimer.current);
+                              photosDragTimer.current = setTimeout(() => {
+                                photosDragTriggered.current = true;
+                                isDraggingImage.current = true;
+                                setPhotosDragIdx(idx);
+                                setPhotosDeleteIdx(null);
+                                setDragToast("Drag to reorder photos");
+                              }, 350);
+                            }}
+                            onPointerMove={(e) => {
+                              if (photosDragTimer.current && !photosDragTriggered.current) {
+                                const dx = e.clientX - photosDragStart.current.x;
+                                const dy = e.clientY - photosDragStart.current.y;
+                                if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                  clearTimeout(photosDragTimer.current);
+                                  photosDragTimer.current = null;
+                                }
+                              }
+                              if (photosDragTriggered.current && photosDragIdx !== null) {
+                                const els = document.elementsFromPoint(e.clientX, e.clientY);
+                                const cell = els.find((el: Element) => el.hasAttribute('data-photos-idx'));
+                                if (cell) {
+                                  const overIdx = parseInt(cell.getAttribute('data-photos-idx')!, 10);
+                                  if (overIdx !== photosDragIdx) {
+                                    const newPhotos = [...pendingPhotos];
+                                    const [moved] = newPhotos.splice(photosDragIdx, 1);
+                                    newPhotos.splice(overIdx, 0, moved);
+                                    setPendingPhotos(newPhotos);
+                                    setPhotosDragIdx(overIdx);
+                                  }
+                                }
+                              }
+                            }}
+                            onPointerUp={() => {
+                              if (photosDragTimer.current) {
                                 clearTimeout(photosDragTimer.current);
                                 photosDragTimer.current = null;
                               }
-                            }
-                            if (photosDragTriggered.current && photosDragIdx !== null) {
-                              const els = document.elementsFromPoint(e.clientX, e.clientY);
-                              const cell = els.find((el: Element) => el.hasAttribute('data-photos-idx'));
-                              if (cell) {
-                                const overIdx = parseInt(cell.getAttribute('data-photos-idx')!, 10);
-                                if (overIdx !== photosDragIdx) {
-                                  const newPhotos = [...pendingPhotos];
-                                  const [moved] = newPhotos.splice(photosDragIdx, 1);
-                                  newPhotos.splice(overIdx, 0, moved);
-                                  setPendingPhotos(newPhotos);
-                                  setPhotosDragIdx(overIdx);
-                                }
+                              if (photosDragTriggered.current) {
+                                setPhotosDragIdx(null);
+                                isDraggingImage.current = false;
+                                setDragToast(null);
                               }
-                            }
-                          }}
-                          onPointerUp={() => {
-                            if (photosDragTimer.current) {
-                              clearTimeout(photosDragTimer.current);
-                              photosDragTimer.current = null;
-                            }
-                            if (photosDragTriggered.current) {
+                              setTimeout(() => { photosDragTriggered.current = false; }, 100);
+                            }}
+                            onPointerCancel={() => {
+                              if (photosDragTimer.current) {
+                                clearTimeout(photosDragTimer.current);
+                                photosDragTimer.current = null;
+                              }
                               setPhotosDragIdx(null);
                               isDraggingImage.current = false;
                               setDragToast(null);
-                            }
-                            setTimeout(() => { photosDragTriggered.current = false; }, 100);
-                          }}
-                          onPointerCancel={() => {
-                            if (photosDragTimer.current) {
-                              clearTimeout(photosDragTimer.current);
-                              photosDragTimer.current = null;
-                            }
-                            setPhotosDragIdx(null);
-                            isDraggingImage.current = false;
-                            setDragToast(null);
-                            setTimeout(() => { photosDragTriggered.current = false; }, 100);
-                          }}
-                        >
-                          <img
-                            src={imgUrl}
-                            alt={`Photo ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              target.style.display = "none";
-                              const parent = target.parentElement;
-                              if (parent && !parent.querySelector(".broken-placeholder")) {
-                                const placeholder = document.createElement("div");
-                                placeholder.className = "broken-placeholder w-full h-full flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700";
-                                placeholder.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>';
-                                parent.appendChild(placeholder);
+                              setTimeout(() => { photosDragTriggered.current = false; }, 100);
+                            }}
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Photo ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                target.style.display = "none";
+                                const parent = target.parentElement;
+                                if (parent && !parent.querySelector(".broken-placeholder")) {
+                                  const placeholder = document.createElement("div");
+                                  placeholder.className = "broken-placeholder w-full h-full flex flex-col items-center justify-center bg-gray-200 dark:bg-gray-700";
+                                  placeholder.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>';
+                                  parent.appendChild(placeholder);
+                                }
+                              }}
+                            />
+                            {/* Delete confirmation overlay */}
+                            {photosDeleteIdx === idx && (
+                              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleImageDelete(pendingPhotos[idx]);
+                                    const newImages = pendingPhotos.filter((_, i) => i !== idx);
+                                    setPendingPhotos(newImages);
+                                    setPhotosDeleteIdx(null);
+                                  }}
+                                  className="px-4 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
+                                >
+                                  Delete
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPhotosDeleteIdx(null);
+                                  }}
+                                  className="px-4 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Add URL Image Button inline in grid — chain icon */}
+                        {pendingPhotos.length < 50 && !showPhotosUrlInput && (
+                          <button
+                            type="button"
+                            onClick={() => setShowPhotosUrlInput(true)}
+                            className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors"
+                            style={{
+                              borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                              color: isDarkMode ? "#6b7280" : "#9ca3af",
+                            }}
+                          >
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Add URL Image Button (dashed outline) — shown when no URL images yet */}
+                    {pendingPhotos.length === 0 && !showPhotosUrlInput && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPhotosUrlInput(true)}
+                        className="w-full py-6 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2 transition-colors"
+                        style={{
+                          borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                          color: isDarkMode ? "#6b7280" : "#9ca3af",
+                        }}
+                      >
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                        <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Add Image URL</span>
+                      </button>
+                    )}
+
+                    {/* URL Input with ADD button */}
+                    {showPhotosUrlInput && pendingPhotos.length < 50 && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={photosUrlInput}
+                            onChange={(e) => setPhotosUrlInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && photosUrlInput.trim()) {
+                                setPendingPhotos([...pendingPhotos, convertGoogleDriveUrl(photosUrlInput.trim())]);
+                                setPhotosUrlInput("");
+                                setShowPhotosUrlInput(false);
                               }
                             }}
+                            placeholder="Paste image URL or Google Drive link..."
+                            autoFocus
+                            className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                            style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                           />
-                          {/* Delete confirmation overlay */}
-                          {photosDeleteIdx === idx && (
-                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleImageDelete(pendingPhotos[idx]);
-                                  const newImages = pendingPhotos.filter((_, i) => i !== idx);
-                                  setPendingPhotos(newImages);
-                                  setPhotosDeleteIdx(null);
-                                }}
-                                className="px-4 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
-                              >
-                                Delete
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPhotosDeleteIdx(null);
-                                }}
-                                className="px-4 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-500 transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (photosUrlInput.trim()) {
+                                setPendingPhotos([...pendingPhotos, convertGoogleDriveUrl(photosUrlInput.trim())]);
+                                setPhotosUrlInput("");
+                                setShowPhotosUrlInput(false);
+                              }
+                            }}
+                            className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                            style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+                          >
+                            Add
+                          </button>
                         </div>
-                      ))}
-
-                      {/* Add Image Button inline in grid - hidden after 50 images */}
-                      {pendingPhotos.length < 50 && !showPhotosUrlInput && (
-                        <button
-                          type="button"
-                          onClick={() => setShowPhotosUrlInput(true)}
-                          className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors"
-                          style={{
-                            borderColor: isDarkMode ? "#374151" : "#d1d5db",
-                            color: isDarkMode ? "#6b7280" : "#9ca3af",
-                          }}
-                        >
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 4v16m8-8H4" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Add Image Button (dashed outline) - shown when no images yet */}
-                  {pendingPhotos.length === 0 && !showPhotosUrlInput && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPhotosUrlInput(true)}
-                      className="w-full py-8 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2 transition-colors"
-                      style={{
-                        borderColor: isDarkMode ? "#374151" : "#d1d5db",
-                        color: isDarkMode ? "#6b7280" : "#9ca3af",
-                      }}
-                    >
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <circle cx="9" cy="9" r="2" />
-                        <path d="M21 15l-5-5L5 21" />
-                      </svg>
-                      <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Add Image</span>
-                    </button>
-                  )}
-
-                  {/* URL Input with ADD button */}
-                  {showPhotosUrlInput && pendingPhotos.length < 50 && (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={photosUrlInput}
-                          onChange={(e) => setPhotosUrlInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && photosUrlInput.trim()) {
-                              setPendingPhotos([...pendingPhotos, convertGoogleDriveUrl(photosUrlInput.trim())]);
-                              setPhotosUrlInput("");
-                              setShowPhotosUrlInput(false);
-                            }
-                          }}
-                          placeholder="Paste image URL or Google Drive link..."
-                          autoFocus
-                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (photosUrlInput.trim()) {
-                              setPendingPhotos([...pendingPhotos, convertGoogleDriveUrl(photosUrlInput.trim())]);
-                              setPhotosUrlInput("");
-                              setShowPhotosUrlInput(false);
-                            }
-                          }}
-                          className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
-                          style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
-                        >
-                          Add
-                        </button>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Max limit indicator */}
-                  {pendingPhotos.length >= 50 && (
-                    <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                      Maximum of 50 photos reached
-                    </p>
-                  )}
+                    {/* Max limit indicator */}
+                    {pendingPhotos.length >= 50 && (
+                      <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        Maximum of 50 photos reached
+                      </p>
+                    )}
 
-                  {/* Hint */}
-                  {pendingPhotos.length > 0 && pendingPhotos.length < 50 && (
-                    <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                      Tap to delete · Hold to drag and reorder
-                    </p>
-                  )}
+                    {/* Hint */}
+                    {pendingPhotos.length > 0 && pendingPhotos.length < 50 && (
+                      <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        Tap to delete · Hold to drag and reorder
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -2211,7 +2460,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
             </div>
             <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10">
               <div className="grid grid-cols-3 gap-3">
-                {(pendingPhotos).filter(Boolean).map((url, i) => (
+                {([...pendingUploadedPhotos, ...pendingPhotos]).filter(Boolean).map((url, i) => (
                   <button
                     key={`picker-${i}`}
                     onClick={() => handleImagePickerSelect(url)}
@@ -2220,11 +2469,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
-                {(pendingPhotos).filter(Boolean).length === 0 && (
+                {([...pendingUploadedPhotos, ...pendingPhotos]).filter(Boolean).length === 0 && (
                   <div className="col-span-3 text-center py-8 text-gray-400 text-sm">
                     No images available.
                     <br />
-                    Add photos in Photos and Images section.
+                    Add photos in Photos & Images section.
                   </div>
                 )}
               </div>

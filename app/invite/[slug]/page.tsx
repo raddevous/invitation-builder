@@ -169,6 +169,13 @@ export default function InvitePage({ params }: InvitePageProps) {
         >
           This invitation link may be invalid or has been removed.
         </p>
+        <button
+          onClick={() => { window.location.href = "https://instavow.com"; }}
+          className="mt-6 px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          style={{ backgroundColor: "#6998EE", color: "white", fontFamily: "Inter, sans-serif" }}
+        >
+          Go Home
+        </button>
       </div>
     );
   }

@@ -1677,7 +1677,7 @@ export default function HeroSection({
         {/* Ceremony Venue */}
         {data.venueName && (
           <div 
-            className={`flex flex-col items-center gap-1 -mt-14 ${editMode ? "cursor-pointer select-none" : ""}`}
+            className={`flex flex-col items-center gap-1 mt-5 ${editMode ? "cursor-pointer select-none" : ""}`}
             onClick={editMode ? (e) => {
               if (venueDragRef.current?.triggered) { e.stopPropagation(); venueDragRef.current = null; return; }
               onUpdateHeroVenueStructure?.(data.heroVenueStructure === "icon" ? "default" : "icon");
@@ -1729,7 +1729,7 @@ export default function HeroSection({
         {/* Closing Sentiment */}
         {data.heroClosingSentiment && (
           <div
-            className={`relative -mt-8 ${editMode ? "cursor-pointer select-none" : ""}`}
+            className={`relative -mt-[35px] ${editMode ? "cursor-pointer select-none" : ""}`}
             onClick={editMode ? (e) => {
               if (fsentimentTextDragRef.current?.triggered) { e.stopPropagation(); fsentimentTextDragRef.current = null; return; }
               const currentOpacity = heroMergedData.heroClosingSentimentImageOpacity ?? 1;

@@ -15,6 +15,7 @@ interface ChecklistEditorProps {
   accentColor?: string;
   showNumbers?: boolean;
   highlightItemId?: string | null;
+  initialExpandedContainerId?: string | null;
   initialData?: ChecklistContainer[];
   onChange?: (data: ChecklistContainer[]) => void;
   onClose: () => void;
@@ -39,7 +40,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Send save-the-dates",
         "Start guest list",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -53,7 +53,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Start dress shopping",
         "Book officiant",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -67,7 +66,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Book hair & makeup artist",
         "Plan rehearsal dinner",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -80,7 +78,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Arrange accommodations for out-of-town guests",
         "Buy wedding favors",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -93,7 +90,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Final dress fitting",
         "Arrange seating plan",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -105,7 +101,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Prepare wedding day emergency kit",
         "Confirm rehearsal dinner details",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -117,7 +112,6 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Get marriage license",
         "Confirm wedding party details",
       ]),
-      isExpanded: false,
     },
     {
       id: genId(),
@@ -127,22 +121,26 @@ function getDefaultChecklist(): ChecklistContainer[] {
         "Get beauty rest",
         "Pack wedding day bag",
       ]),
-      isExpanded: false,
     },
   ];
 }
 
-export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialData, onChange, onClose }: ChecklistEditorProps) {
-  const [isEditMode, setIsEditMode] = useState(false);
-  // Initialize from initialData prop, fallback to localStorage, then defaults
+export default function ChecklistEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialExpandedContainerId = null, initialData, onChange, onClose }: ChecklistEditorProps) {
+  // Expand/collapse is local UI state only — never persisted. Resets to
+  // all-collapsed every time the editor opens. Expanding a container also
+  // reveals its rename/delete buttons and editable items (replaces the old
+  // edit mode).
+  const [expandedContainerId, setExpandedContainerId] = useState<string | null>(initialExpandedContainerId);
+  // Initialize from initialData prop, fallback to localStorage, then defaults.
+  // Strip isExpanded from loaded data so it doesn't get persisted.
   const getInitialContainers = (): ChecklistContainer[] => {
     if (initialData && initialData.length > 0) {
-      return initialData.map((c: ChecklistContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
+      return initialData.map((c: ChecklistContainer) => { const { isExpanded, ...rest } = c; return rest; });
     }
     try {
       const stored = localStorage.getItem('weddingChecklist');
       if (stored) {
-        return JSON.parse(stored).map((c: ChecklistContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
+        return JSON.parse(stored).map((c: ChecklistContainer) => { const { isExpanded, ...rest } = c; return rest; });
       }
     } catch (error) {
       console.error('Failed to load initial checklist:', error);
@@ -156,6 +154,14 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightItemId);
+  // Pending container deletion (styled confirmation dialog instead of native confirm)
+  const [pendingDeleteContainer, setPendingDeleteContainer] = useState<ChecklistContainer | null>(null);
+  // Pending item deletion (styled confirmation dialog)
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<{ containerId: string; item: ChecklistItem } | null>(null);
+  // Add container dialog state
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [newChecklistTitle, setNewChecklistTitle] = useState("");
+  const [newChecklistItems, setNewChecklistItems] = useState<ChecklistItem[]>([]);
 
   // Scroll to + glow highlighted item on mount
   useEffect(() => {
@@ -202,15 +208,17 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
     setHasUnsavedChanges(JSON.stringify(containers) !== initialDataSnapshot.current);
   }, [containers]);
 
-  // Helper function to save to localStorage (cache) and notify parent
+  // Helper function to save to localStorage (cache) and notify parent.
+  // Strip isExpanded so expand/collapse state is never persisted.
   const saveData = (data: ChecklistContainer[]) => {
+    const clean = data.map(c => { const { isExpanded, ...rest } = c; return rest; });
     try {
-      localStorage.setItem('weddingChecklist', JSON.stringify(data));
+      localStorage.setItem('weddingChecklist', JSON.stringify(clean));
     } catch (error) {
       console.error('Failed to save checklist to localStorage:', error);
     }
     if (onChange) {
-      onChange(data);
+      onChange(clean);
     }
   };
 
@@ -289,43 +297,62 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
     return "Amazing work!";
   };
 
-  // Add new container
+  // Add new container — opens dialog
   const addContainer = () => {
     if (containers.length >= 15) {
       alert("Maximum of 15 checklists allowed");
       return;
     }
+    setNewChecklistTitle("New Checklist");
+    setNewChecklistItems([]);
+    setShowAddDialog(true);
+  };
+
+  // Add item to the new checklist in dialog
+  const addDialogItem = () => {
+    if (newChecklistItems.length >= 20) {
+      alert("Maximum of 20 items per checklist");
+      return;
+    }
+    setNewChecklistItems([...newChecklistItems, { id: Date.now().toString(), name: "", checked: false, deadline: "" }]);
+  };
+
+  // Confirm add container from dialog
+  const confirmAddContainer = () => {
+    const title = newChecklistTitle.trim() || "New Checklist";
     const newContainer: ChecklistContainer = {
       id: Date.now().toString(),
-      title: "New Checklist",
-      items: [],
-      isExpanded: false,
+      title,
+      items: newChecklistItems,
     };
     setContainers([...containers, newContainer]);
+    setShowAddDialog(false);
+    setNewChecklistTitle("");
+    setNewChecklistItems([]);
   };
 
-  // Delete container
+  // Save is disabled until the default "New Checklist" title is renamed
+  const canSaveChecklist = newChecklistTitle.trim() !== "New Checklist" && newChecklistTitle.trim() !== "";
+
+  // Delete container — opens styled confirmation dialog
   const deleteContainer = (containerId: string) => {
     const container = containers.find(c => c.id === containerId);
-    if (container && container.items.length > 0) {
-      if (!confirm("This checklist contains items. Are you sure you want to delete it?")) {
-        return;
-      }
-    }
-    setContainers(containers.filter(c => c.id !== containerId));
+    if (container) setPendingDeleteContainer(container);
   };
 
-  // Toggle container expansion (accordion behavior - only one expanded at a time)
+  // Confirm container deletion
+  const confirmDeleteContainer = () => {
+    if (pendingDeleteContainer) {
+      setContainers(containers.filter(c => c.id !== pendingDeleteContainer.id));
+      if (expandedContainerId === pendingDeleteContainer.id) setExpandedContainerId(null);
+    }
+    setPendingDeleteContainer(null);
+  };
+
+  // Toggle container expansion (accordion behavior - only one expanded at a time).
+  // Uses local UI state only — never persisted.
   const toggleContainer = (containerId: string) => {
-    setContainers(containers.map(c => {
-      if (c.id === containerId) {
-        // Toggle the clicked container
-        return { ...c, isExpanded: !c.isExpanded };
-      } else {
-        // Collapse all other containers (accordion behavior)
-        return { ...c, isExpanded: false };
-      }
-    }));
+    setExpandedContainerId(prev => prev === containerId ? null : containerId);
   };
 
   // Start editing container title
@@ -363,11 +390,22 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
     ));
   };
 
-  // Delete item
+  // Delete item — opens styled confirmation dialog
   const deleteItem = (containerId: string, itemId: string) => {
-    setContainers(containers.map(c => 
-      c.id === containerId ? { ...c, items: c.items.filter(i => i.id !== itemId) } : c
-    ));
+    const container = containers.find(c => c.id === containerId);
+    const item = container?.items.find(i => i.id === itemId);
+    if (item) setPendingDeleteItem({ containerId, item });
+  };
+
+  // Confirm item deletion
+  const confirmDeleteItem = () => {
+    if (pendingDeleteItem) {
+      const { containerId, item } = pendingDeleteItem;
+      setContainers(containers.map(c =>
+        c.id === containerId ? { ...c, items: c.items.filter(i => i.id !== item.id) } : c
+      ));
+    }
+    setPendingDeleteItem(null);
   };
 
   // Update item name
@@ -544,7 +582,7 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
               style={{
                 backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
                 borderColor: hoveredContainer === container.id ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-                ...(container.isExpanded ? {
+                ...(expandedContainerId === container.id ? {
                   boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
                 } : {}),
                 ...(dragIdx === idx ? {
@@ -631,7 +669,7 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                 }}
               >
                 <div className="shrink-0 text-gray-400">
-                  {container.isExpanded ? (
+                  {expandedContainerId === container.id ? (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M18 15l-6-6-6 6" />
                     </svg>
@@ -657,13 +695,13 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                     ) : (
                       <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>{container.title}</p>
                     )}
-                    {!isEditMode && (
+                    {expandedContainerId !== container.id && (
                       <p className="text-xs text-gray-400">{showNumbers ? getContainerProgress(container) : `${getContainerPercentage(container)}%`}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {isEditMode && (
+                  {expandedContainerId === container.id && (
                     <>
                       {editingContainerId !== container.id && (
                         <button
@@ -690,9 +728,9 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
               </div>
 
               {/* Container Items */}
-              {container.isExpanded && (
-                <div className={`p-4 space-y-4 ${isEditMode ? (isDarkMode ? "border-gray-700" : "border-gray-100") : "border-transparent"} border-t`}
-                  style={isEditMode ? (isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }) : { backgroundColor: "transparent" }}>
+              {expandedContainerId === container.id && (
+                <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}
+                  style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                   {container.items.length === 0 ? (
                     <p className={`text-sm text-center py-2 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
                       List is empty
@@ -705,88 +743,53 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
                           data-item-id={item.id}
                         >
                           <div className="flex items-center gap-2">
-                            {isEditMode && (
-                              <span className={`text-xs font-medium shrink-0 w-5 text-right ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                                {itemIdx + 1}.
-                              </span>
-                            )}
-                            {!isEditMode && (
-                              <div 
-                                className="w-4 h-4 rounded-full border-2 cursor-pointer flex items-center justify-center transition-colors shrink-0"
-                                style={{ 
-                                  borderColor: item.checked ? accentColor : (isDarkMode ? "#4B5563" : "#D1D5DB"),
-                                  backgroundColor: item.checked ? accentColor : "transparent"
-                                }}
-                                onClick={() => toggleItemCheck(container.id, item.id)}
-                              >
-                                {item.checked && (
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                                    <path d="M5 13l4 4L19 7" />
-                                  </svg>
-                                )}
-                              </div>
-                            )}
+                            <span className={`text-xs font-medium shrink-0 w-5 text-right ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                              {itemIdx + 1}.
+                            </span>
                             <div className="flex-1 flex items-center gap-1">
-                              {isEditMode ? (
-                                <input
-                                  type="text"
-                                  value={item.name}
-                                  onChange={(e) => updateItemName(container.id, item.id, e.target.value)}
-                                  className={`flex-1 px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"} ${activeHighlightId === item.id ? "checklist-item-highlight" : ""}`}
-                                  style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                                  placeholder="Item name"
-                                />
-                              ) : (
-                                <p className={`px-3 py-2 text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"} ${item.checked ? "line-through opacity-50" : ""} ${activeHighlightId === item.id ? "checklist-item-highlight" : ""}`}>
-                                  {item.name}
-                                  {item.deadline && (
-                                    <span className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                                      {" "}•{formatDeadline(item.deadline)}
-                                    </span>
-                                  )}
-                                </p>
-                              )}
-                            </div>
-                            {isEditMode && (
-                              <button
-                                onClick={() => deleteItem(container.id, item.id)}
-                                className={`p-1 rounded transition-colors shrink-0 ${isDarkMode ? "hover:bg-gray-600 text-red-400" : "hover:bg-gray-200 text-red-500"}`}
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                          {isEditMode && (
-                            <div className="flex items-center gap-2 ml-7 mt-1">
-                              <label className={`text-xs font-medium ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Deadline</label>
                               <input
-                                type="date"
-                                value={item.deadline || ""}
-                                onChange={(e) => updateItemDeadline(container.id, item.id, e.target.value)}
-                                className={`px-2 py-1 text-xs rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                                style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", colorScheme: isDarkMode ? "dark" : "light" }}
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => updateItemName(container.id, item.id, e.target.value)}
+                                className={`flex-1 px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"} ${activeHighlightId === item.id ? "checklist-item-highlight" : ""}`}
+                                style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                                placeholder="Item name"
                               />
                             </div>
-                          )}
+                            <button
+                              onClick={() => deleteItem(container.id, item.id)}
+                              className={`p-1 rounded transition-colors shrink-0 ${isDarkMode ? "hover:bg-gray-600 text-red-400" : "hover:bg-gray-200 text-red-500"}`}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 ml-7 mt-1">
+                            <label className={`text-xs font-medium ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Deadline</label>
+                            <input
+                              type="date"
+                              value={item.deadline || ""}
+                              onChange={(e) => updateItemDeadline(container.id, item.id, e.target.value)}
+                              className={`px-2 py-1 text-xs rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                              style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", colorScheme: isDarkMode ? "dark" : "light" }}
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>
                   )}
                   
-                  {/* Add item button - only in edit mode */}
-                  {isEditMode && (
-                    <div className="flex justify-center mt-2">
-                      <button
-                        onClick={() => addItem(container.id)}
-                        className="px-4 py-2 text-sm text-center rounded-lg transition-colors"
-                        style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
-                      >
-                        + Add item
-                      </button>
-                    </div>
-                  )}
+                  {/* Add item button - shown when container is expanded */}
+                  <div className="flex justify-center mt-2">
+                    <button
+                      onClick={() => addItem(container.id)}
+                      className="px-4 py-2 text-sm text-center rounded-lg transition-colors"
+                      style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
+                    >
+                      + Add item
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -796,16 +799,180 @@ export default function ChecklistEditor({ isDarkMode = false, accentColor = "#69
         <div className="h-8"></div>
       </div>
 
+      {/* Delete Container Confirmation Dialog */}
+      {pendingDeleteContainer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setPendingDeleteContainer(null)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Delete Checklist
+            </h3>
+            <p className={`text-sm mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Are you sure you want to delete "{pendingDeleteContainer.title}"?
+            </p>
+            <p className="text-red-500 text-xs mb-6" style={{ fontFamily: "Inter, sans-serif" }}>
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingDeleteContainer(null)}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB", color: isDarkMode ? "#9CA3AF" : "#6B7280", fontFamily: "Inter, sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteContainer}
+                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: "#EF4444", fontFamily: "Inter, sans-serif" }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Item Confirmation Dialog */}
+      {pendingDeleteItem && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setPendingDeleteItem(null)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Delete Task
+            </h3>
+            <p className={`text-sm mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Are you sure you want to delete "{pendingDeleteItem.item.name || "this task"}"?
+            </p>
+            <p className="text-red-500 text-xs mb-6" style={{ fontFamily: "Inter, sans-serif" }}>
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingDeleteItem(null)}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB", color: isDarkMode ? "#9CA3AF" : "#6B7280", fontFamily: "Inter, sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteItem}
+                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: "#EF4444", fontFamily: "Inter, sans-serif" }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Checklist Dialog */}
+      {showAddDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setShowAddDialog(false)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto`}
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>
+              Add Checklist
+            </h3>
+            {/* Checklist name (editable, click to rename) */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={newChecklistTitle}
+                onChange={(e) => setNewChecklistTitle(e.target.value)}
+                className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                style={{ backgroundColor: "transparent" }}
+                placeholder="Checklist name"
+                autoFocus
+              />
+            </div>
+            {/* Items */}
+            {newChecklistItems.length > 0 && (
+              <div className="space-y-2 mb-2">
+                {newChecklistItems.map((item, itemIdx) => (
+                  <div key={item.id}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium shrink-0 w-5 text-right ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                        {itemIdx + 1}.
+                      </span>
+                      <div className="flex-1 flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => setNewChecklistItems(newChecklistItems.map((it, i) => i === itemIdx ? { ...it, name: e.target.value } : it))}
+                          className={`flex-1 px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                          placeholder="Item name"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setNewChecklistItems(newChecklistItems.filter((_, i) => i !== itemIdx))}
+                        className={`p-1 rounded transition-colors shrink-0 ${isDarkMode ? "hover:bg-gray-600 text-red-400" : "hover:bg-gray-200 text-red-500"}`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 ml-7 mt-1">
+                      <label className={`text-xs font-medium ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>Deadline</label>
+                      <input
+                        type="date"
+                        value={item.deadline || ""}
+                        onChange={(e) => setNewChecklistItems(newChecklistItems.map((it, i) => i === itemIdx ? { ...it, deadline: e.target.value } : it))}
+                        className={`px-2 py-1 text-xs rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                        style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", colorScheme: isDarkMode ? "dark" : "light" }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Add item button */}
+            <div className="flex flex-col gap-2 mb-6">
+              <button
+                onClick={addDialogItem}
+                className="w-full px-4 py-2 text-sm text-center rounded-lg font-medium transition-colors"
+                style={{ color: accentColor, backgroundColor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }}
+              >
+                + Add item
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setShowAddDialog(false)}
+                className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB", color: isDarkMode ? "#9CA3AF" : "#6B7280" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAddContainer}
+                disabled={!canSaveChecklist}
+                className="w-full px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ backgroundColor: accentColor }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Action Menu */}
       <FloatingActionMenu
         accentColor={accentColor}
         isDarkMode={isDarkMode}
-        options={isEditMode ? [
-          { label: "Add Checklist", icon: "plus", onClick: addContainer },
-          { label: "Done Edit", icon: "done", onClick: () => setIsEditMode(false) },
-        ] : [
-          { label: "Add Checklist", icon: "plus", onClick: addContainer },
-          { label: "Edit Checklist", icon: "edit", onClick: () => setIsEditMode(true) },
+        options={[
+          { label: "Add item", icon: "plus", onClick: addContainer },
         ]}
       />
 

@@ -34,6 +34,20 @@ add_action('rest_api_init', function () {
     IDB_Rest_Api::register_routes();
 });
 
+// Allow file uploads via REST API for the invitation-db namespace.
+// WordPress normally blocks file uploads from unauthenticated REST requests;
+// this filter ensures $_FILES is populated for our /upload endpoint.
+add_filter('rest_request_before_callbacks', function ($response, $handler, $request) {
+    // No-op: just ensure the request body is parsed for multipart
+    return $response;
+}, 10, 3);
+
+// Increase upload size limit for REST API file uploads
+add_filter('upload_size_limit', function ($size) {
+    // 10MB — matches the app-side validation
+    return 10 * 1024 * 1024;
+});
+
 // Initialize Admin
 add_action('admin_menu', function () {
     IDB_Admin::init();

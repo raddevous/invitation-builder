@@ -15,6 +15,7 @@ interface BudgetEditorProps {
   accentColor?: string;
   showNumbers?: boolean;
   highlightItemId?: string | null;
+  initialExpandedContainerId?: string | null;
   initialData?: BudgetContainer[];
   onChange?: (data: BudgetContainer[]) => void;
   onClose: () => void;
@@ -28,7 +29,6 @@ function getDefaultBudget(): BudgetContainer[] {
     id: genBudgetId(),
     title,
     items: [{ id: genBudgetId(), name: title, budget: "", cost: "", paid: "", due: "" }],
-    isExpanded: false,
   });
 
   return [
@@ -70,17 +70,21 @@ const formatDisplay = (value: string): string => {
   return num.toLocaleString();
 };
 
-export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialData, onChange, onClose }: BudgetEditorProps) {
-  const [isEditMode, setIsEditMode] = useState(false);
-  // Initialize from initialData prop, fallback to localStorage, then defaults
+export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialExpandedContainerId = null, initialData, onChange, onClose }: BudgetEditorProps) {
+  // Expand/collapse is local UI state only â€” never persisted. Resets to
+  // all-collapsed every time the editor opens. Expanding a container also
+  // reveals its rename/delete buttons (replaces the old edit mode).
+  const [expandedContainerId, setExpandedContainerId] = useState<string | null>(initialExpandedContainerId);
+  // Initialize from initialData prop, fallback to localStorage, then defaults.
+  // Strip isExpanded from loaded data so it doesn't get persisted.
   const getInitialContainers = (): BudgetContainer[] => {
     if (initialData && initialData.length > 0) {
-      return initialData.map((c: BudgetContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
+      return initialData.map((c: BudgetContainer) => { const { isExpanded, ...rest } = c; return rest; });
     }
     try {
       const stored = localStorage.getItem('weddingBudget');
       if (stored) {
-        return JSON.parse(stored).map((c: BudgetContainer) => ({ ...c, isExpanded: c.isExpanded || false }));
+        return JSON.parse(stored).map((c: BudgetContainer) => { const { isExpanded, ...rest } = c; return rest; });
       }
     } catch (error) {
       console.error('Failed to load initial budget:', error);
@@ -94,6 +98,12 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightItemId);
+  // Pending container deletion (styled confirmation dialog instead of native confirm)
+  const [pendingDeleteContainer, setPendingDeleteContainer] = useState<BudgetContainer | null>(null);
+  // Add container dialog state
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [newBudgetTitle, setNewBudgetTitle] = useState("");
+  const [newBudgetItem, setNewBudgetItem] = useState<BudgetItem>({ id: "", name: "", budget: "", cost: "", paid: "", due: "" });
 
   useEffect(() => {
     if (!highlightItemId) return;
@@ -154,15 +164,17 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
     setHasUnsavedChanges(JSON.stringify(containers) !== initialDataSnapshot.current);
   }, [containers]);
 
-  // Helper function to save to localStorage (cache) and notify parent
+  // Helper function to save to localStorage (cache) and notify parent.
+  // Strip isExpanded so expand/collapse state is never persisted.
   const saveData = (data: BudgetContainer[]) => {
+    const clean = data.map(c => { const { isExpanded, ...rest } = c; return rest; });
     try {
-      localStorage.setItem('weddingBudget', JSON.stringify(data));
+      localStorage.setItem('weddingBudget', JSON.stringify(clean));
     } catch (error) {
       console.error('Failed to save budget to localStorage:', error);
     }
     if (onChange) {
-      onChange(data);
+      onChange(clean);
     }
   };
 
@@ -238,51 +250,53 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
     return "#B91C1C"; // Dark red (0-10%)
   };
 
-  // Add new container
+  // Add new container — opens dialog
   const addContainer = () => {
     if (containers.length >= 30) {
       alert("Maximum of 30 budget items allowed");
       return;
     }
-    const newItem: BudgetItem = {
-      id: Date.now().toString(),
-      name: "New Item",
-      budget: "",
-      cost: "",
-      paid: "",
-      due: "",
-    };
+    setNewBudgetTitle("New Item");
+    setNewBudgetItem({ id: Date.now().toString(), name: "New Item", budget: "", cost: "", paid: "", due: "" });
+    setShowAddDialog(true);
+  };
+
+  // Confirm add container from dialog
+  const confirmAddContainer = () => {
+    const title = newBudgetTitle.trim() || "New Item";
     const newContainer: BudgetContainer = {
       id: Date.now().toString(),
-      title: "New Item",
-      items: [newItem],
-      isExpanded: false,
+      title,
+      items: [{ ...newBudgetItem, name: title }],
     };
     setContainers([...containers, newContainer]);
+    setShowAddDialog(false);
+    setNewBudgetTitle("");
+    setNewBudgetItem({ id: "", name: "", budget: "", cost: "", paid: "", due: "" });
   };
 
-  // Delete container
+  // Save is disabled until the default "New Item" title is renamed
+  const canSaveBudget = newBudgetTitle.trim() !== "New Item" && newBudgetTitle.trim() !== "";
+
+  // Delete container — opens styled confirmation dialog
   const deleteContainer = (containerId: string) => {
     const container = containers.find(c => c.id === containerId);
-    if (container && container.items.length > 0) {
-      if (!confirm("This budget item contains data. Are you sure you want to delete it?")) {
-        return;
-      }
-    }
-    setContainers(containers.filter(c => c.id !== containerId));
+    if (container) setPendingDeleteContainer(container);
   };
 
-  // Toggle container expansion (accordion behavior - only one expanded at a time)
+  // Confirm container deletion
+  const confirmDeleteContainer = () => {
+    if (pendingDeleteContainer) {
+      setContainers(containers.filter(c => c.id !== pendingDeleteContainer.id));
+      if (expandedContainerId === pendingDeleteContainer.id) setExpandedContainerId(null);
+    }
+    setPendingDeleteContainer(null);
+  };
+
+  // Toggle container expansion (accordion behavior - only one expanded at a time).
+  // Uses local UI state only â€” never persisted.
   const toggleContainer = (containerId: string) => {
-    setContainers(containers.map(c => {
-      if (c.id === containerId) {
-        // Toggle the clicked container
-        return { ...c, isExpanded: !c.isExpanded };
-      } else {
-        // Collapse all other containers (accordion behavior)
-        return { ...c, isExpanded: false };
-      }
-    }));
+    setExpandedContainerId(prev => prev === containerId ? null : containerId);
   };
 
   // Start editing container title
@@ -389,7 +403,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                 Budget List
               </h2>
               <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                Track your wedding expenses
+                Set expected budget, update actual cost, add how much you already paid
               </p>
             </div>
           </div>
@@ -437,7 +451,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
         </div>
         {/* Summary stats */}
         <div className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-          • Cost: {getTotalBudget().toLocaleString()}   • Paid: {getTotalPaid().toLocaleString()} • Balance: {getTotalBalance().toLocaleString()}
+          â€¢ Cost: {getTotalBudget().toLocaleString()}   â€¢ Paid: {getTotalPaid().toLocaleString()} â€¢ Balance: {getTotalBalance().toLocaleString()}
         </div>
       </div>
 
@@ -458,7 +472,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
               style={{
                 backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
                 borderColor: hoveredContainer === container.id ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-                ...(container.isExpanded ? {
+                ...(expandedContainerId === container.id ? {
                   boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
                 } : {}),
                 ...(dragIdx === idx ? {
@@ -545,7 +559,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                 }}
               >
                 <div className="shrink-0 text-gray-400">
-                  {container.isExpanded ? (
+                  {expandedContainerId === container.id ? (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M18 15l-6-6-6 6" />
                     </svg>
@@ -571,12 +585,12 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                     <p className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>{container.title}</p>
                   )}
                   {/* Preview when collapsed */}
-                  {!container.isExpanded && container.items.length > 0 && (
+                  {expandedContainerId !== container.id && container.items.length > 0 && (
                     <div className={`text-xs mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                       {container.items.map((item) => (
                         <div key={item.id} className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span>• Cost: {formatDisplay(getDisplayCost(item))}      • Balance: {getItemBalance(item).toLocaleString()}</span>
+                            <span>â€¢ Cost: {formatDisplay(getDisplayCost(item))}      â€¢ Balance: {getItemBalance(item).toLocaleString()}</span>
                             <span style={{ color: getPercentageColor(getItemBalancePercentage(item)) }}>
                               {showNumbers
                                 ? `(${formatDisplay(item.paid || "0")}/${formatDisplay(getDisplayCost(item))})`
@@ -584,7 +598,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span>• Paid: {formatDisplay(item.paid || "0")}      • Deadline: {item.due || "TBD"}</span>
+                            <span>â€¢ Paid: {formatDisplay(item.paid || "0")}      â€¢ Deadline: {item.due || "TBD"}</span>
                           </div>
                         </div>
                       ))}
@@ -592,7 +606,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {isEditMode && (
+                  {expandedContainerId === container.id && (
                     <>
                       {editingContainerId !== container.id && (
                         <button
@@ -619,11 +633,11 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
               </div>
 
               {/* Container Items - Input fields */}
-              {container.isExpanded && (
+              {expandedContainerId === container.id && (
                 <div
                   data-item-id={container.items[0]?.id}
-                  className={`p-4 space-y-4 ${isEditMode ? (isDarkMode ? "border-gray-700" : "border-gray-100") : "border-transparent"} border-t`}
-                  style={isEditMode ? (isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }) : { backgroundColor: "transparent" }}>
+                  className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}
+                  style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -633,7 +647,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                           value={formatNumberInput(container.items[0]?.budget || "")}
                           onChange={(e) => updateItemBudget(container.id, container.items[0]?.id || "", parseNumberInput(e.target.value))}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                           placeholder="Expected cost"
                         />
                       </div>
@@ -644,7 +658,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                           value={formatNumberInput(container.items[0]?.cost || "")}
                           onChange={(e) => updateItemCost(container.id, container.items[0]?.id || "", parseNumberInput(e.target.value))}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                           placeholder="Actual cost"
                         />
                       </div>
@@ -657,7 +671,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                           value={formatNumberInput(container.items[0]?.paid || "")}
                           onChange={(e) => updateItemPaid(container.id, container.items[0]?.id || "", parseNumberInput(e.target.value))}
                           className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                          style={isEditMode ? (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }) : (isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" })}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                           placeholder="Amount paid"
                         />
                       </div>
@@ -688,16 +702,147 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
         <div className="h-8"></div>
       </div>
 
+      {/* Delete Container Confirmation Dialog */}
+      {pendingDeleteContainer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setPendingDeleteContainer(null)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Delete Budget Item
+            </h3>
+            <p className={`text-sm mb-2 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Are you sure you want to delete "{pendingDeleteContainer.title}"?
+            </p>
+            <p className="text-red-500 text-xs mb-6" style={{ fontFamily: "Inter, sans-serif" }}>
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingDeleteContainer(null)}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB", color: isDarkMode ? "#9CA3AF" : "#6B7280", fontFamily: "Inter, sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteContainer}
+                className="flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: "#EF4444", fontFamily: "Inter, sans-serif" }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Budget Dialog */}
+      {showAddDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setShowAddDialog(false)}>
+          <div
+            className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto`}
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>
+              Add Budget Item
+            </h3>
+            {/* Budget name (editable, click to rename) */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={newBudgetTitle}
+                onChange={(e) => setNewBudgetTitle(e.target.value)}
+                className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                style={{ backgroundColor: "transparent" }}
+                placeholder="Budget name"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>BUDGET</label>
+                  <input
+                    type="text"
+                    value={formatNumberInput(newBudgetItem.budget)}
+                    onChange={(e) => setNewBudgetItem({ ...newBudgetItem, budget: parseNumberInput(e.target.value) })}
+                    className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                    style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                    placeholder="Expected cost"
+                  />
+                </div>
+                <div>
+                  <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>COST</label>
+                  <input
+                    type="text"
+                    value={formatNumberInput(newBudgetItem.cost)}
+                    onChange={(e) => setNewBudgetItem({ ...newBudgetItem, cost: parseNumberInput(e.target.value) })}
+                    className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                    style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                    placeholder="Actual cost"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>PAID</label>
+                  <input
+                    type="text"
+                    value={formatNumberInput(newBudgetItem.paid)}
+                    onChange={(e) => setNewBudgetItem({ ...newBudgetItem, paid: parseNumberInput(e.target.value) })}
+                    className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                    style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                    placeholder="Amount paid"
+                  />
+                </div>
+                <div>
+                  <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>DUE</label>
+                  <input
+                    type="date"
+                    value={newBudgetItem.due}
+                    onChange={(e) => setNewBudgetItem({ ...newBudgetItem, due: e.target.value })}
+                    className={`w-full px-3 py-2 text-sm rounded-lg focus:outline-none transition-colors ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                    style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", colorScheme: isDarkMode ? "dark" : "light" }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={`text-xs font-medium mb-1 block ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>BALANCE</label>
+                <div className={`px-3 py-2 text-sm rounded-lg ${isDarkMode ? "bg-gray-800 text-gray-400" : "bg-gray-100 text-gray-600"}`}>
+                  {(getItemBalance(newBudgetItem)).toLocaleString()}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 mt-6">
+              <button
+                onClick={() => setShowAddDialog(false)}
+                className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: isDarkMode ? "#374151" : "#E5E7EB", color: isDarkMode ? "#9CA3AF" : "#6B7280" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAddContainer}
+                disabled={!canSaveBudget}
+                className="w-full px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ backgroundColor: accentColor }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Action Menu */}
       <FloatingActionMenu
         accentColor={accentColor}
         isDarkMode={isDarkMode}
-        options={isEditMode ? [
-          { label: "Add Budget", icon: "plus", onClick: addContainer },
-          { label: "Done Edit", icon: "done", onClick: () => setIsEditMode(false) },
-        ] : [
-          { label: "Add Budget", icon: "plus", onClick: addContainer },
-          { label: "Edit Budget", icon: "edit", onClick: () => setIsEditMode(true) },
+        options={[
+          { label: "Add item", icon: "plus", onClick: addContainer },
         ]}
       />
 

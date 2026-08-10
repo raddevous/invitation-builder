@@ -52,7 +52,6 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const [guestFilter, setGuestFilter] = useState<GuestFilter>("all");
   const [rsvpResponses, setRsvpResponses] = useState<RSVPResponse[]>([]);
-  const [isEditMode, setIsEditMode] = useState(false);
   const [messageDialogGuest, setMessageDialogGuest] = useState<{ name: string; message: string; submittedAt: string } | null>(null);
   const [readMessages, setReadMessages] = useState<Set<string>>(() => {
     try {
@@ -747,7 +746,6 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                 <div key={key} className="flex items-center">
                                   <div
                                     onClick={() => {
-                                      if (!isEditMode) return;
                                       const guestDetails = pendingEntourageGuestDetails[guestName] || { plusOne: "", tableNumber: "" };
                                       const entTitle = (item as any).entourageTitle || "";
                                       setEditGuestData({ 
@@ -771,7 +769,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                       setEditDialogHasChanges(false);
                                       setShowEditDialog(true);
                                     }}
-                                    className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between ${isEditMode ? "cursor-pointer" : ""} ${isDarkMode ? "border-gray-700 text-gray-300 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                                    className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between cursor-pointer ${isDarkMode ? "border-gray-700 text-gray-300 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
                                     style={isDarkMode ? { backgroundColor: "#151B24", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#EDEEF1", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}
                                     title="Auto-added from Entourage List - Click to edit"
                                   >
@@ -819,7 +817,6 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                               <div key={key} className="flex items-center">
                                 <div
                                   onClick={() => {
-                                    if (!isEditMode) return;
                                     const guestDetails = pendingGuestDetails[originalIndex] || { plusOne: "", tableNumber: "" };
                                     setEditGuestData({ 
                                       isEntourage: false, 
@@ -839,7 +836,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                     setEditDialogHasChanges(false);
                                     setShowEditDialog(true);
                                   }}
-                                  className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between ${isEditMode ? "cursor-pointer" : ""} ${isDarkMode ? "border-gray-700 text-gray-200 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                                  className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between cursor-pointer ${isDarkMode ? "border-gray-700 text-gray-200 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
                                   style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
                                 >
                                   <span>{name}</span>
@@ -1347,6 +1344,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
           {
             label: "Add Guest",
             icon: "plus",
+            divider: true,
             onClick: () => {
               setNewGuestName("");
               setNewGuestTitle("M");
@@ -1356,14 +1354,6 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
               setAddDialogGuestNumberError(false);
               setShowAddDialog(true);
             },
-          },
-          {
-            label: isEditMode ? "Done Edit" : "Edit Guest",
-            icon: isEditMode ? "done" : "edit",
-            onClick: () => {
-              setIsEditMode(!isEditMode);
-            },
-            divider: true,
           },
           {
             label: "Expected Guests",

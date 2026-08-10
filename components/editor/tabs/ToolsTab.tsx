@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 import { useBackHandler } from "@/lib/hooks/useBackHandler";
+import { clearPendingMediaOperations } from "@/lib/utils/media-cache";
 import EntourageEditor from "./EntourageEditor";
 import GuestEditor from "./GuestEditor";
 import MediaEditor from "./MediaEditor";
@@ -94,6 +95,22 @@ function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#69
 
 type ToolsNavTab = "dashboard" | "list" | "website" | "settings";
 
+// Maps each data field to the section it belongs to. Used to track which
+// sections the user has *actually* modified (vs. automatic transformations
+// like media cache resolution on native that swap remote URLs for local URIs).
+const FIELD_TO_SECTION: Record<string, string> = {
+  entourage: "Entourage",
+  rsvpInvitees: "Guest List", rsvpEntourageHonorifics: "Guest List", rsvpEntourageGuestDetails: "Guest List", rsvpGuestDetails: "Guest List",
+  heroIcon: "Media", heroBackgroundImages: "Media", heroBackgroundImagesMobile: "Media", galleryImages: "Media", photosAndImages: "Media", venueImages: "Media", receptionVenueImages: "Media", customHeadingFont: "Media", customBodyFont: "Media", backgroundMusic: "Media", backgroundMusicFileNames: "Media",
+  hisName: "Wedding Details", herName: "Wedding Details", andText: "Wedding Details", coupleName: "Wedding Details", nameType: "Wedding Details", date: "Wedding Details", time: "Wedding Details", timezone: "Wedding Details", venueName: "Wedding Details", venueAddress: "Wedding Details", receptionVenueName: "Wedding Details", receptionVenueAddress: "Wedding Details", oneVenueOnly: "Wedding Details", heroMessage: "Wedding Details", heroClosingSentiment: "Wedding Details", eventDetailsHeading: "Wedding Details", eventDetailsMessage: "Wedding Details",
+  weddingProgram: "Wedding Program",
+  storyTimeline: "Story Timeline",
+  venueLayout: "Table Map",
+  budgetData: "Budget",
+  checklistData: "Checklist",
+  musicEnabled: "Settings", musicTrack: "Settings", musicVolume: "Settings", rsvpEnabled: "Settings", rsvpDeadline: "Settings", rsvpAllowPlusOne: "Settings", rsvpAskPlusOneName: "Settings", rsvpAllowKids: "Settings", rsvpAskMealPreference: "Settings", rsvpMealOptions: "Settings", rsvpCustomQuestions: "Settings", rsvpCollectPhone: "Settings", rsvpCollectAddress: "Settings", rsvpShowGuestCount: "Settings", rsvpButtonText: "Settings", rsvpSubmitMessage: "Settings", rsvpClosedMessage: "Settings",
+};
+
 const TOOLS_NAV_TABS: { id: ToolsNavTab; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "/assets/ico-dash.png" },
   { id: "list", label: "List", icon: "/assets/ico-guest.png" },
@@ -107,6 +124,10 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showChecklistEditor, setShowChecklistEditor] = useState(false);
   const [showBudgetEditor, setShowBudgetEditor] = useState(false);
+  // Track which container to expand when opening Budget/Checklist editor from
+  // a reminder tap. Local UI state only — never persisted.
+  const [budgetExpandedContainerId, setBudgetExpandedContainerId] = useState<string | null>(null);
+  const [checklistExpandedContainerId, setChecklistExpandedContainerId] = useState<string | null>(null);
   const [showTableMapEditor, setShowTableMapEditor] = useState(false);
   const [showWeddingProgramEditor, setShowWeddingProgramEditor] = useState(false);
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
@@ -122,7 +143,10 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const guardedOnChange = useCallback(
     (field: keyof InvitationData, value: InvitationData[keyof InvitationData]) => {
       if (isExpired) return;
+      console.log("[ToolsTab] guardedOnChange called:", field, "userChangeOccurred was:", userChangeOccurred.current);
       userChangeOccurred.current = true;
+      const section = FIELD_TO_SECTION[field as string];
+      if (section) userChangedSections.current.add(section);
       onChange(field, value);
     },
     [isExpired, onChange]
@@ -390,23 +414,45 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   // cache resolution on native, which swaps remote URLs for local URIs and
   // would otherwise falsely trigger the save bubble on every dashboard load)
   const userChangeOccurred = useRef(false);
+  // Track which specific sections the user has actually modified. This
+  // prevents async media cache resolution from falsely adding "Media" to
+  // changedSections after the user modifies a different section (e.g. Budget).
+  const userChangedSections = useRef<Set<string>>(new Set());
 
-  // Detect which sections have changed by comparing current data against snapshot
+  // Synchronously sync snapshot to latest data when no user change has
+  // occurred. This eliminates the one-render-cycle window where
+  // changedSections would be non-empty (because the data effect hasn't
+  // run yet) which could falsely trigger the save bubble on native when
+  // useMediaCache resolves URLs.
+  if (!userChangeOccurred.current && dataSnapshot.current !== JSON.stringify(data)) {
+    console.log("[ToolsTab] sync snapshot update (no user change), data length:", JSON.stringify(data).length, "old snapshot length:", dataSnapshot.current.length);
+    dataSnapshot.current = JSON.stringify(data);
+  }
+
+  // Detect which sections have changed by comparing current data against snapshot.
+  // Only sections the user has *actually* modified (tracked via
+  // userChangedSections) are reported. This prevents async media cache
+  // resolution from falsely adding "Media" to changedSections after the user
+  // modifies a different section (e.g. Budget).
   const changedSections = useMemo(() => {
     // Include snapshotVersion in deps so memo recomputes after save
     void snapshotVersion;
+    if (!userChangeOccurred.current) return [];
     const snapshot = JSON.parse(dataSnapshot.current);
     const sections: string[] = [];
+    const userSections = userChangedSections.current;
 
     // Entourage
-    if (JSON.stringify(data.entourage) !== JSON.stringify(snapshot.entourage)) sections.push("Entourage");
+    if (userSections.has("Entourage") && JSON.stringify(data.entourage) !== JSON.stringify(snapshot.entourage)) sections.push("Entourage");
     // Guest List
-    if (JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees) ||
+    if (userSections.has("Guest List") && (
+        JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees) ||
         JSON.stringify(data.rsvpEntourageHonorifics) !== JSON.stringify(snapshot.rsvpEntourageHonorifics) ||
         JSON.stringify(data.rsvpEntourageGuestDetails) !== JSON.stringify(snapshot.rsvpEntourageGuestDetails) ||
-        JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails)) sections.push("Guest List");
+        JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails))) sections.push("Guest List");
     // Media
-    if (data.heroIcon !== snapshot.heroIcon ||
+    if (userSections.has("Media") && (
+        data.heroIcon !== snapshot.heroIcon ||
         JSON.stringify(data.heroBackgroundImages) !== JSON.stringify(snapshot.heroBackgroundImages) ||
         JSON.stringify(data.heroBackgroundImagesMobile) !== JSON.stringify(snapshot.heroBackgroundImagesMobile) ||
         JSON.stringify(data.galleryImages) !== JSON.stringify(snapshot.galleryImages) ||
@@ -416,31 +462,48 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         data.customHeadingFont !== snapshot.customHeadingFont ||
         data.customBodyFont !== snapshot.customBodyFont ||
         JSON.stringify(data.backgroundMusic) !== JSON.stringify(snapshot.backgroundMusic) ||
-        JSON.stringify(data.backgroundMusicFileNames) !== JSON.stringify(snapshot.backgroundMusicFileNames)) sections.push("Media");
+        JSON.stringify(data.backgroundMusicFileNames) !== JSON.stringify(snapshot.backgroundMusicFileNames))) sections.push("Media");
     // Wedding Details
-    const weddingDetailsFields = ['hisName', 'herName', 'andText', 'coupleName', 'nameType', 'date', 'time', 'timezone', 'venueName', 'venueAddress', 'receptionVenueName', 'receptionVenueAddress', 'oneVenueOnly', 'heroMessage', 'heroClosingSentiment', 'eventDetailsHeading', 'eventDetailsMessage'] as const;
-    const hasWeddingDetailsChanges = weddingDetailsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]));
-    if (hasWeddingDetailsChanges) sections.push("Wedding Details");
+    if (userSections.has("Wedding Details")) {
+      const weddingDetailsFields = ['hisName', 'herName', 'andText', 'coupleName', 'nameType', 'date', 'time', 'timezone', 'venueName', 'venueAddress', 'receptionVenueName', 'receptionVenueAddress', 'oneVenueOnly', 'heroMessage', 'heroClosingSentiment', 'eventDetailsHeading', 'eventDetailsMessage'] as const;
+      if (weddingDetailsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]))) sections.push("Wedding Details");
+    }
     // Wedding Program
-    if (JSON.stringify(data.weddingProgram) !== JSON.stringify(snapshot.weddingProgram)) sections.push("Wedding Program");
+    if (userSections.has("Wedding Program") && JSON.stringify(data.weddingProgram) !== JSON.stringify(snapshot.weddingProgram)) sections.push("Wedding Program");
     // Story Timeline
-    if (JSON.stringify(data.storyTimeline) !== JSON.stringify(snapshot.storyTimeline)) sections.push("Story Timeline");
+    if (userSections.has("Story Timeline") && JSON.stringify(data.storyTimeline) !== JSON.stringify(snapshot.storyTimeline)) sections.push("Story Timeline");
     // Table Map
-    if (JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) sections.push("Table Map");
+    if (userSections.has("Table Map") && JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) sections.push("Table Map");
     // Budget
-    if (JSON.stringify(data.budgetData) !== JSON.stringify(snapshot.budgetData)) sections.push("Budget");
+    if (userSections.has("Budget") && JSON.stringify(data.budgetData) !== JSON.stringify(snapshot.budgetData)) sections.push("Budget");
     // Checklist
-    if (JSON.stringify(data.checklistData) !== JSON.stringify(snapshot.checklistData)) sections.push("Checklist");
+    if (userSections.has("Checklist") && JSON.stringify(data.checklistData) !== JSON.stringify(snapshot.checklistData)) sections.push("Checklist");
     // Settings (exclude isDarkMode/accentColor which are app settings, not invitation data)
-    const settingsFields = ['musicEnabled', 'musicTrack', 'musicVolume', 'rsvpEnabled', 'rsvpDeadline', 'rsvpAllowPlusOne', 'rsvpAskPlusOneName', 'rsvpAllowKids', 'rsvpAskMealPreference', 'rsvpMealOptions', 'rsvpCustomQuestions', 'rsvpCollectPhone', 'rsvpCollectAddress', 'rsvpShowGuestCount', 'rsvpButtonText', 'rsvpSubmitMessage', 'rsvpClosedMessage'];
-    const hasSettingsChanges = settingsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]));
-    if (hasSettingsChanges) sections.push("Settings");
+    if (userSections.has("Settings")) {
+      const settingsFields = ['musicEnabled', 'musicTrack', 'musicVolume', 'rsvpEnabled', 'rsvpDeadline', 'rsvpAllowPlusOne', 'rsvpAskPlusOneName', 'rsvpAllowKids', 'rsvpAskMealPreference', 'rsvpMealOptions', 'rsvpCustomQuestions', 'rsvpCollectPhone', 'rsvpCollectAddress', 'rsvpShowGuestCount', 'rsvpButtonText', 'rsvpSubmitMessage', 'rsvpClosedMessage'];
+      if (settingsFields.some(f => JSON.stringify((data as any)[f]) !== JSON.stringify((snapshot as any)[f]))) sections.push("Settings");
+    }
 
     return sections;
   }, [data, snapshotVersion]);
 
   const hasUnsavedChanges = changedSections.length > 0 && userChangeOccurred.current;
+  if (hasUnsavedChanges) {
+    console.log("[ToolsTab] hasUnsavedChanges: TRUE", "changedSections:", changedSections, "userChangeOccurred:", userChangeOccurred.current);
+  }
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+
+  // Reset change tracking when a different invitation is loaded (e.g. after
+  // login). Without this, userChangeOccurred could stay true from a prior
+  // session or demo mode, causing a false save bubble on the new invitation.
+  useEffect(() => {
+    console.log("[ToolsTab] invitationId effect running, invitationId:", invitationId, "resetting userChangeOccurred to false");
+    userChangeOccurred.current = false;
+    userChangedSections.current.clear();
+    dataSnapshot.current = JSON.stringify(data);
+    setSnapshotVersion(v => v + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invitationId]);
 
   // On native, media cache resolution swaps remote URLs for local URIs after
   // the initial render. This automatic transformation would falsely trigger
@@ -448,6 +511,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   // occurred so the baseline matches the resolved data.
   useEffect(() => {
     if (!userChangeOccurred.current && dataSnapshot.current !== JSON.stringify(data)) {
+      console.log("[ToolsTab] data effect: updating snapshot (no user change), data length:", JSON.stringify(data).length);
       dataSnapshot.current = JSON.stringify(data);
       setSnapshotVersion(v => v + 1);
     }
@@ -461,11 +525,13 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       dataSnapshot.current = JSON.stringify(data);
       setSnapshotVersion(v => v + 1);
       userChangeOccurred.current = false;
+      userChangedSections.current.clear();
     }
   };
 
   // Handle discard - revert all changes back to the saved snapshot
   const handleToolsDiscard = () => {
+    clearPendingMediaOperations();
     const snapshot = JSON.parse(dataSnapshot.current);
     // Revert each field that has changed
     if (JSON.stringify(data.entourage) !== JSON.stringify(snapshot.entourage)) {
@@ -540,6 +606,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       }
     });
     userChangeOccurred.current = false;
+    userChangedSections.current.clear();
   };
 
   // Handle save bubble click - show confirmation dialog
@@ -614,21 +681,10 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     setShowAllReminders(false);
     setHighlightItemId(item.id);
     if (item.type === "checklist") {
-      // Expand the target container in data before opening
-      const containers = getChecklistContainers();
-      const updated = containers.map((c: any) => ({
-        ...c,
-        isExpanded: c.id === item.containerId,
-      }));
-      guardedOnChange('checklistData', updated);
+      setChecklistExpandedContainerId(item.containerId);
       setShowChecklistEditor(true);
     } else {
-      const containers = getBudgetContainers();
-      const updated = containers.map((c: any) => ({
-        ...c,
-        isExpanded: c.id === item.containerId,
-      }));
-      guardedOnChange('budgetData', updated);
+      setBudgetExpandedContainerId(item.containerId);
       setShowBudgetEditor(true);
     }
   };
@@ -893,9 +949,10 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         showNumbers={showNumbers}
         highlightItemId={highlightItemId}
+        initialExpandedContainerId={checklistExpandedContainerId}
         initialData={data.checklistData}
         onChange={(newData) => guardedOnChange('checklistData', newData)}
-        onClose={() => { setShowChecklistEditor(false); setHighlightItemId(null); }}
+        onClose={() => { setShowChecklistEditor(false); setHighlightItemId(null); setChecklistExpandedContainerId(null); }}
       />
     );
   }
@@ -907,9 +964,10 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         showNumbers={showNumbers}
         highlightItemId={highlightItemId}
+        initialExpandedContainerId={budgetExpandedContainerId}
         initialData={data.budgetData}
         onChange={(newData) => guardedOnChange('budgetData', newData)}
-        onClose={() => { setShowBudgetEditor(false); setHighlightItemId(null); }}
+        onClose={() => { setShowBudgetEditor(false); setHighlightItemId(null); setBudgetExpandedContainerId(null); }}
       />
     );
   }

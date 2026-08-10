@@ -441,6 +441,7 @@ export async function sanitizeMediaForSave<T>(data: T): Promise<T> {
   const looksLocal = (s: string): boolean =>
     s.startsWith("file://") ||
     s.startsWith("capacitor://") ||
+    s.startsWith("blob:") ||
     s.includes("_capacitor_file_") ||
     s.includes("/media_cache/");
 
@@ -478,4 +479,122 @@ export async function clearMediaCache(): Promise<void> {
     // Directory may not exist
   }
   await setCacheMap({});
+}
+
+/**
+ * Uploads any pending blob: URLs in the invitation data to WordPress
+ * and replaces them with real URLs. Called right before saving to the server.
+ *
+ * Pending uploads are tracked globally on window.__pendingUploads by MediaEditor.
+ */
+export async function uploadPendingBlobs<T>(data: T): Promise<T> {
+  const pendingUploads: Map<string, { file: File; field: string; invitationId: string }> =
+    (typeof window !== 'undefined' && (window as any).__pendingUploads) || new Map();
+
+  if (pendingUploads.size === 0) return data;
+
+  // Upload each pending blob file and build a replacement map
+  const urlMap = new Map<string, string>();
+
+  for (const [blobUrl, { file, field, invitationId }] of pendingUploads) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("field", field);
+      formData.append("invitationId", invitationId);
+
+      const response = await fetch(apiUrl("/api/upload"), {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(error.error || "Upload failed");
+      }
+
+      const result = await response.json();
+      urlMap.set(blobUrl, result.url);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("[media-cache] Failed to upload pending blob:", field, error);
+    }
+  }
+
+  // Clear the global pending uploads
+  if (typeof window !== 'undefined') {
+    (window as any).__pendingUploads = new Map();
+  }
+
+  if (urlMap.size === 0) return data;
+
+  // Recursively replace blob URLs with real URLs in the data
+  const fix = (val: unknown): unknown => {
+    if (typeof val === "string") {
+      return urlMap.get(val) || val;
+    }
+    if (Array.isArray(val)) return val.map(fix);
+    if (val && typeof val === "object") {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(val as Record<string, unknown>)) {
+        out[k] = fix((val as Record<string, unknown>)[k]);
+      }
+      return out;
+    }
+    return val;
+  };
+
+  return fix(data) as T;
+}
+
+/**
+ * Deletes any files marked for deletion (tracked globally on window.__pendingDeletions).
+ * Called right before saving to the server, after uploadPendingBlobs.
+ */
+export async function deletePendingFiles(): Promise<void> {
+  const pendingDeletions: string[] =
+    (typeof window !== 'undefined' && (window as any).__pendingDeletions) || [];
+
+  if (pendingDeletions.length === 0) return;
+
+  for (const url of pendingDeletions) {
+    try {
+      const response = await fetch(apiUrl("/api/delete-file"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Delete failed" }));
+        console.error('[media-cache] deletePendingFiles: failed for', url, error);
+      }
+    } catch (error) {
+      console.error('[media-cache] deletePendingFiles: error for', url, error);
+    }
+  }
+
+  // Clear the global pending deletions
+  if (typeof window !== 'undefined') {
+    (window as any).__pendingDeletions = [];
+  }
+}
+
+/**
+ * Clears all pending uploads and deletions without executing them.
+ * Called when the user discards changes.
+ */
+export function clearPendingMediaOperations(): void {
+  if (typeof window !== 'undefined') {
+    const pendingUploads: Map<string, { file: File; field: string; invitationId: string }> | undefined =
+      (window as any).__pendingUploads;
+    if (pendingUploads) {
+      for (const blobUrl of pendingUploads.keys()) {
+        URL.revokeObjectURL(blobUrl);
+      }
+      (window as any).__pendingUploads = new Map();
+    }
+    (window as any).__pendingDeletions = [];
+  }
 }

@@ -150,6 +150,20 @@ class IDB_Rest_Api
                 'permission_callback' => '__return_true',
             ),
         ));
+
+        // File upload — accepts multipart form data, stores in WP media library
+        register_rest_route($namespace, '/upload', array(
+            array(
+                'methods'             => 'POST',
+                'callback'            => array(__CLASS__, 'app_upload_file'),
+                'permission_callback' => '__return_true', // token checked inside
+            ),
+            array(
+                'methods'             => 'DELETE',
+                'callback'            => array(__CLASS__, 'app_delete_file'),
+                'permission_callback' => '__return_true', // token checked inside
+            ),
+        ));
     }
 
     // ---------------------------------------------------------------
@@ -713,6 +727,177 @@ class IDB_Rest_Api
             $wpdb->delete($table, array('token' => $token, 'invitation_id' => $invitation_id));
         } else {
             $wpdb->delete($table, array('token' => $token));
+        }
+
+        return rest_ensure_response(array('success' => true));
+    }
+
+    // ---------------------------------------------------------------
+    // App: POST /upload — accept file upload, store in WP media library
+    // Accepts: multipart form data with 'file', 'field', 'invitationId'
+    // Returns: { url: string }
+    // ---------------------------------------------------------------
+    public static function app_upload_file($request)
+    {
+        // Load WordPress upload functions early
+        if (!function_exists('wp_insert_attachment')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+        }
+
+        $invitation_id = $request->get_header('x_invitation_id');
+        $field         = $request->get_param('field');
+        $form_invitation_id = $request->get_param('invitationId');
+
+        if (!$invitation_id) {
+            $invitation_id = $form_invitation_id;
+        }
+
+        if (!$invitation_id) {
+            return new WP_REST_Response(array('error' => 'Missing invitationId'), 400);
+        }
+        if (!$field) {
+            return new WP_REST_Response(array('error' => 'Missing field'), 400);
+        }
+
+        // Check $_FILES
+        $files = $request->get_file_params();
+        if (empty($files['file'])) {
+            // Check if PHP rejected the upload due to size limits
+            if (isset($_FILES['file']['error']) && $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+                $php_limit = ini_get('upload_max_filesize');
+                $post_limit = ini_get('post_max_size');
+                if ($_FILES['file']['error'] === UPLOAD_ERR_INI_SIZE || $_FILES['file']['error'] === UPLOAD_ERR_FORM_SIZE) {
+                    return new WP_REST_Response(array(
+                        'error' => "File exceeds PHP upload limit (upload_max_filesize={$php_limit}, post_max_size={$post_limit}). Ask your host to increase these values.",
+                    ), 400);
+                }
+                return new WP_REST_Response(array('error' => 'File upload error code: ' . $_FILES['file']['error']), 400);
+            }
+            return new WP_REST_Response(array('error' => 'No file provided'), 400);
+        }
+
+        $file = $files['file'];
+
+        // Check upload error code
+        if (isset($file['error']) && $file['error'] !== UPLOAD_ERR_OK) {
+            $php_limit = ini_get('upload_max_filesize');
+            if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE) {
+                return new WP_REST_Response(array(
+                    'error' => "File exceeds PHP upload limit (upload_max_filesize={$php_limit}). Ask your host to increase this value.",
+                ), 400);
+            }
+            return new WP_REST_Response(array('error' => 'Upload error code: ' . $file['error']), 400);
+        }
+
+        // Validate file size (10MB app limit)
+        $max_size = 10 * 1024 * 1024;
+        if ($file['size'] > $max_size) {
+            return new WP_REST_Response(array('error' => 'File size exceeds 10MB limit'), 400);
+        }
+
+        // Build unique filename
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $safe_field = preg_replace('/[^a-zA-Z0-9_-]/', '_', $field);
+        $safe_invitation = preg_replace('/[^a-zA-Z0-9_-]/', '_', $invitation_id);
+        $filename = $safe_invitation . '_' . $safe_field . '.' . $ext;
+
+        // Get WordPress upload directory
+        $wp_upload_dir = wp_upload_dir();
+        $upload_path = $wp_upload_dir['path']; // e.g. .../wp-content/uploads/2024/08
+        $upload_url  = $wp_upload_dir['url'];
+
+        // Make sure directory exists
+        if (!file_exists($upload_path)) {
+            wp_mkdir_p($upload_path);
+        }
+
+        $dest_path = $upload_path . '/' . $filename;
+        $source_path = $file['tmp_name'];
+
+        // If file already exists, delete old attachment and file (upsert)
+        if (file_exists($dest_path)) {
+            // Try to find and delete the old attachment
+            $old_url = $upload_url . '/' . $filename;
+            $old_attach_id = attachment_url_to_postid($old_url);
+            if ($old_attach_id) {
+                wp_delete_attachment($old_attach_id, true);
+            }
+            @unlink($dest_path);
+        }
+
+        // Move the uploaded file manually (avoid wp_handle_upload which may call wp_die)
+        if (!move_uploaded_file($source_path, $dest_path)) {
+            // Fallback: try copy (REST API context may not have is_uploaded_file)
+            if (!@copy($source_path, $dest_path)) {
+                return new WP_REST_Response(array('error' => 'Failed to move uploaded file'), 500);
+            }
+        }
+
+        // Determine MIME type
+        $mime_type = $file['type'];
+        if (empty($mime_type)) {
+            $mime_type = mime_content_type($dest_path);
+        }
+
+        // Insert as WordPress attachment
+        $attachment = array(
+            'post_mime_type' => $mime_type,
+            'post_title'     => $filename,
+            'post_content'   => '',
+            'post_status'    => 'inherit',
+        );
+
+        $attach_id = wp_insert_attachment($attachment, $dest_path, 0);
+
+        if (is_wp_error($attach_id)) {
+            @unlink($dest_path);
+            return new WP_REST_Response(array('error' => $attach_id->get_error_message()), 500);
+        }
+
+        // Generate metadata (needed for images; harmless for other types)
+        if (function_exists('wp_generate_attachment_metadata')) {
+            $attach_data = wp_generate_attachment_metadata($attach_id, $dest_path);
+            wp_update_attachment_metadata($attach_id, $attach_data);
+        }
+
+        // Get public URL
+        $public_url = wp_get_attachment_url($attach_id);
+
+        if (!$public_url) {
+            return new WP_REST_Response(array('error' => 'Failed to get file URL'), 500);
+        }
+
+        return rest_ensure_response(array('url' => $public_url));
+    }
+
+    // ---------------------------------------------------------------
+    // App: DELETE /upload — delete a file by URL
+    // Accepts: JSON body { url: string }
+    // Returns: { success: boolean }
+    // ---------------------------------------------------------------
+    public static function app_delete_file($request)
+    {
+        $body = $request->get_json_params();
+        $url  = isset($body['url']) ? $body['url'] : '';
+
+        if (empty($url)) {
+            return new WP_REST_Response(array('error' => 'Missing url'), 400);
+        }
+
+        // Find attachment by URL
+        $attachment_id = attachment_url_to_postid($url);
+
+        if (!$attachment_id) {
+            // File doesn't exist — return success (idempotent)
+            return rest_ensure_response(array('success' => true));
+        }
+
+        $deleted = wp_delete_attachment($attachment_id, true);
+
+        if (!$deleted) {
+            return new WP_REST_Response(array('error' => 'Failed to delete file'), 500);
         }
 
         return rest_ensure_response(array('success' => true));

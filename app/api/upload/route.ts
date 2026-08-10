@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/middleware";
+
+const WP_API_URL = (process.env.WP_API_URL || "").replace(/\/$/, "");
 
 export async function POST(request: NextRequest) {
   // Verify JWT token
   const auth = requireAuth(request);
   if (auth instanceof NextResponse) {
+    console.error("Upload: auth failed");
     return auth;
+  }
+
+  if (!WP_API_URL) {
+    console.error("Upload: WP_API_URL not configured");
+    return NextResponse.json(
+      { error: "Upload service not configured" },
+      { status: 500 }
+    );
   }
 
   try {
@@ -15,7 +25,10 @@ export async function POST(request: NextRequest) {
     const field = formData.get("field") as string | null;
     const invitationId = formData.get("invitationId") as string | null;
 
+    console.log("Upload: received", { field, invitationId, hasFile: !!file, fileName: file?.name, fileSize: file?.size });
+
     if (!file || !field || !invitationId) {
+      console.error("Upload: missing params", { file: !!file, field, invitationId });
       return NextResponse.json(
         { error: "Missing file, field, or invitationId" },
         { status: 400 }
@@ -24,68 +37,47 @@ export async function POST(request: NextRequest) {
 
     // Verify the token matches the invitation being updated
     if (auth.invitationId !== invitationId) {
+      console.error("Upload: auth mismatch", { authInvitationId: auth.invitationId, invitationId });
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 403 }
       );
     }
 
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const path = `${invitationId}/${field}/custom.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    // Forward the file to WordPress
+    const wpFormData = new FormData();
+    wpFormData.append("file", file);
+    wpFormData.append("field", field);
+    wpFormData.append("invitationId", invitationId);
 
-    // Determine proper content type, especially for font files
-    // Supabase storage may not support the `font/*` MIME types, so use `application/octet-stream` for fonts
-    let contentType = file.type;
-    const fontExtensions = ['woff2', 'woff', 'ttf', 'otf'];
-    if (fontExtensions.includes(ext)) {
-      contentType = "application/octet-stream";
-    }
+    console.log("Upload: forwarding to WordPress", `${WP_API_URL}/upload`);
 
-    // Ensure the user-uploads bucket allows the required MIME types
-    await supabaseAdmin.storage.updateBucket("user-uploads", {
-      allowedMimeTypes: [
-        'image/*',
-        'audio/*',
-        'video/*',
-        'font/woff2',
-        'font/woff',
-        'font/ttf',
-        'font/otf',
-        'application/x-font-woff',
-        'application/x-font-woff2',
-        'application/x-font-ttf',
-        'application/x-font-opentype',
-        'application/font-woff',
-        'application/font-woff2',
-        'application/font-ttf',
-        'application/font-sfnt',
-        'application/octet-stream'
-      ],
-      public: true,
+    const wpResponse = await fetch(`${WP_API_URL}/upload`, {
+      method: "POST",
+      body: wpFormData,
+      headers: {
+        "X-Invitation-Id": invitationId,
+      },
     });
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("user-uploads")
-      .upload(path, buffer, {
-        contentType,
-        upsert: true,
-      });
+    console.log("Upload: WordPress response", wpResponse.status, wpResponse.statusText);
 
-    if (uploadError) {
+    if (!wpResponse.ok) {
+      const errorText = await wpResponse.text();
+      console.error("WordPress upload failed:", wpResponse.status, errorText);
+      let errorMsg = "Upload failed";
+      try { const error = JSON.parse(errorText); errorMsg = error.error || error.message || errorMsg; } catch {}
       return NextResponse.json(
-        { error: uploadError.message },
-        { status: 500 }
+        { error: errorMsg },
+        { status: wpResponse.status }
       );
     }
 
-    const {
-      data: { publicUrl },
-    } = supabaseAdmin.storage.from("user-uploads").getPublicUrl(path);
-
-    return NextResponse.json({ url: publicUrl });
+    const result = await wpResponse.json();
+    console.log("Upload: success, url:", result.url);
+    return NextResponse.json({ url: result.url });
   } catch (err) {
     console.error("Upload error:", err);
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    return NextResponse.json({ error: "Upload failed: " + (err instanceof Error ? err.message : String(err)) }, { status: 500 });
   }
 }

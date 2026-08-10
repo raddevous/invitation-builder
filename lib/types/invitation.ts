@@ -537,6 +537,7 @@ export interface InvitationData {
     account2: { qrCode: string; maskedName: string };
   };
   rsvpDeadline?: string;
+  rsvpHideNotAttending?: boolean;
   rsvpGuestField?: boolean;
   rsvpMessageField?: boolean;
   rsvpInvitees?: Array<string | { name: string; title: "M" | "Mr." | "Ms." | "Mrs." }>;
