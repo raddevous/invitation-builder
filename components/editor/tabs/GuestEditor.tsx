@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
-import { getEntourageGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
+import { getEntourageGuestNames, getSpecialGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
 import { USHER_INSTRUCTIONS, USHERETTE_INSTRUCTIONS, getNextMessage } from "@/lib/constants/heroMessages";
 import { apiUrl } from "@/lib/utils/api";
 import FloatingActionMenu from "../shared/FloatingActionMenu";
@@ -38,7 +38,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const [searchQuery, setSearchQuery] = useState("");
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [editGuestData, setEditGuestData] = useState<{ isEntourage: boolean; name: string; title: InviteeTitle; originalIndex: number; plusOne?: string; tableNumber?: string; entourageTitle?: string; instruction?: string } | null>(null);
+  const [editGuestData, setEditGuestData] = useState<{ isEntourage: boolean; isSpecial?: boolean; name: string; title: InviteeTitle; originalIndex: number; plusOne?: string; tableNumber?: string; entourageTitle?: string; instruction?: string } | null>(null);
   const [originalGuestData, setOriginalGuestData] = useState<{ name: string; title: InviteeTitle; plusOne?: string; tableNumber?: string; instruction?: string } | null>(null);
   const [guestNumberError, setGuestNumberError] = useState(false);
   const [newGuestName, setNewGuestName] = useState("");
@@ -200,6 +200,10 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   // These are read-only here; edit/remove them from the Entourage List instead.
   const entourageGuests = useMemo(() => getEntourageGuestNames(data.entourage), [data.entourage]);
 
+  // Special guests: the couple and both sets of parents.
+  // Read-only, no RSVP icon, excluded from live RSVP search.
+  const specialGuests = useMemo(() => getSpecialGuestNames(data), [data]);
+
   // Auto-prompt for guest count if no target set yet
   useEffect(() => {
     if (!data.targetGuestCount) {
@@ -247,7 +251,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       .map(item => item.name);
     
     const entourageNames = entourageGuests.map(guest => guest.name.toLowerCase().trim());
-    const allNames = [...regularNames, ...entourageNames];
+    const specialNamesList = specialGuests.map(guest => guest.name.toLowerCase().trim());
+    const allNames = [...regularNames, ...entourageNames, ...specialNamesList];
     
     return allNames.includes(lowerName);
   };
@@ -368,6 +373,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     // Build display items based on filter options
     let displayInvitees: Array<{ name: string; title: InviteeTitle; originalIndex: number; readOnly: false; key: string; guestName?: string }> = [];
     let entourageDisplayItems: Array<{ name: string; title: InviteeTitle; originalIndex: number; readOnly: true; key: string; guestName: string }> = [];
+    let specialDisplayItems: Array<{ name: string; title: InviteeTitle; originalIndex: number; readOnly: true; key: string; guestName: string; isSpecial: true }> = [];
 
     if (filterIncludeNormal) {
       displayInvitees = pendingInvitees.map((invitee, idx) => ({ ...invitee, originalIndex: idx, readOnly: false, key: `guest-${idx}` }));
@@ -383,10 +389,20 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
         guestName: guest.name,
         entourageTitle: guest.title,
       }));
+      specialDisplayItems = specialGuests.map((guest: EntourageGuest, idx: number) => ({
+        name: `${guest.name}\n(${guest.title})`,
+        title: "M",
+        originalIndex: -1,
+        readOnly: true,
+        key: `special-${idx}`,
+        guestName: guest.name,
+        entourageTitle: guest.title,
+        isSpecial: true as const,
+      }));
     }
 
     // Sort based on filter option
-    let allItems = [...entourageDisplayItems, ...displayInvitees];
+    let allItems = [...specialDisplayItems, ...entourageDisplayItems, ...displayInvitees];
     
     if (filterSortOption === "name") {
       allItems.sort((a, b) => {
@@ -458,9 +474,9 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     }
 
     return allItems;
-  }, [pendingInvitees, entourageGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, searchQuery, guestFilter, rsvpResponses]);
+  }, [pendingInvitees, entourageGuests, specialGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, searchQuery, guestFilter, rsvpResponses]);
 
-  // Compute guest counts per RSVP category
+  // Compute guest counts per RSVP category (special guests are not counted for RSVP)
   const guestCounts = useMemo(() => {
     const allGuestNames = [
       ...entourageGuests.map(g => g.name),
@@ -753,10 +769,12 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                     onClick={() => {
                                       const guestDetails = pendingEntourageGuestDetails[guestName] || { plusOne: "", tableNumber: "" };
                                       const entTitle = (item as any).entourageTitle || "";
-                                      setEditGuestData({ 
-                                        isEntourage: true, 
-                                        name: guestName, 
-                                        title: pendingEntourageHonorifics[guestName] || "M", 
+                                      const isSpecial = !!(item as any).isSpecial;
+                                      setEditGuestData({
+                                        isEntourage: true,
+                                        isSpecial,
+                                        name: guestName,
+                                        title: pendingEntourageHonorifics[guestName] || "M",
                                         originalIndex,
                                         plusOne: guestDetails.plusOne,
                                         tableNumber: guestDetails.tableNumber,
@@ -776,7 +794,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                     }}
                                     className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between cursor-pointer ${isDarkMode ? "border-gray-700 text-gray-300 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
                                     style={isDarkMode ? { backgroundColor: "#151B24", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#EDEEF1", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}
-                                    title="Auto-added from Entourage List - Click to edit"
+                                    title={(item as any).isSpecial ? "Special guest (Couple/Parents) - Click to edit" : "Auto-added from Entourage List - Click to edit"}
                                   >
                                     <span>{name}</span>
                                     {(() => {
@@ -1100,7 +1118,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
               <h3 className={`text-lg font-semibold ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                 {showManualRsvp ? `Manual RSVP: ${editGuestData.title === "M" ? editGuestData.name : `${editGuestData.title} ${editGuestData.name}`}` : "Edit Guest"}
               </h3>
-              {/* Manual RSVP icon */}
+              {/* Manual RSVP icon (hidden for special guests: couple/parents) */}
+              {!editGuestData.isSpecial && (
               <button
                 type="button"
                 onClick={() => { setShowManualRsvp(!showManualRsvp); setManualRsvpAttendance(null); setManualRsvpMessage(""); }}
@@ -1119,6 +1138,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   style={{ pointerEvents: 'none' }}
                 />
               </button>
+              )}
             </div>
 
             {/* Manual RSVP Panel (replaces edit fields when toggled) */}

@@ -9,7 +9,7 @@ import ColorControl from "@/components/shared/ColorControl";
 import PhotoGalleryPicker from "@/components/shared/PhotoGalleryPicker";
 import DividerSettingsPanel from "@/components/shared/DividerSettingsPanel";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
-import { getEntourageGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
+import { getEntourageGuestNames, getSpecialGuestNames, normalizeGuestName, type EntourageGuest } from "@/lib/utils/entourageGuests";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { useTheme } from "../ThemeContext";
 import { useHeadingDrag } from "@/lib/hooks/useHeadingDrag";
@@ -1283,6 +1283,9 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
   // Auto-added guests from the Entourage list (excludes couple, groom's parents, bride's parents)
   const entourageGuestNames = useMemo(() => getEntourageGuestNames(data.entourage), [data.entourage]);
 
+  // Special guests (couple + parents) — excluded from RSVP search
+  const specialGuestNames = useMemo(() => getSpecialGuestNames(data).map(g => g.name.toLowerCase()), [data]);
+
   // Combine entourage names (first, deduped) with manually added RSVP invitees
   const combinedGuests = useMemo(() => {
     const manualInvitees = data.rsvpInvitees || [];
@@ -1298,9 +1301,11 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     return [...entourageWithHonorifics, ...dedupedManual];
   }, [entourageGuestNames, data.rsvpInvitees, data.rsvpEntourageHonorifics]);
 
-  // Filter guests based on search query
+  // Filter guests based on search query (excludes special guests: couple/parents)
   const filteredGuests = combinedGuests.filter(guest => {
     const guestName = typeof guest === 'string' ? guest : guest.name;
+    // Exclude special guests (couple, parents) from RSVP search
+    if (specialGuestNames.includes(guestName.toLowerCase())) return false;
     if (!guestName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     // Hide not-attending guests from search if enabled (default: on)
     if (data.rsvpHideNotAttending !== false) {

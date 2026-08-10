@@ -76,6 +76,34 @@ export function getEntourageGuestNames(entourage: InvitationData["entourage"] | 
 }
 
 /**
+ * Extracts the "special" guest names: the couple and both sets of parents.
+ * These are displayed in the guest editor (read-only) but excluded from RSVP search on the live page.
+ */
+export function getSpecialGuestNames(data: InvitationData): EntourageGuest[] {
+  const guests: EntourageGuest[] = [];
+  const pushIfNonEmpty = (n?: string, title?: string) => {
+    if (n && n.trim() && title) guests.push({ name: n.trim(), title });
+  };
+
+  if (data.nameType === "event" && data.coupleName?.trim()) {
+    pushIfNonEmpty(data.coupleName, "The Couple");
+  }
+  if (data.nameType === "couple") {
+    pushIfNonEmpty(data.hisName, "The Groom");
+    pushIfNonEmpty(data.herName, "The Bride");
+  }
+  const ent = data.entourage;
+  if (ent?.couple?.groomName?.trim()) pushIfNonEmpty(ent.couple.groomName, "The Groom");
+  if (ent?.couple?.brideName?.trim()) pushIfNonEmpty(ent.couple.brideName, "The Bride");
+  if (ent?.groomParents?.fatherName?.trim()) pushIfNonEmpty(ent.groomParents.fatherName, "The Groom's Parents");
+  if (ent?.groomParents?.motherName?.trim()) pushIfNonEmpty(ent.groomParents.motherName, "The Groom's Parents");
+  if (ent?.brideParents?.fatherName?.trim()) pushIfNonEmpty(ent.brideParents.fatherName, "The Bride's Parents");
+  if (ent?.brideParents?.motherName?.trim()) pushIfNonEmpty(ent.brideParents.motherName, "The Bride's Parents");
+
+  return guests;
+}
+
+/**
  * Normalizes a guest name for matching: strips honorific prefixes (Mr., Ms., Mrs., M.),
  * trims whitespace, and lowercases.
  * Used to match RSVP responses against guest list entries regardless of title format.
