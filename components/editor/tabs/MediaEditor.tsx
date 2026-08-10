@@ -86,6 +86,7 @@ const MEDIA_ITEMS = [
   { id: "background", label: "Background", description: "Hero background images" },
   { id: "logo", label: "Logo", description: "Display logo" },
   { id: "gallery", label: "Photo Gallery", description: "Photo gallery settings" },
+  { id: "playlist", label: "Playlist", description: "Arrange your music list" },
   { id: "venue", label: "Venue Photo", description: "Ceremony &/or Reception photos" },
   { id: "photos", label: "Photos & Images Picker", description: "Upload images or add image URLs" },
   { id: "fonts", label: "Fonts", description: "Custom font settings" },
@@ -93,7 +94,7 @@ const MEDIA_ITEMS = [
 ];
 
 export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, invitationId, onSave, isDemoMode = false, showNumbers = false }: MediaEditorProps) {
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["background", "logo", "gallery", "photos", "venue", "fonts", "music"]));
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["background", "logo", "gallery", "playlist", "venue", "photos", "fonts", "music"]));
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -182,10 +183,9 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   };
   const [pendingHeadingFont, setPendingHeadingFont] = useState(data.customHeadingFont || "");
   const [pendingBodyFont, setPendingBodyFont] = useState(data.customBodyFont || "");
-  const [pendingBackgroundMusic, setPendingBackgroundMusic] = useState<string[]>(data.backgroundMusic || []);
-  const [pendingBackgroundMusicFileNames, setPendingBackgroundMusicFileNames] = useState<string[]>(data.backgroundMusicFileNames || []);
-  // URL-based music (separate from uploaded files)
-  const [pendingMusicUrls, setPendingMusicUrls] = useState<string[]>([]);
+  // Unified playlist — single source of truth for all audio (uploaded + URL)
+  // Each item: { url, fileName, isUploaded }
+  const [playlistItems, setPlaylistItems] = useState<Array<{ url: string; fileName: string; isUploaded: boolean }>>([]);
   const [musicUrlInput, setMusicUrlInput] = useState("");
   const [showMusicUrlInput, setShowMusicUrlInput] = useState(false);
   // URL-based fonts (separate from uploaded files)
@@ -247,28 +247,18 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Split existing music into uploaded vs URL-based on mount
-  // Uploaded music has file names in backgroundMusicFileNames; URL music doesn't
+  // Initialize playlist from existing data on mount
+  // Each track: has a file name → uploaded; no file name → URL-based
   useEffect(() => {
     const allMusic = data.backgroundMusic || [];
     const allNames = data.backgroundMusicFileNames || [];
-    const uploaded: string[] = [];
-    const uploadedNames: string[] = [];
-    const urlBased: string[] = [];
+    const items: Array<{ url: string; fileName: string; isUploaded: boolean }> = [];
     for (let i = 0; i < allMusic.length; i++) {
       const url = allMusic[i];
-      const name = allNames[i];
-      // If there's a corresponding file name, it was uploaded; otherwise it's a URL
-      if (name) {
-        uploaded.push(url);
-        uploadedNames.push(name);
-      } else {
-        urlBased.push(url);
-      }
+      const name = allNames[i] || "";
+      items.push({ url, fileName: name, isUploaded: !!name });
     }
-    setPendingBackgroundMusic(uploaded);
-    setPendingBackgroundMusicFileNames(uploadedNames);
-    setPendingMusicUrls(urlBased);
+    setPlaylistItems(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -362,15 +352,14 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   useEffect(() => {
     const currentMusic = data.backgroundMusic || [];
     const currentFileNames = data.backgroundMusicFileNames || [];
-    const combinedMusic = [...pendingBackgroundMusic, ...pendingMusicUrls];
-    const combinedNames = [...pendingBackgroundMusicFileNames, ...pendingMusicUrls.map(() => "")];
+    const plMusic = playlistItems.map(p => p.url);
+    const plNames = playlistItems.map(p => p.fileName);
     setHasMusicChanges(
-      combinedMusic.length !== currentMusic.length ||
-      combinedMusic.some((url, i) => url !== currentMusic[i]) ||
-      combinedNames.length !== currentFileNames.length ||
-      combinedNames.some((name, i) => name !== currentFileNames[i])
+      plMusic.length !== currentMusic.length ||
+      plMusic.some((url, i) => url !== currentMusic[i]) ||
+      plNames.some((name, i) => name !== currentFileNames[i])
     );
-  }, [pendingBackgroundMusic, pendingBackgroundMusicFileNames, pendingMusicUrls, data.backgroundMusic, data.backgroundMusicFileNames]);
+  }, [playlistItems, data.backgroundMusic, data.backgroundMusicFileNames]);
 
   // Live data for real-time progress calculation (merges pending local state)
   const liveData = useMemo<InvitationData>(() => ({
@@ -384,9 +373,9 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     photosAndImages: [...pendingUploadedPhotos, ...pendingPhotos],
     customHeadingFont: pendingHeadingFont || pendingHeadingFontUrl,
     customBodyFont: pendingBodyFont || pendingBodyFontUrl,
-    backgroundMusic: [...pendingBackgroundMusic, ...pendingMusicUrls],
-    backgroundMusicFileNames: [...pendingBackgroundMusicFileNames, ...pendingMusicUrls.map(() => "")],
-  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos, pendingHeadingFont, pendingHeadingFontUrl, pendingBodyFont, pendingBodyFontUrl, pendingBackgroundMusic, pendingBackgroundMusicFileNames, pendingMusicUrls]);
+    backgroundMusic: playlistItems.map(p => p.url),
+    backgroundMusicFileNames: playlistItems.map(p => p.fileName),
+  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos, pendingHeadingFont, pendingHeadingFontUrl, pendingBodyFont, pendingBodyFontUrl, playlistItems]);
 
   // Image validation for logo, gallery, venue, photos
   const logoValidation = useImageValidation(pendingLogo ? [pendingLogo] : []);
@@ -442,8 +431,8 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       onChange("customBodyFont", pendingBodyFont || pendingBodyFontUrl);
     }
     if (hasMusicChanges) {
-      onChange("backgroundMusic", [...pendingBackgroundMusic, ...pendingMusicUrls] as unknown as string);
-      onChange("backgroundMusicFileNames", [...pendingBackgroundMusicFileNames, ...pendingMusicUrls.map(() => "")] as unknown as string);
+      onChange("backgroundMusic", playlistItems.map(p => p.url) as unknown as string);
+      onChange("backgroundMusicFileNames", playlistItems.map(p => p.fileName) as unknown as string);
     }
   };
 
@@ -468,6 +457,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     if (sectionId === "photos" && !collapsedSections.has("photos")) {
       setShowPhotosUrlInput(false);
       setPhotosUrlInput("");
+    }
+    // If collapsing the music section, hide the URL input
+    if (sectionId === "music" && !collapsedSections.has("music")) {
+      setShowMusicUrlInput(false);
+      setMusicUrlInput("");
     }
     setCollapsedSections(prev => {
       const newSet = new Set(prev);
@@ -505,13 +499,14 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       return;
     }
 
-    // Validate file size (4MB limit — stays under Vercel's 4.5MB body limit)
-    const maxSize = 4.5 * 1024 * 1024; // 4.5MB — matches Vercel's body limit
+    // Validate file size (4.5MB — matches Vercel's body limit)
+    const maxSize = 4.5 * 1024 * 1024;
     if (file.size > maxSize) {
       alert("File size exceeds 4.5MB limit. Please use a smaller file or compress your audio.");
       return;
     }
 
+    const uploadedCount = playlistItems.filter(p => p.isUploaded).length;
     setUploadingIndex(index);
 
     try {
@@ -519,15 +514,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       const blobUrl = URL.createObjectURL(file);
 
       // Track this file for upload on Save (globally so EditorPanel can access it)
-      addPendingUpload(blobUrl, file, `backgroundMusic-${index}`);
+      addPendingUpload(blobUrl, file, `backgroundMusic-${uploadedCount}`);
 
-      // Update pending state with blob URL
-      const newMusic = [...pendingBackgroundMusic];
-      const newFileNames = [...pendingBackgroundMusicFileNames];
-      newMusic[index] = blobUrl;
-      newFileNames[index] = file.name;
-      setPendingBackgroundMusic(newMusic);
-      setPendingBackgroundMusicFileNames(newFileNames);
+      // Add to playlist
+      setPlaylistItems([...playlistItems, { url: blobUrl, fileName: file.name, isUploaded: true }]);
     } catch (error) {
       console.error("Upload error:", error);
       alert("Failed to upload music file. Please try again.");
@@ -629,18 +619,23 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       return;
     }
 
-    const url = pendingBackgroundMusic[idx];
+    // idx is the index within the uploaded tracks display
+    const uploadedItems = playlistItems.filter(p => p.isUploaded);
+    const item = uploadedItems[idx];
+    if (!item) {
+      setMusicDeleteIdx(null);
+      setShowDeleteDialog(false);
+      return;
+    }
 
-    // Remove from pending state
-    const newMusic = pendingBackgroundMusic.filter((_, i) => i !== idx);
-    const newFileNames = pendingBackgroundMusicFileNames.filter((_, i) => i !== idx);
-    setPendingBackgroundMusic(newMusic);
-    setPendingBackgroundMusicFileNames(newFileNames);
+    const url = item.url;
+
+    // Remove from playlist
+    setPlaylistItems(playlistItems.filter(p => p !== item));
     setMusicDeleteIdx(null);
     setShowDeleteDialog(false);
 
     // Handle deletion: blob URLs are local-only, real URLs are deferred until Save
-    console.log('[MediaEditor] handleDeleteMusic: url =', url, 'isBlob =', url?.startsWith('blob:'));
     if (!isDemoMode && url) {
       if (url.startsWith('blob:')) {
         // Blob URL — just revoke and remove from pending uploads
@@ -711,6 +706,19 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     } finally {
       setUploadingPhoto(false);
     }
+  };
+
+  // Derived: split playlist into uploaded vs URL for the Audio Files section
+  const uploadedMusicItems = playlistItems.filter(p => p.isUploaded);
+  const urlMusicItems = playlistItems.filter(p => !p.isUploaded);
+
+  // Move playlist item up/down
+  const movePlaylistItem = (index: number, direction: 'up' | 'down') => {
+    const newItems = [...playlistItems];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newItems.length) return;
+    [newItems[index], newItems[targetIndex]] = [newItems[targetIndex], newItems[index]];
+    setPlaylistItems(newItems);
   };
 
   return (
@@ -1727,6 +1735,82 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
               </div>
             )}
 
+            {/* Playlist settings */}
+            {!collapsedSections.has("playlist") && item.id === "playlist" && (
+              <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
+              style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                <div className="space-y-3">
+                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Playlist</label>
+
+                  {playlistItems.length === 0 ? (
+                    <p className={`text-sm text-center py-6 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                      No tracks yet. Add audio files or MP3 URLs in the Audio Files section.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {playlistItems.map((item, idx) => (
+                        <div
+                          key={`pl-${idx}`}
+                          className={`flex gap-2 items-center px-3 py-2.5 border rounded-lg ${isDarkMode ? "bg-gray-800 border-gray-700" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        >
+                          {/* Track number */}
+                          <span
+                            className="w-7 h-7 flex items-center justify-center rounded-full text-xs font-medium shrink-0"
+                            style={{ backgroundColor: `${accentColor}20`, color: accentColor, fontFamily: "Inter, sans-serif" }}
+                          >
+                            {idx + 1}
+                          </span>
+
+                          {/* Track info */}
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-sm truncate ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                              {item.fileName || item.url.split('/').pop() || `Track ${idx + 1}`}
+                            </div>
+                            <div className={`text-[10px] truncate ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                              {item.isUploaded ? "Uploaded" : "URL"}
+                            </div>
+                          </div>
+
+                          {/* Up/Down buttons */}
+                          <button
+                            type="button"
+                            onClick={() => movePlaylistItem(idx, 'up')}
+                            disabled={idx === 0}
+                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
+                              idx === 0
+                                ? "opacity-30 cursor-not-allowed"
+                                : isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-200 text-gray-500"
+                            }`}
+                            title="Move up"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="18 15 12 9 6 15" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePlaylistItem(idx, 'down')}
+                            disabled={idx === playlistItems.length - 1}
+                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
+                              idx === playlistItems.length - 1
+                                ? "opacity-30 cursor-not-allowed"
+                                : isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-200 text-gray-500"
+                            }`}
+                            title="Move down"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Wedding Venue Photo settings */}
             {!collapsedSections.has("venue") && item.id === "venue" && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
@@ -2521,15 +2605,15 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
 
                   {/* === UPLOAD SECTION (top) — max 3 === */}
                   <div className="space-y-2">
-                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Upload Music {pendingBackgroundMusic.length > 0 && `(${pendingBackgroundMusic.length}/3)`}</label>
+                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Upload Music {uploadedMusicItems.length > 0 && `(${uploadedMusicItems.length}/3)`}</label>
 
                     {/* Render existing uploaded tracks */}
-                    {pendingBackgroundMusic.map((url, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
+                    {uploadedMusicItems.map((item, idx) => (
+                      <div key={`upload-${idx}`} className="flex gap-2 items-center">
                         <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         >
-                          {pendingBackgroundMusicFileNames[idx] || `Track ${idx + 1}`}
+                          {item.fileName || `Track ${idx + 1}`}
                         </div>
                         <button
                           type="button"
@@ -2549,7 +2633,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     ))}
 
                     {/* Upload slot for empty position (up to 3 total) */}
-                    {pendingBackgroundMusic.length < 3 && (
+                    {uploadedMusicItems.length < 3 && (
                       <div className="flex gap-2">
                         <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
                           uploadingIndex !== null
@@ -2563,7 +2647,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                               }
                             : undefined
                         }>
-                          {uploadingIndex === pendingBackgroundMusic.length ? (
+                          {uploadingIndex === uploadedMusicItems.length ? (
                             <>
                               <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
@@ -2577,7 +2661,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                                 <polyline points="17,8 12,3 7,8" />
                                 <line x1="12" y1="3" x2="12" y2="15" />
                               </svg>
-                              <span className="text-sm">Upload music file {pendingBackgroundMusic.length > 0 ? `(${pendingBackgroundMusic.length + 1}/3)` : ""}</span>
+                              <span className="text-sm">Upload music file {uploadedMusicItems.length > 0 ? `(${uploadedMusicItems.length + 1}/3)` : ""}</span>
                             </>
                           )}
                           <input
@@ -2586,7 +2670,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                handleMusicUpload(pendingBackgroundMusic.length, file);
+                                handleMusicUpload(uploadedMusicItems.length, file);
                               }
                             }}
                             disabled={uploadingIndex !== null}
@@ -2596,7 +2680,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                       </div>
                     )}
 
-                    {pendingBackgroundMusic.length >= 3 && (
+                    {uploadedMusicItems.length >= 3 && (
                       <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                         Maximum of 3 uploaded tracks reached
                       </p>
@@ -2610,10 +2694,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
 
                   {/* === URL SECTION (bottom) — max 3 === */}
                   <div className="space-y-2">
-                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Add MP3 URL {pendingMusicUrls.length > 0 && `(${pendingMusicUrls.length}/3)`}</label>
+                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Add MP3 URL {urlMusicItems.length > 0 && `(${urlMusicItems.length}/3)`}</label>
 
                     {/* Render existing URL tracks */}
-                    {pendingMusicUrls.map((url, idx) => (
+                    {urlMusicItems.map((item, idx) => (
                       <div key={`music-url-${idx}`} className="flex gap-2 items-center">
                         <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
@@ -2623,13 +2707,13 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                             </svg>
-                            <span className="truncate">{url.split('/').pop() || `URL ${idx + 1}`}</span>
+                            <span className="truncate">{item.url.split('/').pop() || `URL ${idx + 1}`}</span>
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => {
-                            setPendingMusicUrls(pendingMusicUrls.filter((_, i) => i !== idx));
+                            setPlaylistItems(playlistItems.filter(p => p !== item));
                           }}
                           className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
                           title="Remove URL track"
@@ -2643,7 +2727,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     ))}
 
                     {/* Add URL button (dashed, link icon) — shown when < 3 and no input visible */}
-                    {pendingMusicUrls.length < 3 && !showMusicUrlInput && (
+                    {urlMusicItems.length < 3 && !showMusicUrlInput && (
                       <button
                         type="button"
                         onClick={() => setShowMusicUrlInput(true)}
@@ -2662,7 +2746,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     )}
 
                     {/* URL Input with ADD button */}
-                    {showMusicUrlInput && pendingMusicUrls.length < 3 && (
+                    {showMusicUrlInput && urlMusicItems.length < 3 && (
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -2670,7 +2754,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           onChange={(e) => setMusicUrlInput(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && musicUrlInput.trim()) {
-                              setPendingMusicUrls([...pendingMusicUrls, musicUrlInput.trim()]);
+                              setPlaylistItems([...playlistItems, { url: musicUrlInput.trim(), fileName: "", isUploaded: false }]);
                               setMusicUrlInput("");
                               setShowMusicUrlInput(false);
                             }
@@ -2684,7 +2768,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           type="button"
                           onClick={() => {
                             if (musicUrlInput.trim()) {
-                              setPendingMusicUrls([...pendingMusicUrls, musicUrlInput.trim()]);
+                              setPlaylistItems([...playlistItems, { url: musicUrlInput.trim(), fileName: "", isUploaded: false }]);
                               setMusicUrlInput("");
                               setShowMusicUrlInput(false);
                             }
@@ -2697,7 +2781,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                       </div>
                     )}
 
-                    {pendingMusicUrls.length >= 3 && (
+                    {urlMusicItems.length >= 3 && (
                       <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                         Maximum of 3 URL tracks reached
                       </p>
