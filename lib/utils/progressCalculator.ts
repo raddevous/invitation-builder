@@ -71,6 +71,7 @@ const MEDIA_REQUIREMENTS: Record<string, number> = {
   logo: 1,
   gallery: 5,
   venue: 1,
+  playlist: 1,
 };
 
 /**
@@ -96,6 +97,8 @@ export function getMediaItemProgress(data: InvitationData, itemId: string): numb
         const receptionProgress = (data.receptionVenueImages?.length ?? 0) >= 1 ? 50 : 0;
         return ceremonyProgress + receptionProgress;
       }
+    case "playlist":
+      return (data.backgroundMusic?.length ?? 0) >= 1 ? 100 : 0;
     default:
       return null;
   }
@@ -118,6 +121,8 @@ export function getMediaItemProgressData(data: InvitationData, itemId: string): 
           total: 2,
         };
       }
+    case "playlist":
+      return { filled: (data.backgroundMusic?.length ?? 0) >= 1 ? 1 : 0, total: MEDIA_REQUIREMENTS.playlist };
     default:
       return null;
   }
@@ -154,6 +159,10 @@ export function getMediaProgressData(data: InvitationData): { filled: number; to
     if ((data.receptionVenueImages?.length ?? 0) >= 1) filled += 1;
   }
 
+  // Playlist (1 audio = 100%)
+  total += MEDIA_REQUIREMENTS.playlist;
+  if ((data.backgroundMusic?.length ?? 0) >= 1) filled += MEDIA_REQUIREMENTS.playlist;
+
   return { filled, total };
 }
 
@@ -161,7 +170,7 @@ export function getMediaProgressData(data: InvitationData): { filled: number; to
  * Calculates the overall Media progress by averaging items that have progress.
  */
 export function getMediaOverallProgress(data: InvitationData): number {
-  const items = ["background", "logo", "gallery", "venue"];
+  const items = ["background", "logo", "gallery", "venue", "playlist"];
   const progresses = items
     .map((id) => getMediaItemProgress(data, id))
     .filter((p): p is number => p !== null);

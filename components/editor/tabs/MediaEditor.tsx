@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useMemo, Fragment } from "react";
+import React, { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 import ProgressCircle from "../shared/ProgressCircle";
+import FloatingActionMenu from "../shared/FloatingActionMenu";
 import { getMediaItemProgress, getMediaItemProgressData } from "@/lib/utils/progressCalculator";
 import { apiUrl } from "@/lib/utils/api";
 import { isOnline } from "@/lib/utils/offline-cache";
@@ -82,19 +83,56 @@ const convertGoogleDriveUrl = (url: string): string => {
   return url;
 };
 
+/** Wraps children in a floating dialog when `wrap` is true, otherwise renders them as-is. */
+function ConditionalDialog({ wrap, label, accentColor, isDarkMode, onClose, children }: {
+  wrap: boolean;
+  label: string;
+  accentColor: string;
+  isDarkMode: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (!wrap) return <>{children}</>;
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="rounded-2xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh] overflow-hidden"
+        style={{ backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b shrink-0" style={{ borderColor: isDarkMode ? "#374151" : "#E5E7EB" }}>
+          <h3 className="text-sm font-bold tracking-wide uppercase" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
+            {label}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`p-1.5 rounded-md transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-200 text-gray-500"}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 const MEDIA_ITEMS = [
   { id: "background", label: "Background", description: "Hero background images" },
   { id: "logo", label: "Logo", description: "Display logo" },
   { id: "gallery", label: "Photo Gallery", description: "Photo gallery settings" },
-  { id: "playlist", label: "Playlist", description: "Arrange your music list" },
+  { id: "playlist", label: "Playlist", description: "Arrange your background music list" },
   { id: "venue", label: "Venue Photo", description: "Ceremony &/or Reception photos" },
-  { id: "photos", label: "Photos & Images Picker", description: "Upload images or add image URLs" },
-  { id: "fonts", label: "Fonts", description: "Custom font settings" },
-  { id: "music", label: "Audio Files", description: "Upload audios or audio URLs" },
+  { id: "music", label: "Audio Files", description: "Upload audios or audio URLs", dialogOnly: true },
+  { id: "fonts", label: "Fonts", description: "Custom font settings", dialogOnly: true },
+  { id: "photos", label: "Photos & Images Picker", description: "Upload images or add image URLs", dialogOnly: true },
 ];
 
 export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, invitationId, onSave, isDemoMode = false, showNumbers = false }: MediaEditorProps) {
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["background", "logo", "gallery", "playlist", "venue", "photos", "fonts", "music"]));
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["background", "logo", "gallery", "playlist", "venue"]));
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -196,6 +234,8 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   // Shuffle / Repeat toggles
   const [musicShuffle, setMusicShuffle] = useState(data.musicShuffle ?? false);
   const [musicRepeat, setMusicRepeat] = useState(data.musicRepeat ?? true);
+  // Active source dialog (photos/fonts/music) — opened from FAB
+  const [activeSourceDialog, setActiveSourceDialog] = useState<"photos" | "fonts" | "music" | null>(null);
   // URL-based fonts (separate from uploaded files)
   const [pendingHeadingFontUrl, setPendingHeadingFontUrl] = useState("");
   const [pendingBodyFontUrl, setPendingBodyFontUrl] = useState("");
@@ -467,23 +507,13 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       setShowVenueUrlInput(false);
       setVenueUrlInput("");
     }
-    // If collapsing the photos section, hide the URL input
-    if (sectionId === "photos" && !collapsedSections.has("photos")) {
-      setShowPhotosUrlInput(false);
-      setPhotosUrlInput("");
-    }
-    // If collapsing the music section, hide the URL input
-    if (sectionId === "music" && !collapsedSections.has("music")) {
-      setShowMusicUrlInput(false);
-      setMusicUrlInput("");
-    }
     setCollapsedSections(prev => {
       const newSet = new Set(prev);
       if (newSet.has(sectionId)) {
         // Section is collapsed - expand it and collapse all others (accordion)
         newSet.clear();
         MEDIA_ITEMS.forEach(item => {
-          if (item.id !== sectionId) {
+          if (item.id !== sectionId && !item.dialogOnly) {
             newSet.add(item.id);
           }
         });
@@ -790,31 +820,32 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ fontFamily: "Inter, sans-serif" }}>
-        {MEDIA_ITEMS.map((item) => (
+        {MEDIA_ITEMS.map((item) => {
+          // Dialog-only items (photos/fonts/music) render as floating dialogs, not in the list
+          if (item.dialogOnly && activeSourceDialog !== item.id) return null;
+          return (
           <Fragment key={item.id}>
-          {item.id === "photos" && (
-            <div className="flex items-center gap-3 pt-4 pb-1">
-              <div className={`flex-1 h-px ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
-              <span className={`text-xs font-medium uppercase tracking-wider ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                Source Files
-              </span>
-              <div className={`flex-1 h-px ${isDarkMode ? "bg-gray-700" : "bg-gray-200"}`} />
-            </div>
-          )}
+          <ConditionalDialog
+            wrap={!!item.dialogOnly}
+            label={item.label}
+            accentColor={accentColor}
+            isDarkMode={isDarkMode}
+            onClose={() => setActiveSourceDialog(null)}
+          >
           <div
-            key={item.id}
             onMouseEnter={() => setHoveredItem(item.id)}
             onMouseLeave={() => setHoveredItem(null)}
             className={`border rounded-xl overflow-hidden transition-all duration-300`}
             style={{
               backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
               borderColor: hoveredItem === item.id ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-              ...(!collapsedSections.has(item.id) ? {
+              ...(!item.dialogOnly && !collapsedSections.has(item.id) ? {
                 boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
               } : {})
             }}
           >
-            <div 
+            {!item.dialogOnly && (
+            <div
               className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
               onClick={() => handleToggle(item.id)}
             >
@@ -843,6 +874,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                 })()}
               </div>
             </div>
+            )}
 
             {/* Background settings */}
             {!collapsedSections.has("background") && item.id === "background" && (
@@ -2948,9 +2980,34 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
               </div>
             )}
           </div>
+          </ConditionalDialog>
           </Fragment>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Floating Action Menu — source files (photos, fonts, music) */}
+      <FloatingActionMenu
+        accentColor={accentColor}
+        isDarkMode={isDarkMode}
+        options={[
+          {
+            label: "Audio Files",
+            icon: "music",
+            onClick: () => setActiveSourceDialog("music"),
+          },
+          {
+            label: "Fonts",
+            icon: "font",
+            onClick: () => setActiveSourceDialog("fonts"),
+          },
+          {
+            label: "Photos & Images",
+            icon: "image",
+            onClick: () => setActiveSourceDialog("photos"),
+          },
+        ]}
+      />
 
       {/* Image Picker Sheet (for logo, gallery, venue) */}
       {showImagePicker && (

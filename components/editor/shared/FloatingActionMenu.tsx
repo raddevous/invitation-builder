@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 
 interface FloatingActionMenuOption {
   label: string;
-  icon: "plus" | "edit" | "done" | "target";
+  icon: "plus" | "edit" | "done" | "target" | "music" | "image" | "font";
   onClick: () => void;
   divider?: boolean;
 }
@@ -60,6 +60,33 @@ export default function FloatingActionMenu({ options, accentColor, isDarkMode = 
           <circle cx="12" cy="12" r="10" />
           <circle cx="12" cy="12" r="6" />
           <circle cx="12" cy="12" r="2" />
+        </svg>
+      );
+    }
+    if (icon === "music") {
+      return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      );
+    }
+    if (icon === "image") {
+      return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+      );
+    }
+    if (icon === "font") {
+      return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="4 7 4 4 20 4 20 7" />
+          <line x1="9" y1="20" x2="15" y2="20" />
+          <line x1="12" y1="4" x2="12" y2="20" />
         </svg>
       );
     }
