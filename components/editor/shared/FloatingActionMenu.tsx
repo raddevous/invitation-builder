@@ -114,7 +114,7 @@ export default function FloatingActionMenu({ options, accentColor, isDarkMode = 
         >
           {title && (
             <div
-              className="px-4 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider"
+              className="px-4 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-center"
               style={{
                 color: isDarkMode ? "#6b7280" : "#9ca3af",
                 fontFamily: "Inter, sans-serif",
