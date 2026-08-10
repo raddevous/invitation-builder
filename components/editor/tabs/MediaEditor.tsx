@@ -446,9 +446,9 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     }
 
     // Validate file size (4MB limit — stays under Vercel's 4.5MB body limit)
-    const maxSize = 4 * 1024 * 1024; // 4MB in bytes
+    const maxSize = 4.5 * 1024 * 1024; // 4.5MB — matches Vercel's body limit
     if (file.size > maxSize) {
-      alert("File size exceeds 4MB limit. Please use a smaller file or compress your audio.");
+      alert("File size exceeds 4.5MB limit. Please use a smaller file or compress your audio.");
       return;
     }
 
@@ -495,9 +495,9 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     }
 
     // Validate file size (4MB limit — stays under Vercel's 4.5MB body limit)
-    const maxSize = 4 * 1024 * 1024; // 4MB in bytes
+    const maxSize = 4.5 * 1024 * 1024; // 4.5MB — matches Vercel's body limit
     if (file.size > maxSize) {
-      alert("File size exceeds 4MB limit. Please use a smaller file.");
+      alert("File size exceeds 4.5MB limit. Please use a smaller file.");
       return;
     }
 
@@ -612,9 +612,9 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     }
 
     // Validate file size (4MB limit for images — stays under Vercel's 4.5MB body limit)
-    const maxSize = 4 * 1024 * 1024;
+    const maxSize = 4.5 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert("File size exceeds 4MB limit. Please use a smaller image or compress it.");
+      alert("File size exceeds 4.5MB limit. Please use a smaller image or compress it.");
       return;
     }
 
@@ -1417,7 +1417,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           </svg>
                         )}
                         <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Upload Image</span>
-                        <span className={`text-[10px] ${isDarkMode ? "text-gray-600" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Max 6 · 4MB limit</span>
+                        <span className={`text-[10px] ${isDarkMode ? "text-gray-600" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Max 6 · 4.5MB limit</span>
                       </label>
                     )}
 
