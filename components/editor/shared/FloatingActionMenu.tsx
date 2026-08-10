@@ -11,9 +11,11 @@ interface FloatingActionMenuProps {
   options: FloatingActionMenuOption[];
   accentColor: string;
   isDarkMode?: boolean;
+  title?: string;
+  onToggle?: (open: boolean) => void;
 }
 
-export default function FloatingActionMenu({ options, accentColor, isDarkMode = false }: FloatingActionMenuProps) {
+export default function FloatingActionMenu({ options, accentColor, isDarkMode = false, title, onToggle }: FloatingActionMenuProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +112,17 @@ export default function FloatingActionMenu({ options, accentColor, isDarkMode = 
             animation: "fam-slide-in 0.15s ease-out",
           }}
         >
+          {title && (
+            <div
+              className="px-4 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider"
+              style={{
+                color: isDarkMode ? "#6b7280" : "#9ca3af",
+                fontFamily: "Inter, sans-serif",
+              }}
+            >
+              {title}
+            </div>
+          )}
           {options.map((option, idx) => (
             <div key={idx}>
               <button
@@ -133,7 +146,11 @@ export default function FloatingActionMenu({ options, accentColor, isDarkMode = 
 
       {/* FAB bubble */}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          onToggle?.(next);
+        }}
         aria-label="Menu"
         className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-110 active:scale-95"
         style={{ backgroundColor: accentColor }}

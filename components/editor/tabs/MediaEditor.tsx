@@ -3007,9 +3007,15 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       <FloatingActionMenu
         accentColor={accentColor}
         isDarkMode={isDarkMode}
+        title="Source Files"
+        onToggle={(open) => {
+          if (open) {
+            setCollapsedSections(new Set(MEDIA_ITEMS.filter(i => !i.dialogOnly).map(i => i.id)));
+          }
+        }}
         options={[
           {
-            label: "Audio Files",
+            label: "Audio",
             icon: "music",
             onClick: () => setActiveSourceDialog("music"),
           },
