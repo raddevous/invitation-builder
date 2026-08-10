@@ -493,9 +493,7 @@ export async function uploadPendingBlobs<T>(data: T): Promise<T> {
 
   if (pendingUploads.size === 0) return data;
 
-  // Upload each pending blob file directly to WordPress (bypasses Vercel's
-  // 4.5MB serverless body limit by going straight to the WP REST API)
-  const WP_API_URL = (process.env.NEXT_PUBLIC_WP_API_URL || "").replace(/\/$/, "");
+  // Upload each pending blob file via the Next.js API route
   const urlMap = new Map<string, string>();
 
   for (const [blobUrl, { file, field, invitationId }] of pendingUploads) {
@@ -505,24 +503,11 @@ export async function uploadPendingBlobs<T>(data: T): Promise<T> {
       formData.append("field", field);
       formData.append("invitationId", invitationId);
 
-      let response: Response;
-      if (WP_API_URL) {
-        // Direct to WordPress — no Vercel body size limit
-        response = await fetch(`${WP_API_URL}/upload`, {
-          method: "POST",
-          body: formData,
-          headers: {
-            "X-Invitation-Id": invitationId,
-          },
-        });
-      } else {
-        // Fallback: go through Next.js API (limited to 4.5MB on Vercel)
-        response = await fetch(apiUrl("/api/upload"), {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-        });
-      }
+      const response = await fetch(apiUrl("/api/upload"), {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Upload failed" }));
@@ -573,28 +558,14 @@ export async function deletePendingFiles(): Promise<void> {
 
   if (pendingDeletions.length === 0) return;
 
-  // Delete directly from WordPress (bypasses Vercel serverless for consistency)
-  const WP_API_URL = (process.env.NEXT_PUBLIC_WP_API_URL || "").replace(/\/$/, "");
-
   for (const url of pendingDeletions) {
     try {
-      let response: Response;
-      if (WP_API_URL) {
-        // Direct to WordPress
-        response = await fetch(`${WP_API_URL}/upload`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        });
-      } else {
-        // Fallback: go through Next.js API
-        response = await fetch(apiUrl("/api/delete-file"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-          credentials: "include",
-        });
-      }
+      const response = await fetch(apiUrl("/api/delete-file"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        credentials: "include",
+      });
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Delete failed" }));
         console.error('[media-cache] deletePendingFiles: failed for', url, error);
