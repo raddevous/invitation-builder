@@ -710,10 +710,10 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       return;
     }
 
-    // Validate file size (4MB limit for images — stays under Vercel's 4.5MB body limit)
-    const maxSize = 4.5 * 1024 * 1024;
+    // Validate file size (1.2MB limit for photos)
+    const maxSize = 1.2 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert("File size exceeds 4.5MB limit. Please use a smaller image or compress it.");
+      alert("File size exceeds 1.2MB limit. Please use a smaller image or compress it.");
       return;
     }
 
