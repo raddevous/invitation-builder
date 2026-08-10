@@ -757,7 +757,15 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   const urlMusicItems = playlistItems.filter(p => !p.isUploaded);
 
   return (
-    <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+    <div
+      className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}
+      onClick={(e) => {
+        // Collapse all sections when clicking on the container itself (not a child)
+        if (e.target === e.currentTarget) {
+          setCollapsedSections(new Set(MEDIA_ITEMS.filter(i => !i.dialogOnly).map(i => i.id)));
+        }
+      }}
+    >
       {/* Drag indicator toast */}
       {dragToast && (
         <div
@@ -819,7 +827,16 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ fontFamily: "Inter, sans-serif" }}>
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        style={{ fontFamily: "Inter, sans-serif" }}
+        onClick={(e) => {
+          // Collapse all sections when clicking on empty space (the container itself, not a child card)
+          if (e.target === e.currentTarget) {
+            setCollapsedSections(new Set(MEDIA_ITEMS.filter(i => !i.dialogOnly).map(i => i.id)));
+          }
+        }}
+      >
         {MEDIA_ITEMS.map((item) => {
           // Dialog-only items (photos/fonts/music) render as floating dialogs, not in the list
           if (item.dialogOnly && activeSourceDialog !== item.id) return null;
