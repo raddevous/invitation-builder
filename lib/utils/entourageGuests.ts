@@ -85,13 +85,6 @@ export function getSpecialGuestNames(data: InvitationData): EntourageGuest[] {
     if (n && n.trim() && title) guests.push({ name: n.trim(), title });
   };
 
-  if (data.nameType === "event" && data.coupleName?.trim()) {
-    pushIfNonEmpty(data.coupleName, "The Couple");
-  }
-  if (data.nameType === "couple") {
-    pushIfNonEmpty(data.hisName, "The Groom");
-    pushIfNonEmpty(data.herName, "The Bride");
-  }
   const ent = data.entourage;
   if (ent?.couple?.groomName?.trim()) pushIfNonEmpty(ent.couple.groomName, "The Groom");
   if (ent?.couple?.brideName?.trim()) pushIfNonEmpty(ent.couple.brideName, "The Bride");

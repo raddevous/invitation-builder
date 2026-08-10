@@ -212,13 +212,9 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   }, []); // Run once on mount
 
   // Special names that should not be added to the guest list (groom, bride, parents)
+  // Single source of truth: Entourage List only
   const specialNames = useMemo(() => {
     const names: Array<{ name: string; label: string }> = [];
-    if (data.nameType === "event" && data.coupleName?.trim()) names.push({ name: data.coupleName.trim(), label: "The Couple" });
-    if (data.nameType === "couple") {
-      if (data.hisName?.trim()) names.push({ name: data.hisName.trim(), label: "The Groom" });
-      if (data.herName?.trim()) names.push({ name: data.herName.trim(), label: "The Bride" });
-    }
     const ent = data.entourage;
     if (ent?.couple?.groomName?.trim()) names.push({ name: ent.couple.groomName.trim(), label: "The Groom" });
     if (ent?.couple?.brideName?.trim()) names.push({ name: ent.couple.brideName.trim(), label: "The Bride" });
@@ -227,7 +223,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     if (ent?.brideParents?.fatherName?.trim()) names.push({ name: ent.brideParents.fatherName.trim(), label: "The Bride's Parents" });
     if (ent?.brideParents?.motherName?.trim()) names.push({ name: ent.brideParents.motherName.trim(), label: "The Bride's Parents" });
     return names;
-  }, [data.nameType, data.coupleName, data.hisName, data.herName, data.entourage]);
+  }, [data.entourage]);
 
   const getSpecialNameLabel = (name: string): string | null => {
     const lower = name.toLowerCase().trim();
@@ -476,9 +472,10 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     return allItems;
   }, [pendingInvitees, entourageGuests, specialGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, searchQuery, guestFilter, rsvpResponses]);
 
-  // Compute guest counts per RSVP category (special guests are not counted for RSVP)
+  // Compute guest counts per RSVP category (special guests counted like entourage)
   const guestCounts = useMemo(() => {
     const allGuestNames = [
+      ...specialGuests.map(g => g.name),
       ...entourageGuests.map(g => g.name),
       ...pendingInvitees.map(i => i.name)
     ].filter(n => n.trim() !== "");
@@ -491,7 +488,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       confirmed: allGuestNames.filter(n => findResponse(n)?.attendance === "attending").length,
       declined: allGuestNames.filter(n => findResponse(n)?.attendance === "not-attending").length,
     };
-  }, [pendingInvitees, entourageGuests, rsvpResponses]);
+  }, [pendingInvitees, entourageGuests, specialGuests, rsvpResponses]);
 
   // Get RSVP response for a specific guest name
   const getGuestRsvp = (displayName: string) => {
