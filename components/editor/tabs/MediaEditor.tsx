@@ -1052,25 +1052,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     {pendingLogo && !showLogoUrlInput && (
                       <div className="flex flex-col items-center gap-2">
                         <div className="w-16 h-16 rounded-lg overflow-hidden flex items-center justify-center">
-                          {data.heroIconColorTint ? (
-                            <div
-                              className="w-full h-full"
-                              style={{
-                                backgroundColor: accentColor,
-                                opacity: data.heroIconColorTintOpacity ?? 1,
-                                WebkitMaskImage: `url(${pendingLogo})`,
-                                WebkitMaskSize: "contain",
-                                WebkitMaskPosition: "center",
-                                WebkitMaskRepeat: "no-repeat",
-                                maskImage: `url(${pendingLogo})`,
-                                maskSize: "contain",
-                                maskPosition: "center",
-                                maskRepeat: "no-repeat",
-                              }}
-                            />
-                          ) : (
-                            <img src={pendingLogo} alt="Logo" className="w-full h-full object-contain" />
-                          )}
+                          <img src={pendingLogo} alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         <div className="flex gap-2">
                           <button
