@@ -120,6 +120,16 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   };
 
+  // Helper: convert hex color to CSS invert filter value (for tinting images without CORS-restricted masks)
+  // Uses brightness(0) to make image black, then invert() to map black to the target color
+  const hexToInvert = (hex: string): string => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    // Approximate invert percentage for the target color
+    return `${((1 - r) * 100).toFixed(0)}% ${((1 - g) * 100).toFixed(0)}% ${((1 - b) * 100).toFixed(0)}%`;
+  };
+
   const countdownStructures = [
     { id: 0, name: "Classic Glass Cards" },
     { id: 1, name: "Circular Orbs" },
@@ -881,29 +891,14 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
                 )}
               </div>
             )}
-            {mergedData.heroIconColorTint ? (
-              <div
-                className="w-full h-full rounded-full"
-                style={{
-                  backgroundColor: mergedData.heroIconTextColor || mergedData.heroIconColorTint,
-                  opacity: mergedData.heroIconTextColor ? 1 : (mergedData.heroIconColorTintOpacity ?? 1),
-                  WebkitMaskImage: `url(${mergedData.heroIcon})`,
-                  WebkitMaskSize: "contain",
-                  WebkitMaskPosition: "center",
-                  WebkitMaskRepeat: "no-repeat",
-                  maskImage: `url(${mergedData.heroIcon})`,
-                  maskSize: "contain",
-                  maskPosition: "center",
-                  maskRepeat: "no-repeat",
-                }}
-              />
-            ) : (
-              <img
-                src={mergedData.heroIcon}
-                alt="Countdown icon"
-                className="w-full h-full object-contain"
-              />
-            )}
+            <img
+              src={mergedData.heroIcon}
+              alt="Countdown icon"
+              className="w-full h-full object-contain"
+              style={{
+                opacity: mergedData.heroIconColorTint ? (mergedData.heroIconColorTintOpacity ?? 1) : 1,
+              }}
+            />
           </div>
         ) : mergedData.heroIconType === "initial" ? (
           <div
