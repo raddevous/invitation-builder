@@ -125,6 +125,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const [duplicateErrors, setDuplicateErrors] = useState<Record<number, boolean>>({});
   const [showGuestCountDialog, setShowGuestCountDialog] = useState(false);
   const [guestCountInput, setGuestCountInput] = useState(String(data.targetGuestCount || ""));
+  const [excludeFromCount, setExcludeFromCount] = useState<{ flowerGirls?: boolean; ringBearer?: boolean; bibleBearer?: boolean }>(data.rsvpExcludeFromCount || {});
 
   // Refs to track latest pending state for unmount cleanup
   const pendingInviteesRef = useRef(pendingInvitees);
@@ -472,11 +473,19 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     return allItems;
   }, [pendingInvitees, entourageGuests, specialGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, searchQuery, guestFilter, rsvpResponses]);
 
-  // Compute guest counts per RSVP category (special guests counted like entourage)
+  // Compute guest counts per RSVP category (special guests counted like entourage).
+  // Excludes entourage roles the user has opted out of (Flower Girls, Ring Bearers, Bible Bearer).
   const guestCounts = useMemo(() => {
+    const excludedRoles = new Set<string>();
+    if (excludeFromCount.flowerGirls) excludedRoles.add("flowerGirls");
+    if (excludeFromCount.ringBearer) excludedRoles.add("ringBearer");
+    if (excludeFromCount.bibleBearer) excludedRoles.add("bibleBearer");
+
+    const filteredEntourageGuests = entourageGuests.filter(g => !g.role || !excludedRoles.has(g.role));
+
     const allGuestNames = [
       ...specialGuests.map(g => g.name),
-      ...entourageGuests.map(g => g.name),
+      ...filteredEntourageGuests.map(g => g.name),
       ...pendingInvitees.map(i => i.name)
     ].filter(n => n.trim() !== "");
 
@@ -488,7 +497,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       confirmed: allGuestNames.filter(n => findResponse(n)?.attendance === "attending").length,
       declined: allGuestNames.filter(n => findResponse(n)?.attendance === "not-attending").length,
     };
-  }, [pendingInvitees, entourageGuests, specialGuests, rsvpResponses]);
+  }, [pendingInvitees, entourageGuests, specialGuests, rsvpResponses, excludeFromCount]);
 
   // Get RSVP response for a specific guest name
   const getGuestRsvp = (displayName: string) => {
@@ -576,8 +585,37 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
             </button>
             
             {showFilterMenu && (
-              <div className={`absolute right-0 top-full mt-2 w-48 rounded-lg shadow-lg z-50 ${isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              <div className={`absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg z-50 ${isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                 <div className="py-1">
+                  {/* Exclude from Count */}
+                  <div className={`px-4 py-2 text-[11px] font-semibold uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                    Exclude from Count
+                  </div>
+                  {([
+                    { key: "flowerGirls" as const, label: "Flower Girls" },
+                    { key: "ringBearer" as const, label: "Ring Bearers" },
+                    { key: "bibleBearer" as const, label: "Bible Bearer" },
+                  ]).map(opt => (
+                    <label
+                      key={opt.key}
+                      className={`flex items-center gap-2 px-4 py-1.5 text-sm cursor-pointer transition-colors ${isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!excludeFromCount[opt.key]}
+                        onChange={(e) => {
+                          const updated = { ...excludeFromCount, [opt.key]: e.target.checked };
+                          if (!e.target.checked) delete updated[opt.key];
+                          setExcludeFromCount(updated);
+                          onChange("rsvpExcludeFromCount", updated as unknown as InvitationData[keyof InvitationData]);
+                        }}
+                        className="accent-current"
+                        style={{ accentColor }}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                  <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                   <button
                     type="button"
                     onClick={() => setFilterSortOption("date")}

@@ -14,7 +14,7 @@ import WeddingProgramEditor from "./WeddingProgramEditor";
 import StoryTimelineEditor from "./StoryTimelineEditor";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { buildInviteUrl } from "@/lib/utils";
-import { getEntourageGuestNames } from "@/lib/utils/entourageGuests";
+import { getEntourageGuestNames, getSpecialGuestNames } from "@/lib/utils/entourageGuests";
 import ProgressCircle from "@/components/editor/shared/ProgressCircle";
 import ProgressBar from "@/components/editor/shared/ProgressBar";
 import HalfCircleGauge from "@/components/editor/shared/HalfCircleGauge";
@@ -100,7 +100,7 @@ type ToolsNavTab = "dashboard" | "list" | "website" | "settings";
 // like media cache resolution on native that swap remote URLs for local URIs).
 const FIELD_TO_SECTION: Record<string, string> = {
   entourage: "Entourage",
-  rsvpInvitees: "Guest List", rsvpEntourageHonorifics: "Guest List", rsvpEntourageGuestDetails: "Guest List", rsvpGuestDetails: "Guest List",
+  rsvpInvitees: "Guest List", rsvpEntourageHonorifics: "Guest List", rsvpEntourageGuestDetails: "Guest List", rsvpGuestDetails: "Guest List", rsvpExcludeFromCount: "Guest List",
   heroIcon: "Media", heroBackgroundImages: "Media", heroBackgroundImagesMobile: "Media", galleryImages: "Media", photosAndImages: "Media", venueImages: "Media", receptionVenueImages: "Media", customHeadingFont: "Media", customBodyFont: "Media", backgroundMusic: "Media", backgroundMusicFileNames: "Media",
   hisName: "Wedding Details", herName: "Wedding Details", andText: "Wedding Details", coupleName: "Wedding Details", nameType: "Wedding Details", date: "Wedding Details", time: "Wedding Details", timezone: "Wedding Details", venueName: "Wedding Details", venueAddress: "Wedding Details", receptionVenueName: "Wedding Details", receptionVenueAddress: "Wedding Details", oneVenueOnly: "Wedding Details", heroMessage: "Wedding Details", heroClosingSentiment: "Wedding Details", eventDetailsHeading: "Wedding Details", eventDetailsMessage: "Wedding Details",
   weddingProgram: "Wedding Program",
@@ -203,12 +203,21 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
       const name = typeof i === 'string' ? i : i.name;
       return name && name.trim();
     });
-    const entourageGuests = getEntourageGuestNames(data.entourage);
-    const currentCount = invitees.length + entourageGuests.length;
+    // Apply the same exclusion rules as the Guest Editor:
+    //  - include special guests (couple + parents)
+    //  - exclude entourage roles the user opted out of (Flower Girls, Ring Bearers, Bible Bearer)
+    const specialGuests = getSpecialGuestNames(data);
+    const exclude = data.rsvpExcludeFromCount || {};
+    const excludedRoles = new Set<string>();
+    if (exclude.flowerGirls) excludedRoles.add("flowerGirls");
+    if (exclude.ringBearer) excludedRoles.add("ringBearer");
+    if (exclude.bibleBearer) excludedRoles.add("bibleBearer");
+    const entourageGuests = getEntourageGuestNames(data.entourage).filter(g => !g.role || !excludedRoles.has(g.role));
+    const currentCount = invitees.length + specialGuests.length + entourageGuests.length;
     const target = data.targetGuestCount || 0;
     if (target === 0) return { percentage: 0, current: currentCount, target: 0 };
     return { percentage: Math.min(100, Math.round((currentCount / target) * 100)), current: currentCount, target };
-  }, [data.rsvpInvitees, data.targetGuestCount, data.entourage]);
+  }, [data.rsvpInvitees, data.targetGuestCount, data.entourage, data.rsvpExcludeFromCount]);
 
   // Helper: get checklist containers from data prop with localStorage fallback
   const getChecklistContainers = useCallback((): any[] => {
@@ -449,7 +458,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         JSON.stringify(data.rsvpInvitees) !== JSON.stringify(snapshot.rsvpInvitees) ||
         JSON.stringify(data.rsvpEntourageHonorifics) !== JSON.stringify(snapshot.rsvpEntourageHonorifics) ||
         JSON.stringify(data.rsvpEntourageGuestDetails) !== JSON.stringify(snapshot.rsvpEntourageGuestDetails) ||
-        JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails))) sections.push("Guest List");
+        JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails) ||
+        JSON.stringify(data.rsvpExcludeFromCount) !== JSON.stringify(snapshot.rsvpExcludeFromCount))) sections.push("Guest List");
     // Media
     if (userSections.has("Media") && (
         data.heroIcon !== snapshot.heroIcon ||
@@ -548,6 +558,9 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     }
     if (JSON.stringify(data.rsvpGuestDetails) !== JSON.stringify(snapshot.rsvpGuestDetails)) {
       onChange("rsvpGuestDetails" as keyof InvitationData, snapshot.rsvpGuestDetails);
+    }
+    if (JSON.stringify(data.rsvpExcludeFromCount) !== JSON.stringify(snapshot.rsvpExcludeFromCount)) {
+      onChange("rsvpExcludeFromCount" as keyof InvitationData, snapshot.rsvpExcludeFromCount);
     }
     if (data.heroIcon !== snapshot.heroIcon) {
       onChange("heroIcon" as keyof InvitationData, snapshot.heroIcon);

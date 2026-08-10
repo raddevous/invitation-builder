@@ -588,6 +588,7 @@ export interface InvitationData {
   rsvpEntourageHonorifics?: Record<string, "M" | "Mr." | "Ms." | "Mrs.">; // Honorifics for entourage-derived guests, keyed by guest name
   rsvpEntourageGuestDetails?: Record<string, { plusOne: string; tableNumber: string; instruction?: string }>; // Additional details for entourage guests, keyed by guest name
   rsvpGuestDetails?: Record<number, { plusOne: string; tableNumber: string }>; // Additional details for normal guests, keyed by index
+  rsvpExcludeFromCount?: { flowerGirls?: boolean; ringBearer?: boolean; bibleBearer?: boolean }; // Exclude these entourage roles from guest counts
   venueLayout?: {
     baseShape: 'rectangle' | 'circle' | 'square';
     dimensions: { width: number; height: number };
