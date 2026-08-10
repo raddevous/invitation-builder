@@ -16,6 +16,12 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
   const [trackUrls, setTrackUrls] = useState<string[]>([]);
   const autoPlayedRef = useRef(false);
   const wasPlayingRef = useRef(false);
+  // Shuffle state — track played indices to avoid repeats until all played
+  const shuffleOrderRef = useRef<number[]>([]);
+  const shufflePosRef = useRef(0);
+
+  const shuffle = data.musicShuffle ?? false;
+  const repeat = data.musicRepeat ?? true;
 
   useEffect(() => {
     async function resolveTracks() {
@@ -41,11 +47,27 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
       const convertedUrls = musicList
         .filter(url => url && url.trim() !== "")
         .map(convertGoogleDriveUrl);
-      
+
       setTrackUrls(convertedUrls);
+      // Reset shuffle state when tracks change
+      shuffleOrderRef.current = [];
+      shufflePosRef.current = 0;
+      setCurrentTrackIndex(0);
     }
     resolveTracks();
   }, [data.backgroundMusic, data.musicEnabled, data.musicTrack]);
+
+  // Build a fresh shuffle order
+  const buildShuffleOrder = useCallback(() => {
+    const indices = Array.from({ length: trackUrls.length }, (_, i) => i);
+    // Fisher-Yates shuffle
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    shuffleOrderRef.current = indices;
+    shufflePosRef.current = 0;
+  }, [trackUrls.length]);
 
   // Register the audio element with the shared MusicContext via callback ref
   const audioCallbackRef = useCallback((audio: HTMLAudioElement | null) => {
@@ -85,10 +107,41 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
   }, [trackUrls, currentTrackIndex, autoPlay, data.musicEnabled, data.musicVolume, isPlaying]);
 
   const handleTrackEnd = () => {
-    if (trackUrls.length <= 1) return;
+    if (trackUrls.length === 0) return;
 
-    // Move to next track, or loop back to first
-    const nextIndex = (currentTrackIndex + 1) % trackUrls.length;
+    // Single track: loop if repeat, otherwise stop
+    if (trackUrls.length === 1) {
+      if (repeat && audioRef.current) {
+        audioRef.current.src = trackUrls[0];
+        audioRef.current.load();
+        audioRef.current.play().catch(() => {});
+      }
+      return;
+    }
+
+    let nextIndex: number;
+
+    if (shuffle) {
+      // Build shuffle order if empty or exhausted
+      if (shuffleOrderRef.current.length === 0 || shufflePosRef.current >= shuffleOrderRef.current.length) {
+        buildShuffleOrder();
+      }
+      nextIndex = shuffleOrderRef.current[shufflePosRef.current];
+      shufflePosRef.current++;
+
+      // If we've played all tracks and repeat is off, stop
+      if (shufflePosRef.current >= shuffleOrderRef.current.length && !repeat) {
+        return; // Don't play next — playlist is done
+      }
+    } else {
+      // Sequential order
+      nextIndex = currentTrackIndex + 1;
+      if (nextIndex >= trackUrls.length) {
+        if (!repeat) return; // Playlist is done
+        nextIndex = 0; // Loop back to first
+      }
+    }
+
     setCurrentTrackIndex(nextIndex);
 
     // Play next track directly — don't rely on useEffect which checks isPlaying,
@@ -107,7 +160,7 @@ export default function MusicPlayer({ data, autoPlay = false }: MusicPlayerProps
       ref={audioCallbackRef}
       onEnded={handleTrackEnd}
       preload="auto"
-      loop={trackUrls.length === 1}
+      loop={trackUrls.length === 1 && repeat}
     />
   );
 }

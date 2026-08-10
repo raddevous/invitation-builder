@@ -188,6 +188,14 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   const [playlistItems, setPlaylistItems] = useState<Array<{ url: string; fileName: string; isUploaded: boolean }>>([]);
   const [musicUrlInput, setMusicUrlInput] = useState("");
   const [showMusicUrlInput, setShowMusicUrlInput] = useState(false);
+  // Playlist drag-and-drop state (same pattern as gallery)
+  const playlistDragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [playlistDragIdx, setPlaylistDragIdx] = useState<number | null>(null);
+  const playlistDragStart = useRef({ x: 0, y: 0 });
+  const playlistDragTriggered = useRef(false);
+  // Shuffle / Repeat toggles
+  const [musicShuffle, setMusicShuffle] = useState(data.musicShuffle ?? false);
+  const [musicRepeat, setMusicRepeat] = useState(data.musicRepeat ?? true);
   // URL-based fonts (separate from uploaded files)
   const [pendingHeadingFontUrl, setPendingHeadingFontUrl] = useState("");
   const [pendingBodyFontUrl, setPendingBodyFontUrl] = useState("");
@@ -357,9 +365,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     setHasMusicChanges(
       plMusic.length !== currentMusic.length ||
       plMusic.some((url, i) => url !== currentMusic[i]) ||
-      plNames.some((name, i) => name !== currentFileNames[i])
+      plNames.some((name, i) => name !== currentFileNames[i]) ||
+      musicShuffle !== (data.musicShuffle ?? false) ||
+      musicRepeat !== (data.musicRepeat ?? true)
     );
-  }, [playlistItems, data.backgroundMusic, data.backgroundMusicFileNames]);
+  }, [playlistItems, data.backgroundMusic, data.backgroundMusicFileNames, musicShuffle, musicRepeat, data.musicShuffle, data.musicRepeat]);
 
   // Live data for real-time progress calculation (merges pending local state)
   const liveData = useMemo<InvitationData>(() => ({
@@ -375,7 +385,9 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     customBodyFont: pendingBodyFont || pendingBodyFontUrl,
     backgroundMusic: playlistItems.map(p => p.url),
     backgroundMusicFileNames: playlistItems.map(p => p.fileName),
-  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos, pendingHeadingFont, pendingHeadingFontUrl, pendingBodyFont, pendingBodyFontUrl, playlistItems]);
+    musicShuffle,
+    musicRepeat,
+  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos, pendingHeadingFont, pendingHeadingFontUrl, pendingBodyFont, pendingBodyFontUrl, playlistItems, musicShuffle, musicRepeat]);
 
   // Image validation for logo, gallery, venue, photos
   const logoValidation = useImageValidation(pendingLogo ? [pendingLogo] : []);
@@ -433,6 +445,8 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     if (hasMusicChanges) {
       onChange("backgroundMusic", playlistItems.map(p => p.url) as unknown as string);
       onChange("backgroundMusicFileNames", playlistItems.map(p => p.fileName) as unknown as string);
+      onChange("musicShuffle", musicShuffle);
+      onChange("musicRepeat", musicRepeat);
     }
   };
 
@@ -711,15 +725,6 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   // Derived: split playlist into uploaded vs URL for the Audio Files section
   const uploadedMusicItems = playlistItems.filter(p => p.isUploaded);
   const urlMusicItems = playlistItems.filter(p => !p.isUploaded);
-
-  // Move playlist item up/down
-  const movePlaylistItem = (index: number, direction: 'up' | 'down') => {
-    const newItems = [...playlistItems];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= newItems.length) return;
-    [newItems[index], newItems[targetIndex]] = [newItems[targetIndex], newItems[index]];
-    setPlaylistItems(newItems);
-  };
 
   return (
     <div className={`w-full h-dvh rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
@@ -1740,7 +1745,51 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                 <div className="space-y-3">
-                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Playlist</label>
+                  <div className="flex items-center justify-between">
+                    <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Playlist</label>
+
+                    {/* Shuffle + Repeat toggles */}
+                    <div className="flex items-center gap-2">
+                      {/* Shuffle toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setMusicShuffle(!musicShuffle)}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg transition-all"
+                        style={{
+                          backgroundColor: musicShuffle ? `${accentColor}20` : isDarkMode ? "#1C2531" : "#F3F4F6",
+                          color: musicShuffle ? accentColor : isDarkMode ? "#6b7280" : "#9ca3af",
+                        }}
+                        title={musicShuffle ? "Shuffle ON" : "Shuffle OFF"}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="16 3 21 3 21 8" />
+                          <line x1="4" y1="20" x2="21" y2="3" />
+                          <polyline points="21 16 21 21 16 21" />
+                          <line x1="15" y1="15" x2="21" y2="21" />
+                          <line x1="4" y1="4" x2="9" y2="9" />
+                        </svg>
+                      </button>
+
+                      {/* Repeat toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setMusicRepeat(!musicRepeat)}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg transition-all"
+                        style={{
+                          backgroundColor: musicRepeat ? `${accentColor}20` : isDarkMode ? "#1C2531" : "#F3F4F6",
+                          color: musicRepeat ? accentColor : isDarkMode ? "#6b7280" : "#9ca3af",
+                        }}
+                        title={musicRepeat ? "Repeat ON" : "Repeat OFF"}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="17 1 21 5 17 9" />
+                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                          <polyline points="7 23 3 19 7 15" />
+                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
 
                   {playlistItems.length === 0 ? (
                     <p className={`text-sm text-center py-6 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
@@ -1748,11 +1797,79 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {playlistItems.map((item, idx) => (
+                      {playlistItems.map((plItem, idx) => (
                         <div
                           key={`pl-${idx}`}
-                          className={`flex gap-2 items-center px-3 py-2.5 border rounded-lg ${isDarkMode ? "bg-gray-800 border-gray-700" : "border-gray-200"}`}
-                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                          data-playlist-idx={idx}
+                          className={`flex gap-2 items-center px-3 py-2.5 border rounded-lg cursor-pointer select-none ${isDarkMode ? "bg-gray-800 border-gray-700" : "border-gray-200"}`}
+                          style={{
+                            backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6",
+                            outline: playlistDragIdx === idx ? `2px solid ${accentColor}` : "none",
+                            outlineOffset: playlistDragIdx === idx ? "2px" : "0",
+                            boxShadow: playlistDragIdx === idx ? `0 0 12px 4px ${hexToRgba(accentColor, 0.6)}, 0 0 4px 2px ${hexToRgba(accentColor, 0.4)}` : "none",
+                            opacity: playlistDragIdx === idx ? 0.6 : 1,
+                            touchAction: 'pan-y',
+                            WebkitTouchCallout: 'none',
+                          }}
+                          onContextMenu={(e) => e.preventDefault()}
+                          onDragStart={(e) => e.preventDefault()}
+                          onPointerDown={(e) => {
+                            playlistDragStart.current = { x: e.clientX, y: e.clientY };
+                            playlistDragTriggered.current = false;
+                            if (playlistDragTimer.current) clearTimeout(playlistDragTimer.current);
+                            playlistDragTimer.current = setTimeout(() => {
+                              playlistDragTriggered.current = true;
+                              isDraggingImage.current = true;
+                              setPlaylistDragIdx(idx);
+                              setDragToast("Drag to reorder playlist");
+                            }, 350);
+                          }}
+                          onPointerMove={(e) => {
+                            if (playlistDragTimer.current && !playlistDragTriggered.current) {
+                              const dx = e.clientX - playlistDragStart.current.x;
+                              const dy = e.clientY - playlistDragStart.current.y;
+                              if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                clearTimeout(playlistDragTimer.current);
+                                playlistDragTimer.current = null;
+                              }
+                            }
+                            if (playlistDragTriggered.current && playlistDragIdx !== null) {
+                              const els = document.elementsFromPoint(e.clientX, e.clientY);
+                              const row = els.find((el: Element) => el.hasAttribute('data-playlist-idx'));
+                              if (row) {
+                                const overIdx = parseInt(row.getAttribute('data-playlist-idx')!, 10);
+                                if (overIdx !== playlistDragIdx) {
+                                  const newItems = [...playlistItems];
+                                  const [moved] = newItems.splice(playlistDragIdx, 1);
+                                  newItems.splice(overIdx, 0, moved);
+                                  setPlaylistItems(newItems);
+                                  setPlaylistDragIdx(overIdx);
+                                }
+                              }
+                            }
+                          }}
+                          onPointerUp={() => {
+                            if (playlistDragTimer.current) {
+                              clearTimeout(playlistDragTimer.current);
+                              playlistDragTimer.current = null;
+                            }
+                            if (playlistDragTriggered.current) {
+                              setPlaylistDragIdx(null);
+                              isDraggingImage.current = false;
+                              setDragToast(null);
+                            }
+                            setTimeout(() => { playlistDragTriggered.current = false; }, 100);
+                          }}
+                          onPointerCancel={() => {
+                            if (playlistDragTimer.current) {
+                              clearTimeout(playlistDragTimer.current);
+                              playlistDragTimer.current = null;
+                            }
+                            setPlaylistDragIdx(null);
+                            isDraggingImage.current = false;
+                            setDragToast(null);
+                            setTimeout(() => { playlistDragTriggered.current = false; }, 100);
+                          }}
                         >
                           {/* Track number */}
                           <span
@@ -1765,44 +1882,22 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           {/* Track info */}
                           <div className="flex-1 min-w-0">
                             <div className={`text-sm truncate ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                              {item.fileName || item.url.split('/').pop() || `Track ${idx + 1}`}
+                              {plItem.fileName || plItem.url.split('/').pop() || `Track ${idx + 1}`}
                             </div>
                             <div className={`text-[10px] truncate ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                              {item.isUploaded ? "Uploaded" : "URL"}
+                              {plItem.isUploaded ? "Uploaded" : "URL"}
                             </div>
                           </div>
 
-                          {/* Up/Down buttons */}
-                          <button
-                            type="button"
-                            onClick={() => movePlaylistItem(idx, 'up')}
-                            disabled={idx === 0}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
-                              idx === 0
-                                ? "opacity-30 cursor-not-allowed"
-                                : isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-200 text-gray-500"
-                            }`}
-                            title="Move up"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="18 15 12 9 6 15" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => movePlaylistItem(idx, 'down')}
-                            disabled={idx === playlistItems.length - 1}
-                            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
-                              idx === playlistItems.length - 1
-                                ? "opacity-30 cursor-not-allowed"
-                                : isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-200 text-gray-500"
-                            }`}
-                            title="Move down"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                          </button>
+                          {/* Drag handle icon */}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${isDarkMode ? "text-gray-600" : "text-gray-300"}`}>
+                            <circle cx="9" cy="6" r="1" />
+                            <circle cx="9" cy="12" r="1" />
+                            <circle cx="9" cy="18" r="1" />
+                            <circle cx="15" cy="6" r="1" />
+                            <circle cx="15" cy="12" r="1" />
+                            <circle cx="15" cy="18" r="1" />
+                          </svg>
                         </div>
                       ))}
                     </div>

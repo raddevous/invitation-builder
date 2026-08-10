@@ -127,6 +127,8 @@ export interface InvitationData {
   musicVolume: number;
   backgroundMusic?: string[];
   backgroundMusicFileNames?: string[];
+  musicShuffle?: boolean;
+  musicRepeat?: boolean;
   customHeadingFont?: string;
   customBodyFont?: string;
   sections: InvitationSections;
