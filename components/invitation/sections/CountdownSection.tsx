@@ -894,9 +894,11 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
             <img
               src={mergedData.heroIcon}
               alt="Countdown icon"
-              className="w-full h-full object-contain"
+              draggable={false}
+              className="w-full h-full object-contain pointer-events-none select-none"
               style={{
                 opacity: mergedData.heroIconColorTint ? (mergedData.heroIconColorTintOpacity ?? 1) : 1,
+                ...({ WebkitUserDrag: 'none' } as React.CSSProperties),
               }}
             />
           </div>
