@@ -48,6 +48,10 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const [addDialogGuestNumberError, setAddDialogGuestNumberError] = useState(false);
   const [addDialogHasChanges, setAddDialogHasChanges] = useState(false);
   const [editDialogHasChanges, setEditDialogHasChanges] = useState(false);
+  // Manual RSVP panel (inside edit guest dialog)
+  const [showManualRsvp, setShowManualRsvp] = useState(false);
+  const [manualRsvpAttendance, setManualRsvpAttendance] = useState<"attending" | "not-attending" | null>(null);
+  const [manualRsvpSubmitting, setManualRsvpSubmitting] = useState(false);
   const inviteeScrollRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const [guestFilter, setGuestFilter] = useState<GuestFilter>("all");
@@ -1086,14 +1090,121 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
 
       {/* Edit Guest Dialog */}
       {showEditDialog && editGuestData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowEditDialog(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setShowEditDialog(false); setShowManualRsvp(false); setManualRsvpAttendance(null); }}>
           <div 
             className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className={`text-lg font-semibold mb-6 ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Edit Guest
-            </h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-lg font-semibold ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                Edit Guest
+              </h3>
+              {/* Manual RSVP icon */}
+              <button
+                type="button"
+                onClick={() => setShowManualRsvp(!showManualRsvp)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
+                style={{
+                  backgroundColor: showManualRsvp ? `${accentColor}20` : "transparent",
+                  color: showManualRsvp ? accentColor : isDarkMode ? "#9CA3AF" : "#6B7280",
+                }}
+                title="Manual RSVP"
+              >
+                <img
+                  src="/assets/ico-rsvp.png"
+                  alt="RSVP"
+                  draggable={false}
+                  className="w-5 h-5 select-none"
+                  style={{ pointerEvents: 'none' }}
+                />
+              </button>
+            </div>
+
+            {/* Manual RSVP Panel */}
+            {showManualRsvp && (
+              <div
+                className="mb-4 p-4 rounded-xl space-y-3"
+                style={{
+                  backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6",
+                  border: `1px solid ${isDarkMode ? "#374151" : "#E5E7EB"}`,
+                }}
+              >
+                <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
+                  Manual RSVP
+                </h4>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setManualRsvpAttendance("attending")}
+                    className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: manualRsvpAttendance === "attending" ? accentColor : isDarkMode ? "#151B24" : "#ffffff",
+                      color: manualRsvpAttendance === "attending" ? "#ffffff" : isDarkMode ? "#9CA3AF" : "#6B7280",
+                      border: `1px solid ${manualRsvpAttendance === "attending" ? accentColor : isDarkMode ? "#374151" : "#E5E7EB"}`,
+                      fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    Attending
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualRsvpAttendance("not-attending")}
+                    className="flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: manualRsvpAttendance === "not-attending" ? accentColor : isDarkMode ? "#151B24" : "#ffffff",
+                      color: manualRsvpAttendance === "not-attending" ? "#ffffff" : isDarkMode ? "#9CA3AF" : "#6B7280",
+                      border: `1px solid ${manualRsvpAttendance === "not-attending" ? accentColor : isDarkMode ? "#374151" : "#E5E7EB"}`,
+                      fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    Not Attending
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  disabled={!manualRsvpAttendance || manualRsvpSubmitting}
+                  onClick={async () => {
+                    if (!manualRsvpAttendance || !editGuestData || !invitationId) return;
+                    setManualRsvpSubmitting(true);
+                    try {
+                      const guestName = editGuestData.title === "M"
+                        ? editGuestData.name
+                        : `${editGuestData.title} ${editGuestData.name}`;
+                      const res = await fetch(apiUrl("/api/rsvp"), {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          invitationId,
+                          guestName,
+                          attendance: manualRsvpAttendance,
+                          guestCount: 1,
+                          message: null,
+                        }),
+                      });
+                      if (res.ok) {
+                        // Close everything
+                        setShowManualRsvp(false);
+                        setManualRsvpAttendance(null);
+                        setShowEditDialog(false);
+                        setEditGuestData(null);
+                        setOriginalGuestData(null);
+                        setGuestNumberError(false);
+                      } else {
+                        alert("Failed to submit RSVP. Please try again.");
+                      }
+                    } catch {
+                      alert("Failed to submit RSVP. Please try again.");
+                    } finally {
+                      setManualRsvpSubmitting(false);
+                    }
+                  }}
+                  className="w-full px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+                >
+                  {manualRsvpSubmitting ? "Submitting..." : "Submit RSVP"}
+                </button>
+              </div>
+            )}
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <button
