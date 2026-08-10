@@ -51,6 +51,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   // Manual RSVP panel (inside edit guest dialog)
   const [showManualRsvp, setShowManualRsvp] = useState(false);
   const [manualRsvpAttendance, setManualRsvpAttendance] = useState<"attending" | "not-attending" | null>(null);
+  const [manualRsvpMessage, setManualRsvpMessage] = useState("");
   const [manualRsvpSubmitting, setManualRsvpSubmitting] = useState(false);
   const inviteeScrollRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
@@ -1090,7 +1091,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
 
       {/* Edit Guest Dialog */}
       {showEditDialog && editGuestData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setShowEditDialog(false); setShowManualRsvp(false); setManualRsvpAttendance(null); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setShowEditDialog(false); setShowManualRsvp(false); setManualRsvpAttendance(null); setManualRsvpMessage(""); }}>
           <div 
             className={`${isDarkMode ? "bg-gray-800" : "bg-white"} rounded-xl p-6 max-w-sm w-full`}
             onClick={(e) => e.stopPropagation()}
@@ -1102,7 +1103,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
               {/* Manual RSVP icon */}
               <button
                 type="button"
-                onClick={() => { setShowManualRsvp(!showManualRsvp); setManualRsvpAttendance(null); }}
+                onClick={() => { setShowManualRsvp(!showManualRsvp); setManualRsvpAttendance(null); setManualRsvpMessage(""); }}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
                 style={{
                   backgroundColor: showManualRsvp ? `${accentColor}20` : "transparent",
@@ -1151,6 +1152,14 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                     Not Attending
                   </button>
                 </div>
+                <textarea
+                  value={manualRsvpMessage}
+                  onChange={(e) => setManualRsvpMessage(e.target.value)}
+                  placeholder="Message (optional)..."
+                  rows={2}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors resize-none ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
+                  style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
+                />
                 <button
                   type="button"
                   disabled={!manualRsvpAttendance || manualRsvpSubmitting}
@@ -1169,12 +1178,13 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                           guestName,
                           attendance: manualRsvpAttendance,
                           guestCount: 1,
-                          message: null,
+                          message: manualRsvpMessage.trim() || null,
                         }),
                       });
                       if (res.ok) {
                         setShowManualRsvp(false);
                         setManualRsvpAttendance(null);
+                        setManualRsvpMessage("");
                         setShowEditDialog(false);
                         setEditGuestData(null);
                         setOriginalGuestData(null);
