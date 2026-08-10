@@ -89,7 +89,7 @@ const MEDIA_ITEMS = [
   { id: "venue", label: "Venue Photo", description: "Ceremony &/or Reception photos" },
   { id: "photos", label: "Photos & Images Picker", description: "Upload images or add image URLs" },
   { id: "fonts", label: "Fonts", description: "Custom font settings" },
-  { id: "music", label: "Music", description: "Background music settings" },
+  { id: "music", label: "Audio Files", description: "Upload audios or audio URLs" },
 ];
 
 export default function MediaEditor({ data, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, invitationId, onSave, isDemoMode = false, showNumbers = false }: MediaEditorProps) {
@@ -184,6 +184,17 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   const [pendingBodyFont, setPendingBodyFont] = useState(data.customBodyFont || "");
   const [pendingBackgroundMusic, setPendingBackgroundMusic] = useState<string[]>(data.backgroundMusic || []);
   const [pendingBackgroundMusicFileNames, setPendingBackgroundMusicFileNames] = useState<string[]>(data.backgroundMusicFileNames || []);
+  // URL-based music (separate from uploaded files)
+  const [pendingMusicUrls, setPendingMusicUrls] = useState<string[]>([]);
+  const [musicUrlInput, setMusicUrlInput] = useState("");
+  const [showMusicUrlInput, setShowMusicUrlInput] = useState(false);
+  // URL-based fonts (separate from uploaded files)
+  const [pendingHeadingFontUrl, setPendingHeadingFontUrl] = useState("");
+  const [pendingBodyFontUrl, setPendingBodyFontUrl] = useState("");
+  const [showHeadingFontUrlInput, setShowHeadingFontUrlInput] = useState(false);
+  const [showBodyFontUrlInput, setShowBodyFontUrlInput] = useState(false);
+  const [headingFontUrlInput, setHeadingFontUrlInput] = useState("");
+  const [bodyFontUrlInput, setBodyFontUrlInput] = useState("");
 
   // Track pending file uploads (blob URLs that need to be uploaded to WordPress on Save)
   // This is a module-level Map shared across components so EditorPanel can access it at save time
@@ -233,6 +244,47 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     }
     setPendingUploadedPhotos(uploaded);
     setPendingPhotos(urlBased);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Split existing music into uploaded vs URL-based on mount
+  // Uploaded music has file names in backgroundMusicFileNames; URL music doesn't
+  useEffect(() => {
+    const allMusic = data.backgroundMusic || [];
+    const allNames = data.backgroundMusicFileNames || [];
+    const uploaded: string[] = [];
+    const uploadedNames: string[] = [];
+    const urlBased: string[] = [];
+    for (let i = 0; i < allMusic.length; i++) {
+      const url = allMusic[i];
+      const name = allNames[i];
+      // If there's a corresponding file name, it was uploaded; otherwise it's a URL
+      if (name) {
+        uploaded.push(url);
+        uploadedNames.push(name);
+      } else {
+        urlBased.push(url);
+      }
+    }
+    setPendingBackgroundMusic(uploaded);
+    setPendingBackgroundMusicFileNames(uploadedNames);
+    setPendingMusicUrls(urlBased);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Split existing fonts into uploaded vs URL-based on mount
+  useEffect(() => {
+    const headingFont = data.customHeadingFont || "";
+    const bodyFont = data.customBodyFont || "";
+    // Uploaded fonts have blob: or WordPress URLs with invitationId; URL fonts are external
+    if (headingFont && !headingFont.startsWith('blob:') && !headingFont.includes(invitationId || '__none__')) {
+      setPendingHeadingFontUrl(headingFont);
+      setPendingHeadingFont("");
+    }
+    if (bodyFont && !bodyFont.startsWith('blob:') && !bodyFont.includes(invitationId || '__none__')) {
+      setPendingBodyFontUrl(bodyFont);
+      setPendingBodyFont("");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -301,20 +353,24 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
   useEffect(() => {
     setHasFontsChanges(
       pendingHeadingFont !== (data.customHeadingFont || "") ||
-      pendingBodyFont !== (data.customBodyFont || "")
+      pendingBodyFont !== (data.customBodyFont || "") ||
+      pendingHeadingFontUrl !== "" ||
+      pendingBodyFontUrl !== ""
     );
-  }, [pendingHeadingFont, pendingBodyFont, data.customHeadingFont, data.customBodyFont]);
+  }, [pendingHeadingFont, pendingBodyFont, pendingHeadingFontUrl, pendingBodyFontUrl, data.customHeadingFont, data.customBodyFont]);
 
   useEffect(() => {
     const currentMusic = data.backgroundMusic || [];
     const currentFileNames = data.backgroundMusicFileNames || [];
+    const combinedMusic = [...pendingBackgroundMusic, ...pendingMusicUrls];
+    const combinedNames = [...pendingBackgroundMusicFileNames, ...pendingMusicUrls.map(() => "")];
     setHasMusicChanges(
-      pendingBackgroundMusic.length !== currentMusic.length ||
-      pendingBackgroundMusic.some((url, i) => url !== currentMusic[i]) ||
-      pendingBackgroundMusicFileNames.length !== currentFileNames.length ||
-      pendingBackgroundMusicFileNames.some((name, i) => name !== currentFileNames[i])
+      combinedMusic.length !== currentMusic.length ||
+      combinedMusic.some((url, i) => url !== currentMusic[i]) ||
+      combinedNames.length !== currentFileNames.length ||
+      combinedNames.some((name, i) => name !== currentFileNames[i])
     );
-  }, [pendingBackgroundMusic, pendingBackgroundMusicFileNames, data.backgroundMusic, data.backgroundMusicFileNames]);
+  }, [pendingBackgroundMusic, pendingBackgroundMusicFileNames, pendingMusicUrls, data.backgroundMusic, data.backgroundMusicFileNames]);
 
   // Live data for real-time progress calculation (merges pending local state)
   const liveData = useMemo<InvitationData>(() => ({
@@ -326,7 +382,11 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
     venueImages: pendingVenue,
     receptionVenueImages: pendingReceptionVenue,
     photosAndImages: [...pendingUploadedPhotos, ...pendingPhotos],
-  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos]);
+    customHeadingFont: pendingHeadingFont || pendingHeadingFontUrl,
+    customBodyFont: pendingBodyFont || pendingBodyFontUrl,
+    backgroundMusic: [...pendingBackgroundMusic, ...pendingMusicUrls],
+    backgroundMusicFileNames: [...pendingBackgroundMusicFileNames, ...pendingMusicUrls.map(() => "")],
+  }), [data, pendingBgDesktop, pendingBgMobile, pendingLogo, pendingGallery, pendingVenue, pendingReceptionVenue, pendingUploadedPhotos, pendingPhotos, pendingHeadingFont, pendingHeadingFontUrl, pendingBodyFont, pendingBodyFontUrl, pendingBackgroundMusic, pendingBackgroundMusicFileNames, pendingMusicUrls]);
 
   // Image validation for logo, gallery, venue, photos
   const logoValidation = useImageValidation(pendingLogo ? [pendingLogo] : []);
@@ -378,12 +438,12 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
       onChange("photosAndImages", [...pendingUploadedPhotos, ...pendingPhotos] as unknown as string);
     }
     if (hasFontsChanges) {
-      onChange("customHeadingFont", pendingHeadingFont);
-      onChange("customBodyFont", pendingBodyFont);
+      onChange("customHeadingFont", pendingHeadingFont || pendingHeadingFontUrl);
+      onChange("customBodyFont", pendingBodyFont || pendingBodyFontUrl);
     }
     if (hasMusicChanges) {
-      onChange("backgroundMusic", pendingBackgroundMusic as unknown as string);
-      onChange("backgroundMusicFileNames", pendingBackgroundMusicFileNames as unknown as string);
+      onChange("backgroundMusic", [...pendingBackgroundMusic, ...pendingMusicUrls] as unknown as string);
+      onChange("backgroundMusicFileNames", [...pendingBackgroundMusicFileNames, ...pendingMusicUrls.map(() => "")] as unknown as string);
     }
   };
 
@@ -2148,6 +2208,8 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                   {/* Custom Heading Font */}
                   <div className="space-y-2">
                     <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Custom Heading Font</label>
+
+                    {/* Upload section */}
                     {!pendingHeadingFont ? (
                       <label className={`flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
                         uploadingIndex === -1
@@ -2211,11 +2273,95 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                         </button>
                       </div>
                     )}
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 py-1">
+                      <div className={`flex-1 h-px ${isDarkMode ? "bg-gray-700" : "bg-gray-300"}`} />
+                    </div>
+
+                    {/* URL section */}
+                    {!pendingHeadingFontUrl && !showHeadingFontUrlInput ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowHeadingFontUrlInput(true)}
+                        className="w-full py-3 border-2 border-dashed rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        style={{
+                          borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                          color: isDarkMode ? "#6b7280" : "#9ca3af",
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                        <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Add Font URL</span>
+                      </button>
+                    ) : showHeadingFontUrlInput ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={headingFontUrlInput}
+                          onChange={(e) => setHeadingFontUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && headingFontUrlInput.trim()) {
+                              setPendingHeadingFontUrl(headingFontUrlInput.trim());
+                              setHeadingFontUrlInput("");
+                              setShowHeadingFontUrlInput(false);
+                            }
+                          }}
+                          placeholder="Paste font URL (.woff2, .ttf, .otf)..."
+                          autoFocus
+                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (headingFontUrlInput.trim()) {
+                              setPendingHeadingFontUrl(headingFontUrlInput.trim());
+                              setHeadingFontUrlInput("");
+                              setShowHeadingFontUrlInput(false);
+                            }
+                          }}
+                          className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                          style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-center">
+                        <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                            </svg>
+                            <span className="truncate">{pendingHeadingFontUrl.split('/').pop()}</span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPendingHeadingFontUrl("")}
+                          className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
+                          title="Remove font URL"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Custom Body Font */}
                   <div className="space-y-2">
                     <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Custom Body Font</label>
+
+                    {/* Upload section */}
                     {!pendingBodyFont ? (
                       <label className={`flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
                         uploadingIndex === -2
@@ -2279,6 +2425,88 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                         </button>
                       </div>
                     )}
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 py-1">
+                      <div className={`flex-1 h-px ${isDarkMode ? "bg-gray-700" : "bg-gray-300"}`} />
+                    </div>
+
+                    {/* URL section */}
+                    {!pendingBodyFontUrl && !showBodyFontUrlInput ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowBodyFontUrlInput(true)}
+                        className="w-full py-3 border-2 border-dashed rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        style={{
+                          borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                          color: isDarkMode ? "#6b7280" : "#9ca3af",
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                        <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Add Font URL</span>
+                      </button>
+                    ) : showBodyFontUrlInput ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={bodyFontUrlInput}
+                          onChange={(e) => setBodyFontUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && bodyFontUrlInput.trim()) {
+                              setPendingBodyFontUrl(bodyFontUrlInput.trim());
+                              setBodyFontUrlInput("");
+                              setShowBodyFontUrlInput(false);
+                            }
+                          }}
+                          placeholder="Paste font URL (.woff2, .ttf, .otf)..."
+                          autoFocus
+                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (bodyFontUrlInput.trim()) {
+                              setPendingBodyFontUrl(bodyFontUrlInput.trim());
+                              setBodyFontUrlInput("");
+                              setShowBodyFontUrlInput(false);
+                            }
+                          }}
+                          className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                          style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-center">
+                        <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                            </svg>
+                            <span className="truncate">{pendingBodyFontUrl.split('/').pop()}</span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPendingBodyFontUrl("")}
+                          className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
+                          title="Remove font URL"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2288,81 +2516,193 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
             {!collapsedSections.has("music") && item.id === "music" && (
               <div className={`border-t p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100 bg-gray-100"}`}
               style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
-                <div className="space-y-2">
-                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Background Music (up to 3)</label>
-                  
-                  {/* Render existing tracks */}
-                  {pendingBackgroundMusic.map((url, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
-                        style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                      >
-                        {pendingBackgroundMusicFileNames[idx] || `Track ${idx + 1}`}
+                <div className="space-y-4">
+                  <label className={`block text-xs tracking-wide uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Audio Files</label>
+
+                  {/* === UPLOAD SECTION (top) — max 3 === */}
+                  <div className="space-y-2">
+                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Upload Music {pendingBackgroundMusic.length > 0 && `(${pendingBackgroundMusic.length}/3)`}</label>
+
+                    {/* Render existing uploaded tracks */}
+                    {pendingBackgroundMusic.map((url, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        >
+                          {pendingBackgroundMusicFileNames[idx] || `Track ${idx + 1}`}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMusicDeleteIdx(idx);
+                            setShowDeleteDialog(true);
+                          }}
+                          className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
+                          title="Remove track"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
                       </div>
+                    ))}
+
+                    {/* Upload slot for empty position (up to 3 total) */}
+                    {pendingBackgroundMusic.length < 3 && (
+                      <div className="flex gap-2">
+                        <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                          uploadingIndex !== null
+                            ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                            : "border-gray-200 text-gray-600"
+                        }`} style={
+                          uploadingIndex === null
+                            ? {
+                                borderColor: accentColor,
+                                backgroundColor: `${accentColor}05`
+                              }
+                            : undefined
+                        }>
+                          {uploadingIndex === pendingBackgroundMusic.length ? (
+                            <>
+                              <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                              </svg>
+                              <span className="text-sm">Uploading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17,8 12,3 7,8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                              </svg>
+                              <span className="text-sm">Upload music file {pendingBackgroundMusic.length > 0 ? `(${pendingBackgroundMusic.length + 1}/3)` : ""}</span>
+                            </>
+                          )}
+                          <input
+                            type="file"
+                            accept="audio/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleMusicUpload(pendingBackgroundMusic.length, file);
+                              }
+                            }}
+                            disabled={uploadingIndex !== null}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {pendingBackgroundMusic.length >= 3 && (
+                      <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        Maximum of 3 uploaded tracks reached
+                      </p>
+                    )}
+                  </div>
+
+                  {/* === DIVIDER === */}
+                  <div className="flex items-center gap-3 py-1">
+                    <div className={`flex-1 h-px ${isDarkMode ? "bg-gray-700" : "bg-gray-300"}`} />
+                  </div>
+
+                  {/* === URL SECTION (bottom) — max 3 === */}
+                  <div className="space-y-2">
+                    <label className={`block text-[10px] tracking-wide uppercase text-left ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>Add MP3 URL {pendingMusicUrls.length > 0 && `(${pendingMusicUrls.length}/3)`}</label>
+
+                    {/* Render existing URL tracks */}
+                    {pendingMusicUrls.map((url, idx) => (
+                      <div key={`music-url-${idx}`} className="flex gap-2 items-center">
+                        <div className={`flex-1 px-3 py-2.5 border rounded-lg text-sm truncate ${isDarkMode ? "bg-gray-800 border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                            </svg>
+                            <span className="truncate">{url.split('/').pop() || `URL ${idx + 1}`}</span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingMusicUrls(pendingMusicUrls.filter((_, i) => i !== idx));
+                          }}
+                          className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
+                          title="Remove URL track"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Add URL button (dashed, link icon) — shown when < 3 and no input visible */}
+                    {pendingMusicUrls.length < 3 && !showMusicUrlInput && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setMusicDeleteIdx(idx);
-                          setShowDeleteDialog(true);
+                        onClick={() => setShowMusicUrlInput(true)}
+                        className="w-full py-3 border-2 border-dashed rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        style={{
+                          borderColor: isDarkMode ? "#374151" : "#d1d5db",
+                          color: isDarkMode ? "#6b7280" : "#9ca3af",
                         }}
-                        className="w-10 h-10 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shrink-0"
-                        title="Remove track"
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                         </svg>
+                        <span className="text-sm" style={{ fontFamily: "Inter, sans-serif" }}>Add MP3 URL</span>
                       </button>
-                    </div>
-                  ))}
+                    )}
 
-                  {/* Upload slots for empty positions (up to 3 total) */}
-                  {pendingBackgroundMusic.length < 3 && (
-                    <div className="flex gap-2">
-                      <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                        uploadingIndex !== null
-                          ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
-                          : "border-gray-200 text-gray-600"
-                      }`} style={
-                        uploadingIndex === null
-                          ? {
-                              borderColor: accentColor,
-                              backgroundColor: `${accentColor}05`
-                            }
-                          : undefined
-                      }>
-                        {uploadingIndex === pendingBackgroundMusic.length ? (
-                          <>
-                            <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                            </svg>
-                            <span className="text-sm">Uploading...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                              <polyline points="17,8 12,3 7,8" />
-                              <line x1="12" y1="3" x2="12" y2="15" />
-                            </svg>
-                            <span className="text-sm">Upload music file {pendingBackgroundMusic.length > 0 ? `(${pendingBackgroundMusic.length + 1}/3)` : ""}</span>
-                          </>
-                        )}
+                    {/* URL Input with ADD button */}
+                    {showMusicUrlInput && pendingMusicUrls.length < 3 && (
+                      <div className="flex gap-2">
                         <input
-                          type="file"
-                          accept="audio/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              handleMusicUpload(pendingBackgroundMusic.length, file);
+                          type="text"
+                          value={musicUrlInput}
+                          onChange={(e) => setMusicUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && musicUrlInput.trim()) {
+                              setPendingMusicUrls([...pendingMusicUrls, musicUrlInput.trim()]);
+                              setMusicUrlInput("");
+                              setShowMusicUrlInput(false);
                             }
                           }}
-                          disabled={uploadingIndex !== null}
-                          className="hidden"
+                          placeholder="Paste MP3 URL..."
+                          autoFocus
+                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                          style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
-                      </label>
-                    </div>
-                  )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (musicUrlInput.trim()) {
+                              setPendingMusicUrls([...pendingMusicUrls, musicUrlInput.trim()]);
+                              setMusicUrlInput("");
+                              setShowMusicUrlInput(false);
+                            }
+                          }}
+                          className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                          style={{ backgroundColor: accentColor, fontFamily: "Inter, sans-serif" }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    )}
+
+                    {pendingMusicUrls.length >= 3 && (
+                      <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                        Maximum of 3 URL tracks reached
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
