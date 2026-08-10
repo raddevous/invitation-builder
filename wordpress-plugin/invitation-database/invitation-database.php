@@ -41,39 +41,6 @@ add_filter('rest_request_before_callbacks', function ($response, $handler, $requ
     // No-op: just ensure the request body is parsed for multipart
     return $response;
 }, 10, 3);
-
-// CORS headers for REST API — allows the Next.js app (instavow.com) to
-// upload files directly to WordPress, bypassing Vercel's 4.5MB body limit.
-add_filter('rest_pre_serve_request', function ($value) {
-    $origin = get_http_origin();
-    // Allow requests from instavow.com and localhost (dev)
-    $allowed_origins = array(
-        'https://instavow.com',
-        'https://www.instavow.com',
-        'http://localhost:3000',
-        'http://localhost:3001',
-    );
-    if ($origin && in_array($origin, $allowed_origins, true)) {
-        header('Access-Control-Allow-Origin: ' . $origin);
-        header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, X-Invitation-Id, X-Upload-Token');
-        header('Access-Control-Allow-Credentials: true');
-        header('Vary: Origin');
-    }
-    return $value;
-});
-
-// Handle CORS preflight requests
-add_action('rest_api_init', function () {
-    register_rest_route('invitation-db/v1', '/upload-options', array(
-        'methods'  => 'OPTIONS',
-        'callback' => function () {
-            return new WP_REST_Response('', 204);
-        },
-        'permission_callback' => '__return_true',
-    ));
-}, 99);
-
 // Increase upload size limit for REST API file uploads
 add_filter('upload_size_limit', function ($size) {
     // 10MB — matches the app-side validation

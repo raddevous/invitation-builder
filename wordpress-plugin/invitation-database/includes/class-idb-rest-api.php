@@ -760,19 +760,6 @@ class IDB_Rest_Api
         if (!$field) {
             return new WP_REST_Response(array('error' => 'Missing field'), 400);
         }
-
-        // Verify the invitation exists in the database (basic validation
-        // since this endpoint is now called directly from the client)
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'idb_invitations';
-        $exists = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$table_name} WHERE id = %s",
-            $invitation_id
-        ));
-        if (!$exists) {
-            return new WP_REST_Response(array('error' => 'Invalid invitationId'), 403);
-        }
-
         // Check $_FILES
         $files = $request->get_file_params();
         if (empty($files['file'])) {
