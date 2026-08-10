@@ -1230,12 +1230,14 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                 <button
                   type="button"
                   onClick={() => {
+                    if (editGuestData.isSpecial) return;
                     const titles: InviteeTitle[] = ["M", "Mr.", "Ms.", "Mrs."];
                     const currentIndex = titles.indexOf(editGuestData.title);
                     const nextIndex = (currentIndex + 1) % titles.length;
                     setEditGuestData({ ...editGuestData, title: titles[nextIndex] });
                   }}
-                  className={`w-24 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
+                  disabled={editGuestData.isEntourage}
+                  className={`w-24 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${editGuestData.isEntourage ? "cursor-not-allowed opacity-50" : ""} ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
                   style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif" }}
                 >
                   {editGuestData.title}
@@ -1307,7 +1309,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                         }
                       }}
                       placeholder="Number of Guest under this name"
-                      className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
+                      disabled={!!editGuestData.isSpecial}
+                      className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${editGuestData.isSpecial ? "cursor-not-allowed opacity-50" : ""} ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
                       style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
                     />
                   </div>
@@ -1328,7 +1331,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                       setEditGuestData({ ...editGuestData, tableNumber: e.target.value });
                     }}
                     placeholder="Table name or number"
-                    className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
+                    disabled={!!editGuestData.isSpecial}
+                    className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${editGuestData.isSpecial ? "cursor-not-allowed opacity-50" : ""} ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
                     style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
                   />
                 </div>
