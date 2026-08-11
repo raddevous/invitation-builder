@@ -1002,7 +1002,7 @@ export default function HeroSection({
           >
             {hostLineImageDragging && renderArrowOverlay(mergedData.heroHostLineImageSize ?? 100)}
             <div
-              className="temp-mask-color w-56 h-32 max-w-[80vw]"
+              className="temp-mask-color w-56 h-32 md:w-72 md:h-40 lg:w-80 lg:h-44 max-w-[80vw]"
               style={{
                 backgroundColor: heroMergedData.heroOthersColor || data.heroIconTextColor || "white",
                 opacity: heroMergedData.heroHostLineImageOpacity ?? 1,
@@ -1677,7 +1677,7 @@ export default function HeroSection({
         {/* Ceremony Venue */}
         {data.venueName && (
           <div 
-            className={`flex flex-col items-center gap-1 mt-5 ${editMode ? "cursor-pointer select-none" : ""}`}
+            className={`flex flex-col items-center gap-1 mt-0 ${editMode ? "cursor-pointer select-none" : ""}`}
             onClick={editMode ? (e) => {
               if (venueDragRef.current?.triggered) { e.stopPropagation(); venueDragRef.current = null; return; }
               onUpdateHeroVenueStructure?.(data.heroVenueStructure === "icon" ? "default" : "icon");
@@ -1729,7 +1729,7 @@ export default function HeroSection({
         {/* Closing Sentiment */}
         {data.heroClosingSentiment && (
           <div
-            className={`relative -mt-[35px] ${editMode ? "cursor-pointer select-none" : ""}`}
+            className={`relative -mt-[50px] ${editMode ? "cursor-pointer select-none" : ""}`}
             onClick={editMode ? (e) => {
               if (fsentimentTextDragRef.current?.triggered) { e.stopPropagation(); fsentimentTextDragRef.current = null; return; }
               const currentOpacity = heroMergedData.heroClosingSentimentImageOpacity ?? 1;
@@ -1789,7 +1789,7 @@ export default function HeroSection({
           >
             {fsentimentImageDragging && renderArrowOverlay(mergedData.heroClosingSentimentImageSize ?? 100)}
             <div
-              className="temp-mask-color w-56 h-32 max-w-[80vw]"
+              className="temp-mask-color w-56 h-32 md:w-72 md:h-40 lg:w-80 lg:h-44 max-w-[80vw]"
               style={{
                 backgroundColor: heroMergedData.heroOthersColor || data.heroIconTextColor || "white",
                 opacity: heroMergedData.heroClosingSentimentImageOpacity ?? 1,
