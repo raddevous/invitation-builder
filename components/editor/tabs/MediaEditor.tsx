@@ -936,46 +936,87 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                     </button>
                   </div>
                   <div className="space-y-3">
-                    {(isMobileBackgroundMode ? pendingBgMobile : pendingBgDesktop).map((bgImage, index) => (
-                      <div key={index} className="relative">
-                        {bgImage && (
-                          <div className={`relative w-full h-32 rounded-lg overflow-hidden border mb-2 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
-                            <img src={bgImage} alt={`Background ${index + 1}`} className="w-full h-full object-cover" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleImageDelete(bgImage);
-                                const current = isMobileBackgroundMode ? [...pendingBgMobile] : [...pendingBgDesktop];
-                                current.splice(index, 1);
-                                if (isMobileBackgroundMode) {
-                                  setPendingBgMobile(current);
-                                } else {
-                                  setPendingBgDesktop(current);
-                                }
-                              }}
-                              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center hover:bg-white transition-colors"
-                              style={{ border: "1px solid #6998EE" }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                              </svg>
-                            </button>
+                    {isMobileBackgroundMode ? (
+                      /* Mobile: portrait images in a horizontal row, centered, swipeable, no scrollbar */
+                      <div className="bg-mobile-scroll flex gap-3 overflow-x-auto pb-2 justify-center select-none" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x', WebkitUserSelect: 'none', userSelect: 'none', WebkitOverflowScrolling: 'touch' }}>
+                        <style>{`.bg-mobile-scroll::-webkit-scrollbar { display: none; }`}</style>
+                        {pendingBgMobile.map((bgImage, index) => (
+                          <div key={index} className="relative shrink-0">
+                            {bgImage && (
+                              <div className={`relative rounded-lg overflow-hidden border ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} style={{ width: "120px", height: "180px" }}>
+                                <img src={bgImage} alt={`Background ${index + 1}`} className="w-full h-full object-cover select-none" draggable={false} />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleImageDelete(bgImage);
+                                    const current = [...pendingBgMobile];
+                                    current.splice(index, 1);
+                                    setPendingBgMobile(current);
+                                  }}
+                                  className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center hover:bg-white transition-colors"
+                                  style={{ border: `1px solid ${accentColor}` }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
                           </div>
+                        ))}
+                        {pendingBgMobile.filter(Boolean).length < 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowBgImagePicker(true)}
+                            className={`shrink-0 border-2 border-dashed rounded-lg flex items-center justify-center text-sm transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
+                            style={{ width: "120px", height: "180px" }}
+                          >
+                            + Add
+                          </button>
                         )}
                       </div>
-                    ))}
-                    {(isMobileBackgroundMode ? pendingBgMobile : pendingBgDesktop).filter(Boolean).length < 3 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowBgImagePicker(true)}
-                        className={`w-full px-3 py-2 border-2 border-dashed rounded-lg text-sm hover:border-gray-400 hover:text-gray-600 transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
-                      >
-                        + Add background image
-                      </button>
+                    ) : (
+                      /* Desktop: landscape images stacked vertically (unchanged) */
+                      <>
+                        {pendingBgDesktop.map((bgImage, index) => (
+                          <div key={index} className="relative">
+                            {bgImage && (
+                              <div className={`relative w-full h-32 rounded-lg overflow-hidden border mb-2 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+                                <img src={bgImage} alt={`Background ${index + 1}`} className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleImageDelete(bgImage);
+                                    const current = [...pendingBgDesktop];
+                                    current.splice(index, 1);
+                                    setPendingBgDesktop(current);
+                                  }}
+                                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center hover:bg-white transition-colors"
+                                  style={{ border: "1px solid #6998EE" }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {pendingBgDesktop.filter(Boolean).length < 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowBgImagePicker(true)}
+                            className={`w-full px-3 py-2 border-2 border-dashed rounded-lg text-sm hover:border-gray-400 hover:text-gray-600 transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
+                          >
+                            + Add background image
+                          </button>
+                        )}
+                      </>
                     )}
                     <p className="text-xs text-gray-400 text-center mt-2">
-                      {isMobileBackgroundMode ? "Use portrait images" : "Use landscape images"}
+                      {isMobileBackgroundMode ? "Use portrait images — swipe to scroll" : "Use landscape images"}
                     </p>
                   </div>
                 </div>
