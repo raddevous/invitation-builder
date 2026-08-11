@@ -841,7 +841,18 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                     style={isDarkMode ? { backgroundColor: "#151B24", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#EDEEF1", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}
                                     title={(item as any).isSpecial ? "Special guest (Couple/Parents) - Click to edit" : "Auto-added from Entourage List - Click to edit"}
                                   >
-                                    <span>{name}</span>
+                                    <span className="flex items-center gap-1 truncate">
+                                      <span className="truncate">{name}</span>
+                                      {(() => {
+                                        const tableNum = pendingEntourageGuestDetails[guestName]?.tableNumber;
+                                        if (!tableNum || !tableNum.trim()) return null;
+                                        return (
+                                          <span className="text-xs opacity-60 shrink-0 truncate">
+                                            —Table {tableNum.trim()}
+                                          </span>
+                                        );
+                                      })()}
+                                    </span>
                                     {(() => {
                                       const rsvp = getGuestRsvp(name);
                                       if (!rsvp) return null;
@@ -907,7 +918,18 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                                   className={`flex-1 px-3 py-2 border rounded-lg text-sm transition-colors flex items-center justify-between cursor-pointer ${isDarkMode ? "border-gray-700 text-gray-200 hover:border-gray-500" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
                                   style={isDarkMode ? { backgroundColor: "#1C2531", fontFamily: "Inter, sans-serif" } : { backgroundColor: "#F3F4F6", fontFamily: "Inter, sans-serif" }}
                                 >
-                                  <span>{name}</span>
+                                  <span className="flex items-center gap-1 truncate">
+                                    <span className="truncate">{name}</span>
+                                    {(() => {
+                                      const tableNum = pendingGuestDetails[originalIndex]?.tableNumber;
+                                      if (!tableNum || !tableNum.trim()) return null;
+                                      return (
+                                        <span className="text-xs opacity-60 shrink-0 truncate">
+                                          —Table {tableNum.trim()}
+                                        </span>
+                                      );
+                                    })()}
+                                  </span>
                                   {(() => {
                                     const rsvp = getGuestRsvp(name);
                                     if (!rsvp) return null;
