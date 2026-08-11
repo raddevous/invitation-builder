@@ -66,6 +66,11 @@ export function useMediaCache(
       return;
     }
 
+    // Immediately set resolvedData to the new data so non-media changes
+    // (budget, checklist, etc.) are reflected instantly in ToolsTab.
+    // Media URLs will be resolved async after this.
+    setResolvedData(data);
+
     let cancelled = false;
 
     const resolve = async () => {
