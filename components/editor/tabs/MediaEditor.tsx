@@ -938,44 +938,68 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                   <div className="space-y-3">
                     {isMobileBackgroundMode ? (
                       /* Mobile: portrait images in a horizontal row, centered, swipeable, no scrollbar */
-                      <div className="bg-mobile-scroll flex gap-3 overflow-x-auto pb-2 justify-center select-none" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x', WebkitUserSelect: 'none', userSelect: 'none', WebkitOverflowScrolling: 'touch' }}>
-                        <style>{`.bg-mobile-scroll::-webkit-scrollbar { display: none; }`}</style>
-                        {pendingBgMobile.map((bgImage, index) => (
-                          <div key={index} className="relative shrink-0">
-                            {bgImage && (
-                              <div className={`relative rounded-lg overflow-hidden border ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} style={{ width: "120px", height: "180px" }}>
-                                <img src={bgImage} alt={`Background ${index + 1}`} className="w-full h-full object-cover select-none" draggable={false} />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleImageDelete(bgImage);
-                                    const current = [...pendingBgMobile];
-                                    current.splice(index, 1);
-                                    setPendingBgMobile(current);
-                                  }}
-                                  className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center hover:bg-white transition-colors"
-                                  style={{ border: `1px solid ${accentColor}` }}
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                  </svg>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {pendingBgMobile.filter(Boolean).length < 3 && (
+                      pendingBgMobile.filter(Boolean).length === 0 ? (
+                        /* No images: just the + Add button, perfectly centered */
+                        <div className="flex justify-center pb-2">
                           <button
                             type="button"
                             onClick={() => setShowBgImagePicker(true)}
-                            className={`shrink-0 border-2 border-dashed rounded-lg flex items-center justify-center text-sm transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
+                            className={`border-2 border-dashed rounded-lg flex items-center justify-center text-sm transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
                             style={{ width: "120px", height: "180px" }}
                           >
                             + Add
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        /* Has images: horizontal scrollable row */
+                        <div className="bg-mobile-scroll flex gap-3 overflow-x-auto pb-2 justify-center select-none" style={{ touchAction: 'pan-x', WebkitUserSelect: 'none', userSelect: 'none', WebkitOverflowScrolling: 'touch' }}>
+                          <style>{`
+                            .bg-mobile-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+                            .bg-mobile-scroll::-webkit-scrollbar { display: none; }
+                            @media (hover: hover) and (pointer: fine) {
+                              .bg-mobile-scroll { scrollbar-width: thin; scrollbar-color: ${accentColor} transparent; }
+                              .bg-mobile-scroll::-webkit-scrollbar { display: block; height: 4px; }
+                              .bg-mobile-scroll::-webkit-scrollbar-track { background: transparent; }
+                              .bg-mobile-scroll::-webkit-scrollbar-thumb { background: ${accentColor}; border-radius: 2px; }
+                            }
+                          `}</style>
+                          {pendingBgMobile.map((bgImage, index) => (
+                            <div key={index} className="relative shrink-0">
+                              {bgImage && (
+                                <div className={`relative rounded-lg overflow-hidden border ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} style={{ width: "120px", height: "180px" }}>
+                                  <img src={bgImage} alt={`Background ${index + 1}`} className="w-full h-full object-cover select-none" draggable={false} />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleImageDelete(bgImage);
+                                      const current = [...pendingBgMobile];
+                                      current.splice(index, 1);
+                                      setPendingBgMobile(current);
+                                    }}
+                                    className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center hover:bg-white transition-colors"
+                                    style={{ border: `1px solid ${accentColor}` }}
+                                  >
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
+                                      <line x1="18" y1="6" x2="6" y2="18" />
+                                      <line x1="6" y1="6" x2="18" y2="18" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {pendingBgMobile.filter(Boolean).length < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowBgImagePicker(true)}
+                              className={`shrink-0 border-2 border-dashed rounded-lg flex items-center justify-center text-sm transition-colors ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-300 text-gray-500"}`}
+                              style={{ width: "120px", height: "180px" }}
+                            >
+                              + Add
+                            </button>
+                          )}
+                        </div>
+                      )
                     ) : (
                       /* Desktop: landscape images stacked vertically (unchanged) */
                       <>
