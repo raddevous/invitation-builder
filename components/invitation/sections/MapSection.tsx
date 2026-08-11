@@ -28,6 +28,20 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
   const [showTypographyPanel, setShowTypographyPanel] = useState(false);
   const [isTypographyClosing, setIsTypographyClosing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Track online/offline status
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
   const [pendingChanges, setPendingChanges] = useState<Partial<InvitationData>>({});
   const [showDividerSettingsPanel, setShowDividerSettingsPanel] = useState(false);
   const [isDividerSettingsClosing, setIsDividerSettingsClosing] = useState(false);
@@ -507,7 +521,8 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
         </div>
       )}
 
-      {/* Ceremony/Event Map */}
+      {/* Ceremony/Event Map — hidden when offline */}
+      {isOnline && (
       <div
         className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative"
         style={{ height: "300px" }}
@@ -522,6 +537,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
           src={`https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`}
         />
       </div>
+      )}
 
       <a
         href={mapsUrl}
@@ -633,7 +649,8 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
             </div>
           )}
 
-          {/* Reception Map */}
+          {/* Reception Map — hidden when offline */}
+          {isOnline && (
           <div
             className="w-full max-w-2xl mx-auto rounded-2xl overflow-hidden mb-6 relative"
             style={{ height: "300px" }}
@@ -648,6 +665,7 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
               src={`https://www.google.com/maps?q=${encodeURIComponent(receptionMapQuery)}&output=embed`}
             />
           </div>
+          )}
 
           <a
             href={receptionMapsUrl}

@@ -92,6 +92,49 @@ export default function InvitationTemplate({
 }: InvitationTemplateProps) {
   const [opened, setOpened] = useState(previewMode);
   const [musicAutoPlay, setMusicAutoPlay] = useState(previewMode && !editMode);
+
+  // Hash-to-section deep linking: skip welcome screen and scroll to section
+  const hashToSectionId: Record<string, string> = {
+    "rsvp": "rsvp-cssid",
+    "map": "map-cssid",
+    "countdown": "countdown-cssid",
+    "gallery": "gallery-cssid",
+    "event-details": "event-details-cssid",
+    "timeline": "timeline-cssid",
+    "dresscode": "dresscode-cssid",
+    "giftguide": "gift-guide-cssid",
+    "gift-guide": "gift-guide-cssid",
+    "wedding-directory": "wedding-directory-cssid",
+    "entourage": "entourage-cssid",
+    "footer": "footer-cssid",
+  };
+
+  const [pendingHashSection, setPendingHashSection] = useState<string | null>(null);
+
+  // On mount, check URL hash for deep linking (skip welcome screen)
+  useEffect(() => {
+    if (typeof window === "undefined" || editMode || previewMode) return;
+    const hash = window.location.hash.replace(/^#/, "").toLowerCase();
+    if (hash && hashToSectionId[hash]) {
+      setPendingHashSection(hashToSectionId[hash]);
+      setOpened(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll to the pending hash section once opened and rendered
+  useEffect(() => {
+    if (!opened || !pendingHashSection) return;
+    const scrollToElement = () => {
+      const element = document.getElementById(pendingHashSection);
+      if (element) {
+        element.scrollIntoView({ behavior: "auto", block: "start" });
+        setPendingHashSection(null);
+      }
+    };
+    // Small delay to ensure DOM is fully rendered after opened transition
+    const timer = setTimeout(scrollToElement, 100);
+    return () => clearTimeout(timer);
+  }, [opened, pendingHashSection]);
   const normalizeData = (data: InvitationData | undefined | null): InvitationData => {
     if (!data || typeof data !== "object") return {} as InvitationData;
     const { sections, ...rest } = data;

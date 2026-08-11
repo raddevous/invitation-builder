@@ -582,6 +582,7 @@ export interface InvitationData {
   rsvpGuestNameStyle?: number; // 0: underline+honorific, 1: underline+no-honorific, 2: no-underline+honorific, 3: no-underline+no-honorific
   rsvpReservedText?: string;
   rsvpAttendingThankYouText?: string; // Custom thank you text for attending guests
+  rsvpAttendingTableText?: string; // Custom table assignment text for attending guests (uses [Table X] placeholder)
   rsvpNotAttendingThankYouText?: string; // Custom thank you text for not attending guests
   rsvpNotAttendingWithMessageThankYouText?: string; // Custom thank you text for not attending guests with message
   rsvpTitleSpecificMessages?: Record<string, string>; // Custom messages for each entourage title

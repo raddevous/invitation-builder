@@ -125,6 +125,15 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     "We are so happy you can make it! See you at the celebration."
   ];
 
+  const predefinedAttendingTableTexts = [
+    "We cannot wait to see you at [Table X].",
+    "We have placed you at [Table X].",
+    "We have saved your seats at [Tables X].",
+    "Your attendance is confirmed. You have been assigned to [Table X].",
+    "Your attendance is confirmed. Your party is assigned to [Tables X].",
+    "Your Seating: [Table X]"
+  ];
+
   const predefinedNotAttendingThankYouTexts = [
     "Thank you for letting us know.",
     "Thank you for your response. You will be deeply missed.",
@@ -447,6 +456,61 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
     return formatSentencesAsLines(reservedText
       .replace(/{guestnumber}/g, `<strong style="border-bottom: 1px solid currentColor; display: inline-block;">${guestNumber}</strong>`)
       .replace(/{s}/g, plural));
+  };
+
+  // Get table number for a guest from guest details
+  const getTableNumberForGuest = (guestName: string): string | null => {
+    const cleanGuestName = guestName.replace(/^(Mr\.|Ms\.|Mrs\.|M\.)\s+/i, "").trim().toLowerCase();
+    const normalGuests = data.rsvpInvitees || [];
+    const guestDetails = data.rsvpGuestDetails || {};
+    const entourageGuestDetails = data.rsvpEntourageGuestDetails || {};
+    const entourageGuestNames = getEntourageGuestNames(data.entourage);
+
+    // Check normal guests
+    for (let i = 0; i < normalGuests.length; i++) {
+      const guestItem = normalGuests[i];
+      const guest = typeof guestItem === 'string' ? { name: guestItem, title: "M" as const } : guestItem;
+      const cleanName = guest.name.replace(/^(Mr\.|Ms\.|Mrs\.|M\.)\s+/i, "").trim().toLowerCase();
+      if (cleanName === cleanGuestName) {
+        const details = guestDetails[i];
+        if (details && details.tableNumber && details.tableNumber.trim()) {
+          return details.tableNumber.trim();
+        }
+        break;
+      }
+    }
+
+    // Check entourage guests
+    for (const entourageGuest of entourageGuestNames) {
+      const cleanEntourageName = entourageGuest.name.replace(/^(Mr\.|Ms\.|Mrs\.|M\.)\s+/i, "").trim().toLowerCase();
+      if (cleanEntourageName === cleanGuestName) {
+        let details = entourageGuestDetails[entourageGuest.name];
+        if (!details) {
+          const honorifics = ['Mr.', 'Ms.', 'Mrs.', 'M'];
+          for (const honorific of honorifics) {
+            const fullName = `${honorific} ${entourageGuest.name}`;
+            details = entourageGuestDetails[fullName];
+            if (details) break;
+          }
+        }
+        if (details && details.tableNumber && details.tableNumber.trim()) {
+          return details.tableNumber.trim();
+        }
+        break;
+      }
+    }
+
+    return null;
+  };
+
+  // Get the table assignment text for a guest (replaces [Table X] placeholder)
+  const getTableTextForGuest = (guestName: string): string | null => {
+    const tableNumber = getTableNumberForGuest(guestName);
+    if (!tableNumber) return null;
+
+    const boldTable = `<strong style="font-weight: 700;">${tableNumber}</strong>`;
+    const template = data.rsvpAttendingTableText || predefinedAttendingTableTexts[0];
+    return template.replace(/\[Table X\]/g, boldTable).replace(/\[Tables X\]/g, boldTable);
   };
 
   const handleLightboxSubmit = async () => {
@@ -1877,8 +1941,8 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
               {tempTextColor && (
                 <style>{`#rsvp-paper-container, #rsvp-paper-container * { color: ${tempTextColor} !important; }`}</style>
               )}
-              {/* Print button - upper right of paper container; hidden when pre-print settings are open */}
-              {!showPrintSettings && !isPrintSettingsClosing && (
+              {/* Print button - upper right of paper container; hidden when pre-print settings are open; build mode only */}
+              {editMode && !showPrintSettings && !isPrintSettingsClosing && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2104,6 +2168,28 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                           : (data.rsvpNotAttendingThankYouText || "Thank you for letting us know.");
                       })()}
                     </p>
+                    {/* Table assignment text — only for attending guests with a table number */}
+                    {(() => {
+                      const att = submitSuccess ? selectedAttendance : existingResponse?.attendance;
+                      if (att === 'attending' || att === 'celebrate') {
+                        const tableText = getTableTextForGuest(selectedGuest?.name || '');
+                        if (tableText) {
+                          return (
+                            <p
+                              className="text-center mt-3"
+                              style={{
+                                color: data.rsvpPaperTextColor || data.mainColor2,
+                                fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                                fontSize: 'clamp(0.75rem, 2.5vh, 0.875rem)',
+                                opacity: 0.85
+                              }}
+                              dangerouslySetInnerHTML={{ __html: tableText }}
+                            />
+                          );
+                        }
+                      }
+                      return null;
+                    })()}
                     {/* Response summary */}
                   </div>
                 ) : (
@@ -3001,6 +3087,57 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                                   >
                                     {data.rsvpAttendingThankYouText || "Thank you for attending!"}
                                   </p>
+                                  <div
+                                    className="flex items-center justify-center shrink-0"
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      minWidth: '24px',
+                                      minHeight: '24px',
+                                      borderRadius: '50%',
+                                      backgroundColor: accentColor,
+                                      opacity: 0.7
+                                    }}
+                                  >
+                                    <svg
+                                      className="w-3 h-3"
+                                      style={{ color: '#ffffff' }}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                      />
+                                    </svg>
+                                  </div>
+                                </button>
+                                {/* Table assignment text picker (below attending thank you) */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentIndex = predefinedAttendingTableTexts.indexOf(data.rsvpAttendingTableText || predefinedAttendingTableTexts[0]);
+                                    const nextIndex = (currentIndex + 1) % predefinedAttendingTableTexts.length;
+                                    onChange("rsvpAttendingTableText", predefinedAttendingTableTexts[nextIndex]);
+                                  }}
+                                  className="flex items-center gap-1 group mt-2"
+                                >
+                                  <p
+                                    className="text-center text-sm"
+                                    style={{
+                                      color: data.rsvpPaperTextColor || data.mainColor2,
+                                      fontFamily: `${data.rsvpPaperBodyFont || data.bodyFont}, serif`,
+                                      opacity: 0.8
+                                    }}
+                                    dangerouslySetInnerHTML={{
+                                      __html: (data.rsvpAttendingTableText || predefinedAttendingTableTexts[0])
+                                        .replace(/\[Table X\]/g, '<strong style="font-weight: 700;">Table 1</strong>')
+                                        .replace(/\[Tables X\]/g, '<strong style="font-weight: 700;">Tables 1</strong>')
+                                    }}
+                                  />
                                   <div
                                     className="flex items-center justify-center shrink-0"
                                     style={{
