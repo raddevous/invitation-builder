@@ -63,8 +63,8 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   // Notification preferences (device-local)
   const [notifEnabled, setNotifEnabled] = useState(true);
-  const [notifRsvpSubmitted, setNotifRsvpSubmitted] = useState(true);
-  const [notifRsvpCancelled, setNotifRsvpCancelled] = useState(true);
+  const [notifRsvpAttending, setNotifRsvpAttending] = useState(true);
+  const [notifRsvpNotAttending, setNotifRsvpNotAttending] = useState(true);
   const [notifLoading, setNotifLoading] = useState(false);
 
   // Load notification preferences on mount
@@ -75,22 +75,22 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
         try {
           const prefs = JSON.parse(stored);
           setNotifEnabled(prefs.enabled !== false);
-          setNotifRsvpSubmitted(prefs.rsvpSubmitted !== false);
-          setNotifRsvpCancelled(prefs.rsvpCancelled !== false);
+          setNotifRsvpAttending(prefs.rsvpAttending !== false);
+          setNotifRsvpNotAttending(prefs.rsvpNotAttending !== false);
         } catch {}
       }
     })();
   }, []);
 
   // Save notification preferences
-  const saveNotifPrefs = async (enabled: boolean, rsvpSubmitted: boolean, rsvpCancelled: boolean) => {
+  const saveNotifPrefs = async (enabled: boolean, rsvpAttending: boolean, rsvpNotAttending: boolean) => {
     setNotifEnabled(enabled);
-    setNotifRsvpSubmitted(rsvpSubmitted);
-    setNotifRsvpCancelled(rsvpCancelled);
+    setNotifRsvpAttending(rsvpAttending);
+    setNotifRsvpNotAttending(rsvpNotAttending);
     await setStoredItem('notifPrefs', JSON.stringify({
       enabled,
-      rsvpSubmitted,
-      rsvpCancelled,
+      rsvpAttending,
+      rsvpNotAttending,
     }));
   };
 
@@ -103,7 +103,11 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       } else {
         await unregisterPushNotifications();
       }
-      await saveNotifPrefs(newEnabled, notifRsvpSubmitted, notifRsvpCancelled);
+      await saveNotifPrefs(newEnabled, notifRsvpAttending, notifRsvpNotAttending);
+      // Auto-collapse section when turned off
+      if (!newEnabled) {
+        setExpandedSection(null);
+      }
     } catch {
       // best-effort
     } finally {
@@ -607,40 +611,40 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <span className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-                        RSVP Submitted
+                        RSVP Attending
                       </span>
                       <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
-                        When a guest submits their RSVP
+                        When a guest is attending
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => saveNotifPrefs(notifEnabled, !notifRsvpSubmitted, notifRsvpCancelled)}
+                      onClick={() => saveNotifPrefs(notifEnabled, !notifRsvpAttending, notifRsvpNotAttending)}
                       className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                      style={{ backgroundColor: notifRsvpSubmitted ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
+                      style={{ backgroundColor: notifRsvpAttending ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
                     >
                       <span
-                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${notifRsvpSubmitted ? "translate-x-5" : "translate-x-1"}`}
+                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${notifRsvpAttending ? "translate-x-5" : "translate-x-1"}`}
                       />
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <span className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-                        RSVP Cancelled
+                        RSVP Not Attending
                       </span>
                       <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
-                        When a guest cancels their RSVP
+                        When a guest is not attending
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => saveNotifPrefs(notifEnabled, notifRsvpSubmitted, !notifRsvpCancelled)}
+                      onClick={() => saveNotifPrefs(notifEnabled, notifRsvpAttending, !notifRsvpNotAttending)}
                       className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                      style={{ backgroundColor: notifRsvpCancelled ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
+                      style={{ backgroundColor: notifRsvpNotAttending ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
                     >
                       <span
-                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${notifRsvpCancelled ? "translate-x-5" : "translate-x-1"}`}
+                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${notifRsvpNotAttending ? "translate-x-5" : "translate-x-1"}`}
                       />
                     </button>
                   </div>

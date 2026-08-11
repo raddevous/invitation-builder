@@ -11,8 +11,8 @@ const NOTIFICATION_CHANNEL_ID = "rsvp-notifications";
 
 export interface NotifPrefs {
   enabled: boolean;
-  rsvpSubmitted: boolean;
-  rsvpCancelled: boolean;
+  rsvpAttending: boolean;
+  rsvpNotAttending: boolean;
 }
 
 export async function getNotifPrefs(): Promise<NotifPrefs> {
@@ -22,12 +22,12 @@ export async function getNotifPrefs(): Promise<NotifPrefs> {
       const prefs = JSON.parse(stored);
       return {
         enabled: prefs.enabled !== false,
-        rsvpSubmitted: prefs.rsvpSubmitted !== false,
-        rsvpCancelled: prefs.rsvpCancelled !== false,
+        rsvpAttending: prefs.rsvpAttending !== false,
+        rsvpNotAttending: prefs.rsvpNotAttending !== false,
       };
     }
   } catch {}
-  return { enabled: true, rsvpSubmitted: true, rsvpCancelled: true };
+  return { enabled: true, rsvpAttending: true, rsvpNotAttending: true };
 }
 
 async function ensureNotificationChannel(): Promise<void> {
@@ -54,8 +54,9 @@ function registerForegroundListener(): void {
       // Check sub-toggles based on notification data
       const data = notification.data || {};
       const type = data.type || data.event || "";
-      if (type === "rsvp_cancelled" && !prefs.rsvpCancelled) return;
-      if (type === "rsvp_submitted" && !prefs.rsvpSubmitted) return;
+      const attendance = data.attendance || "";
+      if (attendance === "attending" && !prefs.rsvpAttending) return;
+      if (attendance === "not-attending" && !prefs.rsvpNotAttending) return;
 
       await LocalNotifications.schedule({
         notifications: [
