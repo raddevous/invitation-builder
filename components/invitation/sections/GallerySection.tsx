@@ -508,6 +508,8 @@ export default function GallerySection({ data, onChange, panelPosition = "left",
           onColorBlendChange={(value) => onChange?.("galleryDividerColorBlend", value)}
         />
       )}
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="gallery-anchor" style={{ scrollMarginTop: '20px' }} />
       {headingDrag.renderArrowStyles()}
       {headingDrag.renderDragToast()}
       <h2

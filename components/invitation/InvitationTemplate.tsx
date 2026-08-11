@@ -95,18 +95,18 @@ export default function InvitationTemplate({
 
   // Hash-to-section deep linking: skip welcome screen and scroll to section
   const hashToSectionId: Record<string, string> = {
-    "rsvp": "rsvp-cssid",
-    "map": "map-cssid",
-    "countdown": "countdown-cssid",
-    "gallery": "gallery-cssid",
-    "event-details": "event-details-cssid",
-    "timeline": "timeline-cssid",
-    "dresscode": "dresscode-cssid",
-    "giftguide": "gift-guide-cssid",
-    "gift-guide": "gift-guide-cssid",
-    "wedding-directory": "wedding-directory-cssid",
-    "entourage": "entourage-cssid",
-    "footer": "footer-cssid",
+    "rsvp": "rsvp-anchor",
+    "map": "map-anchor",
+    "countdown": "countdown-anchor",
+    "gallery": "gallery-anchor",
+    "event-details": "event-details-anchor",
+    "timeline": "timeline-anchor",
+    "dresscode": "dresscode-anchor",
+    "giftguide": "gift-guide-anchor",
+    "gift-guide": "gift-guide-anchor",
+    "wedding-directory": "wedding-directory-anchor",
+    "entourage": "entourage-anchor",
+    "footer": "footer-anchor",
   };
 
   const [pendingHashSection, setPendingHashSection] = useState<string | null>(null);

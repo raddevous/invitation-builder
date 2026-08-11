@@ -401,6 +401,8 @@ export default function DetailsSection({ data, onChange, panelPosition = "left",
           onColorBlendChange={(value) => onChange?.("eventDetailsDividerColorBlend", value)}
         />
       )}
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="event-details-anchor" style={{ scrollMarginTop: '20px' }} />
       {headingDrag.renderArrowStyles()}
       {headingDrag.renderDragToast()}
       <h2

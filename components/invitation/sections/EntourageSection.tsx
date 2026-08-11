@@ -1768,6 +1768,8 @@ const EntourageSection: React.FC<EntourageSectionProps> = ({ data, editMode = fa
           onColorBlendChange={(value) => onChange?.("entourageDividerColorBlend", value)}
         />
       )}
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="entourage-anchor" style={{ scrollMarginTop: '20px' }} />
       
       <div className="max-w-2xl mx-auto max-[682px]:max-w-none">
         {/* Top text - outside paper container */}

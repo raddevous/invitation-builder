@@ -381,6 +381,8 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
           if (element) element.scrollIntoView({ behavior: 'smooth' });
         } : undefined}
       />
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="map-anchor" style={{ scrollMarginTop: '20px' }} />
       {headingDrag.renderArrowStyles()}
       {headingDrag.renderDragToast()}
       <h2

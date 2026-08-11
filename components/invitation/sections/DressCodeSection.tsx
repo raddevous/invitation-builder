@@ -784,6 +784,8 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         onColorBlendChange={(value) => onChange?.("dresscodeDividerColorBlend", value)}
       />
     )}
+    {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+    <div id="dresscode-anchor" style={{ scrollMarginTop: '20px' }} />
       {headingDrag.renderArrowStyles()}
       {headingDrag.renderDragToast()}
       <h2

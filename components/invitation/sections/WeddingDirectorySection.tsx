@@ -3258,6 +3258,8 @@ export default function WeddingDirectorySection({ data, onChange, panelPosition 
         .wd-heading-arrow-up { animation: wd-heading-arrow-up-anim 1.2s ease-in-out infinite; }
         .wd-heading-arrow-down { animation: wd-heading-arrow-down-anim 1.2s ease-in-out infinite; }
       `}</style>
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="wedding-directory-anchor" style={{ scrollMarginTop: '20px' }} />
       <h2
         className="text-2xl font-bold uppercase mb-1 max-[400px]:mb-1 max-[768px]:mb-0.5 md:mb-2 max-[320px]:scale-[0.4] scale-[0.55] md:scale-100 max-[400px]:scale-100"
         style={{

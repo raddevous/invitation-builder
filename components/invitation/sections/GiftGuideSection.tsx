@@ -457,6 +457,8 @@ export default function GiftGuideSection({ data, onChange, panelPosition = "left
           onColorBlendChange={(value) => onChange?.("giftguideDividerColorBlend", value)}
         />
       )}
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="gift-guide-anchor" style={{ scrollMarginTop: '20px' }} />
       
       {headingDrag.renderArrowStyles()}
       {headingDrag.renderDragToast()}

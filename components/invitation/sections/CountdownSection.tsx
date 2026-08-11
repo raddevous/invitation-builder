@@ -859,6 +859,8 @@ export default function CountdownSection({ data, onChange, panelPosition = "left
           onColorBlendChange={(value) => onChange?.("countdownDividerColorBlend", value)}
         />
       )}
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="countdown-anchor" style={{ scrollMarginTop: '20px' }} />
       
       {/* Icon */}
       {mergedData.heroIconType === "image" && mergedData.heroIcon ? (

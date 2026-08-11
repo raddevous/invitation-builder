@@ -187,6 +187,8 @@ export default function FooterSection({ data, editMode = false, onChange, deskto
           onColorBlendChange={(value) => onChange?.("footerDividerColorBlend", value)}
         />
       )}
+      {/* Deep-link anchor — sits above the section content so scroll lands cleanly */}
+      <div id="footer-anchor" style={{ scrollMarginTop: '20px' }} />
       <div className="mt-8 md:mt-12">
         <h2
           className="text-3xl mb-1"

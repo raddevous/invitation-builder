@@ -1616,7 +1616,10 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
             onColorBlendChange={(value) => onChange?.("rsvpDividerColorBlend", value)}
           />
         )}
-      
+
+      {/* Deep-link anchor for #rsvp — sits above the top text so scroll lands cleanly */}
+      <div id="rsvp-anchor" style={{ scrollMarginTop: '20px' }} />
+
       {/* Section heading - clickable in edit mode */}
       <div className="max-w-2xl mx-auto max-[682px]:max-w-none">
         {getTopText() && (
