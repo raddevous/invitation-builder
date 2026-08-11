@@ -29,7 +29,7 @@ const getInvitationBySlug = unstable_cache(
     };
   },
   ["invitation"],
-  { revalidate: 60, tags: ["invitations"] }
+  { revalidate: process.env.NODE_ENV === "development" ? false : 60, tags: ["invitations"] }
 );
 
 export async function GET(
