@@ -71,7 +71,7 @@ const formatDisplay = (value: string): string => {
 };
 
 export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998EE", showNumbers = false, highlightItemId = null, initialExpandedContainerId = null, initialData, onChange, onClose }: BudgetEditorProps) {
-  // Expand/collapse is local UI state only â€” never persisted. Resets to
+  // Expand/collapse is local UI state only — never persisted. Resets to
   // all-collapsed every time the editor opens. Expanding a container also
   // reveals its rename/delete buttons (replaces the old edit mode).
   const [expandedContainerId, setExpandedContainerId] = useState<string | null>(initialExpandedContainerId);
@@ -294,7 +294,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
   };
 
   // Toggle container expansion (accordion behavior - only one expanded at a time).
-  // Uses local UI state only â€” never persisted.
+  // Uses local UI state only — never persisted.
   const toggleContainer = (containerId: string) => {
     setExpandedContainerId(prev => prev === containerId ? null : containerId);
   };
@@ -451,7 +451,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
         </div>
         {/* Summary stats */}
         <div className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-          â€¢ Cost: {getTotalBudget().toLocaleString()}   â€¢ Paid: {getTotalPaid().toLocaleString()} â€¢ Balance: {getTotalBalance().toLocaleString()}
+          • Cost: {getTotalBudget().toLocaleString()}   • Paid: {getTotalPaid().toLocaleString()} • Balance: {getTotalBalance().toLocaleString()}
         </div>
       </div>
 
@@ -590,7 +590,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                       {container.items.map((item) => (
                         <div key={item.id} className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span>â€¢ Cost: {formatDisplay(getDisplayCost(item))}      â€¢ Balance: {getItemBalance(item).toLocaleString()}</span>
+                            <span>• Cost: {formatDisplay(getDisplayCost(item))}      • Balance: {getItemBalance(item).toLocaleString()}</span>
                             <span style={{ color: getPercentageColor(getItemBalancePercentage(item)) }}>
                               {showNumbers
                                 ? `(${formatDisplay(item.paid || "0")}/${formatDisplay(getDisplayCost(item))})`
@@ -598,7 +598,7 @@ export default function BudgetEditor({ isDarkMode = false, accentColor = "#6998E
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span>â€¢ Paid: {formatDisplay(item.paid || "0")}      â€¢ Deadline: {item.due || "TBD"}</span>
+                            <span>• Paid: {formatDisplay(item.paid || "0")}      • Deadline: {item.due || "TBD"}</span>
                           </div>
                         </div>
                       ))}
