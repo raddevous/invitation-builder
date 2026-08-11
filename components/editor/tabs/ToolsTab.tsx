@@ -168,26 +168,47 @@ function QrCodesPage({
 
     if (Capacitor.isNativePlatform()) {
       setSaveStatus("Saving...");
+      const base64 = qrDataUrl.split(",")[1];
+      let saved = false;
+
+      // Approach 1: Try Media plugin to save to gallery
       try {
-        const base64 = qrDataUrl.split(",")[1];
-        // Write to cache first, then save to gallery via Media plugin
-        const result = await Filesystem.writeFile({
+        const cacheResult = await Filesystem.writeFile({
           path: fileName,
           data: base64,
           directory: Directory.Cache,
           recursive: true,
         });
         await Media.savePhoto({
-          path: result.uri,
+          path: cacheResult.uri,
           fileName,
         });
         setSaveStatus("Saved to gallery!");
+        saved = true;
       } catch (error) {
-        console.error("Error saving QR code:", error);
-        // Fallback to Share sheet if Media plugin fails
+        console.error("Media.savePhoto failed:", error);
+      }
+
+      // Approach 2: Try saving to Downloads/Documents folder
+      if (!saved) {
         try {
-          const base64 = qrDataUrl.split(",")[1];
-          const result = await Filesystem.writeFile({
+          await Filesystem.writeFile({
+            path: `Download/${fileName}`,
+            data: base64,
+            directory: Directory.ExternalStorage,
+            recursive: true,
+          });
+          setSaveStatus("Saved to Downloads!");
+          saved = true;
+        } catch (error) {
+          console.error("ExternalStorage save failed:", error);
+        }
+      }
+
+      // Approach 3: Fallback to Share sheet
+      if (!saved) {
+        try {
+          const cacheResult = await Filesystem.writeFile({
             path: fileName,
             data: base64,
             directory: Directory.Cache,
@@ -196,12 +217,12 @@ function QrCodesPage({
           await Share.share({
             title: "QR Code",
             text: "Save or share your QR code",
-            url: result.uri,
+            url: cacheResult.uri,
             dialogTitle: "Save QR Code",
           });
           setSaveStatus(null);
         } catch (fallbackError) {
-          console.error("Fallback save also failed:", fallbackError);
+          console.error("All save methods failed:", fallbackError);
           setSaveStatus("Failed to save");
         }
       }
@@ -324,11 +345,6 @@ function QrCodesPage({
                   {page === "invitation" ? buildInviteUrl(slug) : `${buildInviteUrl(slug)}/#rsvp`}
                 </p>
               </div>
-              {page === "find-seat" && (
-                <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
-                  High resolution (1024px) — suitable for print at 300 DPI
-                </p>
-              )}
               <button
                 onClick={handleSaveQr}
                 className="px-8 py-3 rounded-lg text-sm font-medium transition-colors"

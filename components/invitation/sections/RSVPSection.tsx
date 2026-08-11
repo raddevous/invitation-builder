@@ -1765,7 +1765,7 @@ export default function RSVPSection({ data, invitationId, editMode = false, onCh
                     className="text-lg"
                     style={{ color: data.mainColor2, fontFamily: `${data.headingFont}, serif` }}
                   >
-                    Find Your Name
+                    Find Your Name / Seat
                   </h3>
                 </div>
                 <p
