@@ -1312,6 +1312,19 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                         }),
                       });
                       if (res.ok) {
+                        const data = await res.json();
+                        // Add to local state so counts update in real-time
+                        const guestName = editGuestData.title === "M"
+                          ? editGuestData.name
+                          : `${editGuestData.title} ${editGuestData.name}`;
+                        setRsvpResponses(prev => [...prev, {
+                          id: data.id,
+                          guest_name: guestName,
+                          attendance: manualRsvpAttendance,
+                          guest_count: 1,
+                          message: manualRsvpMessage.trim() || null,
+                          submitted_at: new Date().toISOString(),
+                        }]);
                         setShowManualRsvp(false);
                         setManualRsvpAttendance(null);
                         setManualRsvpMessage("");
