@@ -26,6 +26,11 @@ import { LayoutDashboard } from "@/components/animate-ui/icons/layout-dashboard"
 import { ClipboardList } from "@/components/animate-ui/icons/clipboard-list";
 import { Settings } from "@/components/animate-ui/icons/settings";
 import { EarthIcon, type EarthIconHandle } from "@/components/lucid-animated/earth";
+import QRCode from "qrcode";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+import { Media } from "@capacitor-community/media";
 
 const hexToRgba = (hex: string, alpha: number): string => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -99,6 +104,257 @@ function ToolTile({ icon, label, onClick, isDarkMode = false, accentColor = "#69
   );
 }
 
+// QR Codes sub-page — list of QR code types + individual QR code pages
+function QrCodesPage({
+  isDarkMode,
+  accentColor,
+  slug,
+  isDemoMode,
+  page,
+  onPageChange,
+  onBack,
+}: {
+  isDarkMode: boolean;
+  accentColor: string;
+  slug: string;
+  isDemoMode: boolean;
+  page: "list" | "invitation" | "find-seat";
+  onPageChange: (page: "list" | "invitation" | "find-seat") => void;
+  onBack: () => void;
+}) {
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
+  const hexToRgba = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  const generateQr = useCallback(async (url: string) => {
+    setQrLoading(true);
+    setQrDataUrl(null);
+    try {
+      // Find Your Seat QR is printed at reception — generate at 1024px for 300 DPI print quality
+      // Invitation QR is screen-only — 256px is sufficient
+      const size = page === "find-seat" ? 1024 : 256;
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: size,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+      setQrDataUrl(dataUrl);
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+    } finally {
+      setQrLoading(false);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    if (page === "invitation" && slug) {
+      generateQr(buildInviteUrl(slug));
+    } else if (page === "find-seat" && slug) {
+      generateQr(`${buildInviteUrl(slug)}/#rsvp`);
+    }
+  }, [page, slug, generateQr]);
+
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  const handleSaveQr = async () => {
+    if (!qrDataUrl) return;
+    const fileName = page === "invitation" ? `qr-invitation-${slug}.png` : `qr-find-seat-${slug}.png`;
+
+    if (Capacitor.isNativePlatform()) {
+      setSaveStatus("Saving...");
+      try {
+        const base64 = qrDataUrl.split(",")[1];
+        // Write to cache first, then save to gallery via Media plugin
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+        await Media.savePhoto({
+          path: result.uri,
+          fileName,
+        });
+        setSaveStatus("Saved to gallery!");
+      } catch (error) {
+        console.error("Error saving QR code:", error);
+        // Fallback to Share sheet if Media plugin fails
+        try {
+          const base64 = qrDataUrl.split(",")[1];
+          const result = await Filesystem.writeFile({
+            path: fileName,
+            data: base64,
+            directory: Directory.Cache,
+            recursive: true,
+          });
+          await Share.share({
+            title: "QR Code",
+            text: "Save or share your QR code",
+            url: result.uri,
+            dialogTitle: "Save QR Code",
+          });
+          setSaveStatus(null);
+        } catch (fallbackError) {
+          console.error("Fallback save also failed:", fallbackError);
+          setSaveStatus("Failed to save");
+        }
+      }
+      setTimeout(() => setSaveStatus(null), 3000);
+    } else {
+      const link = document.createElement("a");
+      link.href = qrDataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const pageTitle = page === "invitation" ? "Invitation QR Code" : "Find Your Seat QR Code";
+  const pageDesc = page === "invitation"
+    ? "QR code linking to your invitation home page"
+    : "QR code linking directly to your RSVP section";
+
+  // List page
+  if (page === "list") {
+    const qrItems = [
+      { id: "invitation" as const, label: "Invitation QR Code", desc: "Links to your invitation home page", icon: "M3 9h18M3 15h18M9 3v18M15 3v18" },
+      { id: "find-seat" as const, label: "Find Your Seat QR Code", desc: "Links directly to the RSVP section", icon: "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" },
+    ];
+
+    return (
+      <div className={`w-full ${isDemoMode ? "h-full" : "h-dvh"} rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+        <div className={`flex items-center gap-3 p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+          <button
+            onClick={onBack}
+            className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div>
+            <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
+              QR Codes
+            </h2>
+            <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              Generate and download QR codes for your invitation
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ fontFamily: "Inter, sans-serif" }}>
+          {qrItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onPageChange(item.id)}
+              className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-left ${isDarkMode ? "bg-gray-700/50 hover:bg-gray-700" : "bg-gray-50 hover:bg-gray-100"}`}
+              style={{ border: `1px solid ${hexToRgba(accentColor, 0.3)}` }}
+            >
+              <div
+                className="w-12 h-12 shrink-0 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: hexToRgba(accentColor, 0.15) }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={item.icon} />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                  {item.label}
+                </h3>
+                <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  {item.desc}
+                </p>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={isDarkMode ? "text-gray-500" : "text-gray-400"}>
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Individual QR code page (invitation or find-seat)
+  return (
+    <div className={`w-full ${isDemoMode ? "h-full" : "h-dvh"} rounded-2xl flex flex-col overflow-hidden ${isDarkMode ? "bg-gray-800" : "bg-white"}`}>
+      <div className={`flex items-center gap-3 p-4 border-b shrink-0 ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+        <button
+          onClick={() => onPageChange("list")}
+          className={`p-2 rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-600"}`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div>
+          <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
+            {pageTitle}
+          </h2>
+          <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+            {pageDesc}
+          </p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6" style={{ fontFamily: "Inter, sans-serif" }}>
+        <div className="flex flex-col items-center gap-6">
+          {qrLoading ? (
+            <div className="flex justify-center items-center py-16">
+              <div className="w-8 h-8 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" style={{ borderTopColor: accentColor }} />
+            </div>
+          ) : qrDataUrl ? (
+            <>
+              <div className={`p-4 rounded-2xl ${isDarkMode ? "bg-white" : "bg-white"} shadow-lg`}>
+                <img
+                  src={qrDataUrl}
+                  alt={pageTitle}
+                  className="rounded-lg"
+                  style={{ width: page === "find-seat" ? "300px" : "224px", height: page === "find-seat" ? "300px" : "224px" }}
+                />
+              </div>
+              <div className={`text-center px-4 py-2 rounded-lg ${isDarkMode ? "bg-gray-700" : "bg-gray-100"}`}>
+                <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  {page === "invitation" ? buildInviteUrl(slug) : `${buildInviteUrl(slug)}/#rsvp`}
+                </p>
+              </div>
+              {page === "find-seat" && (
+                <p className={`text-xs text-center ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                  High resolution (1024px) — suitable for print at 300 DPI
+                </p>
+              )}
+              <button
+                onClick={handleSaveQr}
+                className="px-8 py-3 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: accentColor, color: "white" }}
+              >
+                {saveStatus ?? "Save QR Code"}
+              </button>
+              {saveStatus && saveStatus.includes("gallery") && (
+                <p className={`text-xs ${isDarkMode ? "text-green-400" : "text-green-600"}`}>
+                  Check your Photos/Gallery app
+                </p>
+              )}
+            </>
+          ) : (
+            <div className={`p-4 rounded-lg text-center ${isDarkMode ? "bg-gray-700" : "bg-gray-100"}`}>
+              <p className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
+                Unable to generate QR code
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ToolsNavTab = "dashboard" | "list" | "website" | "settings";
 
 // Maps each data field to the section it belongs to. Used to track which
@@ -138,6 +394,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [showWeddingProgramEditor, setShowWeddingProgramEditor] = useState(false);
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
   const [showEventDetails, setShowEventDetails] = useState(false);
+  const [showQrCodes, setShowQrCodes] = useState(false);
+  const [qrCodePage, setQrCodePage] = useState<"list" | "invitation" | "find-seat">("list");
   const [showAllReminders, setShowAllReminders] = useState(false);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -819,6 +1077,25 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const handleEventDetailsClick = () => {
     setShowEventDetails(true);
   };
+
+  const handleQrCodesClick = () => {
+    setShowQrCodes(true);
+    setQrCodePage("list");
+  };
+
+  if (showQrCodes) {
+    return (
+      <QrCodesPage
+        isDarkMode={isDarkMode}
+        accentColor={accentColor}
+        slug={slug}
+        isDemoMode={isDemoMode}
+        page={qrCodePage}
+        onPageChange={setQrCodePage}
+        onBack={() => { setShowQrCodes(false); setQrCodePage("list"); }}
+      />
+    );
+  }
 
   if (showEventDetails) {
     return (
@@ -1570,6 +1847,13 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
               icon="/assets/ico-event.png"
               label="Story Timeline"
               onClick={handleStoryTimelineClick}
+              isDarkMode={isDarkMode}
+              accentColor={accentColor}
+            />
+            <ToolTile
+              icon="/assets/ico-inf.png"
+              label="QR Codes"
+              onClick={handleQrCodesClick}
               isDarkMode={isDarkMode}
               accentColor={accentColor}
             />

@@ -1,11 +1,7 @@
 import type { InvitationData } from "@/lib/types/invitation";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import LoginDialog from "@/components/editor/LoginDialog";
-import QRCode from "qrcode";
 import { Capacitor } from "@capacitor/core";
-import { Filesystem, Directory } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
-import { buildInviteUrl } from "@/lib/utils";
 import { unregisterPushNotifications, registerPushNotifications } from "@/lib/utils/push";
 import { removeStoredItem, getStoredItem, setStoredItem } from "@/lib/utils/storage";
 import { apiUrl } from "@/lib/utils/api";
@@ -58,9 +54,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [qrLoading, setQrLoading] = useState(false);
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   // Notification preferences (device-local)
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [notifRsvpAttending, setNotifRsvpAttending] = useState(true);
@@ -112,62 +105,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
       // best-effort
     } finally {
       setNotifLoading(false);
-    }
-  };
-
-  const generateQrCode = useCallback(async () => {
-    if (!slug) return;
-    setQrLoading(true);
-    try {
-      const url = buildInviteUrl(slug);
-      const dataUrl = await QRCode.toDataURL(url, {
-        width: 256,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-      });
-      setQrDataUrl(dataUrl);
-    } catch (error) {
-      console.error("Error generating QR code:", error);
-    } finally {
-      setQrLoading(false);
-    }
-  }, [slug]);
-
-  useEffect(() => {
-    if (expandedSection === 'qr' && !qrDataUrl && !isDemoMode) {
-      generateQrCode();
-    }
-  }, [expandedSection, qrDataUrl, isDemoMode, generateQrCode]);
-
-  const handleSaveQrCode = async () => {
-    if (!qrDataUrl) return;
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const base64 = qrDataUrl.split(',')[1];
-        const fileName = `qr-${slug || 'invitation'}.png`;
-        const result = await Filesystem.writeFile({
-          path: fileName,
-          data: base64,
-          directory: Directory.Cache,
-          recursive: true,
-        });
-        await Share.share({
-          title: 'QR Code',
-          text: 'Save or share your invitation QR code',
-          url: result.uri,
-          dialogTitle: 'Save QR Code',
-        });
-      } catch (error) {
-        console.error('Error saving QR code:', error);
-      }
-    } else {
-      const link = document.createElement("a");
-      link.href = qrDataUrl;
-      link.download = `qr-${slug || "invitation"}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
     }
   };
 
@@ -460,84 +397,6 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             </button>
           </div>
         </div>
-
-        {/* QR Code - Collapsible */}
-        {!isDemoMode && (
-        <div
-          className={`border rounded-xl overflow-hidden transition-all duration-300`}
-          onMouseEnter={() => setHoveredSection('qr')}
-          onMouseLeave={() => setHoveredSection(null)}
-          style={{
-            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
-            borderColor: hoveredSection === 'qr' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
-            ...(expandedSection === 'qr' ? {
-              boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
-            } : {})
-          }}
-        >
-          {/* Header */}
-          <div
-            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
-            onClick={() => setExpandedSection(expandedSection === 'qr' ? null : 'qr')}
-          >
-            <div className="shrink-0 text-gray-400 order-2">
-              {expandedSection === 'qr' ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 15l-6-6-6 6" />
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              )}
-            </div>
-            <div className="flex-1 order-1">
-              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
-                Invitation QR Code
-              </h3>
-              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                Download a QR code for your invitation link
-              </p>
-            </div>
-          </div>
-
-          {/* Content */}
-          {expandedSection === 'qr' && (
-            <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
-              {qrLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="w-8 h-8 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" style={{ borderTopColor: accentColor }} />
-                </div>
-              ) : qrDataUrl ? (
-                <>
-                  <div className="flex justify-center">
-                    <img
-                      src={qrDataUrl}
-                      alt="Invitation QR Code"
-                      className="w-48 h-48 rounded-xl"
-                    />
-                  </div>
-                  <div className="flex justify-center">
-                    <button
-                      onClick={handleSaveQrCode}
-                      className="px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                      style={{ backgroundColor: accentColor, color: "white" }}
-                    >
-                      Save QR Code
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className={`p-4 rounded-lg text-center ${isDarkMode ? "bg-gray-600" : "bg-gray-100"}`}>
-                  <p className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>
-                    Unable to generate QR code
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        )}
 
         {/* Notifications */}
         {!isDemoMode && (
