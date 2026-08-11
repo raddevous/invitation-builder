@@ -30,14 +30,36 @@ export default function MapSection({ data, onChange, panelPosition = "left", des
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
-  // Track online/offline status
+  // Track real online/offline status — navigator.onLine is unreliable in Capacitor WebViews
   useEffect(() => {
-    setIsOnline(navigator.onLine);
-    const handleOnline = () => setIsOnline(true);
+    let cancelled = false;
+
+    const checkConnectivity = async () => {
+      try {
+        // Fetch a tiny resource with a short timeout to verify real internet
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        await fetch("https://maps.google.com/maps?q=test&output=embed", {
+          method: "HEAD",
+          mode: "no-cors",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!cancelled) setIsOnline(true);
+      } catch {
+        if (!cancelled) setIsOnline(false);
+      }
+    };
+
+    checkConnectivity();
+
+    const handleOnline = () => checkConnectivity();
     const handleOffline = () => setIsOnline(false);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => {
+      cancelled = true;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
