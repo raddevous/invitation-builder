@@ -2,11 +2,33 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications, Token, PushNotificationSchema } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { apiUrl } from "./api";
+import { getStoredItem } from "./storage";
 
 let currentToken: string | null = null;
 let foregroundListenerRegistered = false;
 
 const NOTIFICATION_CHANNEL_ID = "rsvp-notifications";
+
+export interface NotifPrefs {
+  enabled: boolean;
+  rsvpSubmitted: boolean;
+  rsvpCancelled: boolean;
+}
+
+export async function getNotifPrefs(): Promise<NotifPrefs> {
+  try {
+    const stored = await getStoredItem('notifPrefs');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      return {
+        enabled: prefs.enabled !== false,
+        rsvpSubmitted: prefs.rsvpSubmitted !== false,
+        rsvpCancelled: prefs.rsvpCancelled !== false,
+      };
+    }
+  } catch {}
+  return { enabled: true, rsvpSubmitted: true, rsvpCancelled: true };
+}
 
 async function ensureNotificationChannel(): Promise<void> {
   try {
@@ -27,6 +49,14 @@ function registerForegroundListener(): void {
 
   PushNotifications.addListener("pushNotificationReceived", async (notification: PushNotificationSchema) => {
     try {
+      const prefs = await getNotifPrefs();
+      if (!prefs.enabled) return;
+      // Check sub-toggles based on notification data
+      const data = notification.data || {};
+      const type = data.type || data.event || "";
+      if (type === "rsvp_cancelled" && !prefs.rsvpCancelled) return;
+      if (type === "rsvp_submitted" && !prefs.rsvpSubmitted) return;
+
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -47,6 +77,10 @@ function registerForegroundListener(): void {
 
 export async function registerPushNotifications(invitationId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
+
+  // Check if user has disabled notifications
+  const prefs = await getNotifPrefs();
+  if (!prefs.enabled) return;
 
   try {
     let permStatus = await PushNotifications.checkPermissions();

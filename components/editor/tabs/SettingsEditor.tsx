@@ -6,8 +6,8 @@ import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { buildInviteUrl } from "@/lib/utils";
-import { unregisterPushNotifications } from "@/lib/utils/push";
-import { removeStoredItem } from "@/lib/utils/storage";
+import { unregisterPushNotifications, registerPushNotifications } from "@/lib/utils/push";
+import { removeStoredItem, getStoredItem, setStoredItem } from "@/lib/utils/storage";
 import { apiUrl } from "@/lib/utils/api";
 
 // Helper to convert hex to rgba
@@ -61,6 +61,55 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Notification preferences (device-local)
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [notifRsvpSubmitted, setNotifRsvpSubmitted] = useState(true);
+  const [notifRsvpCancelled, setNotifRsvpCancelled] = useState(true);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  // Load notification preferences on mount
+  useEffect(() => {
+    (async () => {
+      const stored = await getStoredItem('notifPrefs');
+      if (stored) {
+        try {
+          const prefs = JSON.parse(stored);
+          setNotifEnabled(prefs.enabled !== false);
+          setNotifRsvpSubmitted(prefs.rsvpSubmitted !== false);
+          setNotifRsvpCancelled(prefs.rsvpCancelled !== false);
+        } catch {}
+      }
+    })();
+  }, []);
+
+  // Save notification preferences
+  const saveNotifPrefs = async (enabled: boolean, rsvpSubmitted: boolean, rsvpCancelled: boolean) => {
+    setNotifEnabled(enabled);
+    setNotifRsvpSubmitted(rsvpSubmitted);
+    setNotifRsvpCancelled(rsvpCancelled);
+    await setStoredItem('notifPrefs', JSON.stringify({
+      enabled,
+      rsvpSubmitted,
+      rsvpCancelled,
+    }));
+  };
+
+  const handleNotifToggle = async () => {
+    const newEnabled = !notifEnabled;
+    setNotifLoading(true);
+    try {
+      if (newEnabled && invitationId) {
+        await registerPushNotifications(invitationId);
+      } else {
+        await unregisterPushNotifications();
+      }
+      await saveNotifPrefs(newEnabled, notifRsvpSubmitted, notifRsvpCancelled);
+    } catch {
+      // best-effort
+    } finally {
+      setNotifLoading(false);
+    }
+  };
 
   const generateQrCode = useCallback(async () => {
     if (!slug) return;
@@ -480,6 +529,129 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                     Unable to generate QR code
                   </p>
                 </div>
+              )}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Notifications */}
+        {!isDemoMode && (
+        <div
+          className={`border rounded-xl overflow-hidden transition-all duration-300`}
+          onMouseEnter={() => setHoveredSection('notifications')}
+          onMouseLeave={() => setHoveredSection(null)}
+          style={{
+            backgroundColor: isDarkMode ? "#19212C" : "#ECEDF0",
+            borderColor: hoveredSection === 'notifications' ? hexToRgba(accentColor, 0.8) : hexToRgba(accentColor, 0.3),
+            ...(expandedSection === 'notifications' ? {
+              boxShadow: `0 0 0 1px ${hexToRgba(accentColor, 0.6)}, 0 4px 12px ${hexToRgba(accentColor, 0.25)}`
+            } : {})
+          }}
+        >
+          {/* Header */}
+          <div
+            className={`flex items-center gap-3 p-4 cursor-pointer rounded-lg transition-colors ${isDarkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100"}`}
+            onClick={() => setExpandedSection(expandedSection === 'notifications' ? null : 'notifications')}
+          >
+            <div className="shrink-0 text-gray-400 order-2">
+              {expandedSection === 'notifications' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 order-1">
+              <h3 className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                Notifications
+              </h3>
+              <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                Get alerted when guests respond
+              </p>
+            </div>
+          </div>
+
+          {/* Content */}
+          {expandedSection === 'notifications' && (
+            <div className={`p-4 space-y-4 ${isDarkMode ? "border-gray-700" : "border-gray-100"} border-t`}>
+              {/* Master toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <span className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>
+                    Push Notifications
+                  </span>
+                  <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                    {Capacitor.isNativePlatform() ? "Receive alerts on this device" : "Available on mobile app only"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={notifLoading || !Capacitor.isNativePlatform()}
+                  onClick={handleNotifToggle}
+                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: notifEnabled ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifEnabled ? "translate-x-6" : "translate-x-1"}`}
+                  />
+                </button>
+              </div>
+
+              {/* Sub-options (only when enabled) */}
+              {notifEnabled && Capacitor.isNativePlatform() && (
+                <div className={`space-y-3 pt-3 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <span className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                        RSVP Submitted
+                      </span>
+                      <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                        When a guest submits their RSVP
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => saveNotifPrefs(notifEnabled, !notifRsvpSubmitted, notifRsvpCancelled)}
+                      className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                      style={{ backgroundColor: notifRsvpSubmitted ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${notifRsvpSubmitted ? "translate-x-5" : "translate-x-1"}`}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <span className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                        RSVP Cancelled
+                      </span>
+                      <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                        When a guest cancels their RSVP
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => saveNotifPrefs(notifEnabled, notifRsvpSubmitted, !notifRsvpCancelled)}
+                      className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                      style={{ backgroundColor: notifRsvpCancelled ? accentColor : (isDarkMode ? "#374151" : "#d1d5db") }}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${notifRsvpCancelled ? "translate-x-5" : "translate-x-1"}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Web note */}
+              {!Capacitor.isNativePlatform() && (
+                <p className={`text-xs text-center pt-2 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+                  Install the mobile app to receive push notifications
+                </p>
               )}
             </div>
           )}
