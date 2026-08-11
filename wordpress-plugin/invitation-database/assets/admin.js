@@ -63,6 +63,7 @@
             { key: 'id',          label: 'ID',           type: 'text',     typeTag: 'text' },
             { key: 'slug',        label: 'Slug',         type: 'text',     typeTag: 'text' },
             { key: 'access_code', label: 'Access Code',  type: 'text',     typeTag: 'text' },
+            { key: 'account_type', label: 'Account Type', type: 'select', typeTag: 'enum', options: ['client', 'dev'], default: 'client' },
             { key: 'email',        label: 'Email',        type: 'text',     typeTag: 'text' },
             { key: 'phone_number', label: 'Phone Number', type: 'text',     typeTag: 'text' },
             { key: 'address',      label: 'Address',      type: 'text',     typeTag: 'text' },
@@ -622,6 +623,37 @@
             return;
         }
 
+        // Select dropdown for select-type fields (e.g. account_type)
+        if (field.type === 'select') {
+            $textarea = $('<select class="idb-edit-textarea idb-edit-select"></select>');
+            (field.options || []).forEach(function (opt) {
+                var $opt = $('<option></option>').val(opt).text(opt);
+                if (opt === currentVal) $opt.prop('selected', true);
+                $textarea.append($opt);
+            });
+            $body.append($textarea);
+            $dialog.append($body);
+
+            // Footer
+            var $footer = $('<div class="idb-modal-footer"></div>');
+            var $cancelBtn = $('<button type="button" class="idb-btn">Cancel</button>').on('click', function () {
+                $overlay.remove();
+            });
+            var $saveBtn = $('<button type="button" class="idb-btn idb-btn-primary">Save</button>').on('click', function () {
+                handleEditSave($overlay, row, field, $textarea);
+            });
+            $footer.append($cancelBtn, $saveBtn);
+            $dialog.append($footer);
+
+            $overlay.append($dialog);
+            $overlay.on('click', function (e) {
+                if (e.target === $overlay[0]) $overlay.remove();
+            });
+
+            $('body').append($overlay);
+            return;
+        }
+
         $textarea = $('<textarea class="idb-edit-textarea"></textarea>');
         if (isJson) {
             $textarea.addClass('idb-edit-textarea-json');
@@ -811,6 +843,12 @@
                 $input.append('<option value="attending">attending</option>');
                 $input.append('<option value="not-attending">not-attending</option>');
                 $input.append('<option value="maybe">maybe</option>');
+            } else if (f.type === 'select') {
+                // Generic select dropdown (e.g. account_type)
+                $input = $('<select class="idb-form-input"></select>');
+                (f.options || []).forEach(function (opt) {
+                    $input.append('<option value="' + opt + '">' + opt + '</option>');
+                });
             } else if (f.type === 'int') {
                 $input = $('<input type="number" class="idb-form-input" placeholder="0" />');
             } else if (f.type === 'datetime') {
@@ -875,6 +913,11 @@
 
             $fieldWrap.append($input);
             $form.append($fieldWrap);
+
+            // Set default for select fields
+            if (f.type === 'select' && f.default !== undefined) {
+                formData[f.key] = f.default;
+            }
         });
 
         $dialog.append($form);

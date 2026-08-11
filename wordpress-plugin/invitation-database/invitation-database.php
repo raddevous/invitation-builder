@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('IDB_VERSION', '1.3.0');
+define('IDB_VERSION', '1.4.0');
 define('IDB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('IDB_PLUGIN_URL', plugin_dir_url(__FILE__));
 

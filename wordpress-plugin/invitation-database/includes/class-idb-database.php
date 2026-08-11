@@ -24,6 +24,7 @@ class IDB_Database
                 'id'           => array('label' => 'ID',           'type' => 'text'),
                 'slug'         => array('label' => 'Slug',         'type' => 'text'),
                 'access_code'  => array('label' => 'Access Code',  'type' => 'text'),
+                'account_type' => array('label' => 'Account Type', 'type' => 'select', 'options' => array('client', 'dev'), 'default' => 'client'),
                 'email'        => array('label' => 'Email',        'type' => 'text'),
                 'phone_number' => array('label' => 'Phone Number', 'type' => 'text'),
                 'address'      => array('label' => 'Address',      'type' => 'text'),
@@ -72,6 +73,7 @@ class IDB_Database
             id VARCHAR(36) NOT NULL,
             slug VARCHAR(255) NOT NULL,
             access_code VARCHAR(255) NOT NULL,
+            account_type VARCHAR(20) NOT NULL DEFAULT 'client',
             email VARCHAR(255) DEFAULT NULL,
             phone_number VARCHAR(50) DEFAULT NULL,
             address TEXT DEFAULT NULL,
@@ -142,6 +144,7 @@ class IDB_Database
             'phone_number' => "ADD COLUMN phone_number VARCHAR(50) DEFAULT NULL",
             'address'      => "ADD COLUMN address TEXT DEFAULT NULL",
             'expires_at'   => "ADD COLUMN expires_at DATETIME DEFAULT NULL",
+            'account_type' => "ADD COLUMN account_type VARCHAR(20) NOT NULL DEFAULT 'client'",
         );
 
         foreach ($new_columns as $col => $definition) {

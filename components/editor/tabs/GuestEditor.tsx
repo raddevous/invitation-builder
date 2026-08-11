@@ -37,6 +37,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const [filterIncludeNormal, setFilterIncludeNormal] = useState(true);
   const [filterSortOption, setFilterSortOption] = useState<"date" | "name" | "ushers" | "usherettes" | "entourage-only" | "normal-only" | "all">("all");
   const [filterTableNumber, setFilterTableNumber] = useState<string | null>(null);
+  const [filterUnassigned, setFilterUnassigned] = useState(false);
   const [showTableSubmenu, setShowTableSubmenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -144,7 +145,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     Object.values(pendingEntourageGuestDetails).forEach(d => {
       if (d.tableNumber && d.tableNumber.trim()) tables.add(d.tableNumber.trim());
     });
-    return Array.from(tables).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return Array.from(tables).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
   }, [pendingGuestDetails, pendingEntourageGuestDetails]);
 
   // Refs to track latest pending state for unmount cleanup
@@ -443,14 +444,14 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       allItems.sort((a, b) => {
         const nameA = a.name.split('\n')[0].toLowerCase();
         const nameB = b.name.split('\n')[0].toLowerCase();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
       });
     } else if (filterSortOption === "ushers") {
       let filtered = allItems.filter(item => (item as any).entourageTitle === "Ushers");
       filtered.sort((a, b) => {
         const nameA = a.name.split('\n')[0].toLowerCase();
         const nameB = b.name.split('\n')[0].toLowerCase();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
       });
       return filtered;
     } else if (filterSortOption === "usherettes") {
@@ -458,7 +459,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       filtered.sort((a, b) => {
         const nameA = a.name.split('\n')[0].toLowerCase();
         const nameB = b.name.split('\n')[0].toLowerCase();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
       });
       return filtered;
     } else if (filterSortOption === "entourage-only") {
@@ -466,7 +467,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       filtered.sort((a, b) => {
         const nameA = a.name.split('\n')[0].toLowerCase();
         const nameB = b.name.split('\n')[0].toLowerCase();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
       });
       return filtered;
     } else if (filterSortOption === "normal-only") {
@@ -474,7 +475,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       filtered.sort((a, b) => {
         const nameA = a.name.split('\n')[0].toLowerCase();
         const nameB = b.name.split('\n')[0].toLowerCase();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
       });
       return filtered;
     }
@@ -490,6 +491,17 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
           tableNum = pendingGuestDetails[item.originalIndex]?.tableNumber;
         }
         return tableNum && tableNum.trim() === filterTableNumber;
+      });
+    } else if (filterUnassigned) {
+      // Filter guests with no table number assigned
+      allItems = allItems.filter(item => {
+        if (item.readOnly) {
+          const tableNum = pendingEntourageGuestDetails[(item as any).guestName]?.tableNumber;
+          return !tableNum || !tableNum.trim();
+        } else {
+          const tableNum = pendingGuestDetails[item.originalIndex]?.tableNumber;
+          return !tableNum || !tableNum.trim();
+        }
       });
     }
 
@@ -522,7 +534,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     }
 
     return allItems;
-  }, [pendingInvitees, entourageGuests, specialGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, filterTableNumber, pendingGuestDetails, pendingEntourageGuestDetails, searchQuery, guestFilter, rsvpResponses]);
+  }, [pendingInvitees, entourageGuests, specialGuests, filterIncludeNormal, filterIncludeEntourage, filterSortOption, filterTableNumber, filterUnassigned, pendingGuestDetails, pendingEntourageGuestDetails, searchQuery, guestFilter, rsvpResponses]);
 
   // Compute guest counts per RSVP category (special guests counted like entourage).
   // Excludes entourage roles the user has opted out of (Flower Girls, Ring Bearers, Bible Bearer).
@@ -720,14 +732,14 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                   <button
                     type="button"
-                    onClick={() => { setFilterSortOption("ushers"); setFilterTableNumber(null); setShowFilterMenu(false); }}
+                    onClick={() => { setFilterSortOption("ushers"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "ushers" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
                     Ushers Only
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setFilterSortOption("usherettes"); setFilterTableNumber(null); setShowFilterMenu(false); }}
+                    onClick={() => { setFilterSortOption("usherettes"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "usherettes" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
                     Usherettes Only
@@ -735,14 +747,14 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                   <button
                     type="button"
-                    onClick={() => { setFilterSortOption("entourage-only"); setFilterTableNumber(null); setShowFilterMenu(false); }}
+                    onClick={() => { setFilterSortOption("entourage-only"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "entourage-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
                     Entourage Only
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setFilterSortOption("normal-only"); setFilterTableNumber(null); setShowFilterMenu(false); }}
+                    onClick={() => { setFilterSortOption("normal-only"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "normal-only" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
                     Normal Guest Only
@@ -752,9 +764,9 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   <button
                     type="button"
                     onClick={() => setShowTableSubmenu(!showTableSubmenu)}
-                    className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${filterTableNumber ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                    className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors ${filterTableNumber || filterUnassigned ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
-                    <span>Table{filterTableNumber ? `: ${filterTableNumber}` : ""}</span>
+                    <span>Table{filterTableNumber ? `: ${filterTableNumber}` : filterUnassigned ? ": Unassigned" : ""}</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${showTableSubmenu ? "rotate-180" : ""}`}>
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
@@ -766,31 +778,48 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                           No tables assigned
                         </div>
                       ) : (
-                        allTableNames.map(tableName => (
+                        <>
                           <button
-                            key={tableName}
                             type="button"
                             onClick={() => {
-                              setFilterTableNumber(tableName);
+                              setFilterTableNumber(null);
+                              setFilterUnassigned(true);
                               setFilterSortOption("all");
                               setShowTableSubmenu(false);
                               setShowFilterMenu(false);
                             }}
-                            className={`w-full text-left px-6 py-1.5 text-sm transition-colors truncate ${filterTableNumber === tableName ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                            className={`w-full text-left px-6 py-1.5 text-sm transition-colors ${filterUnassigned ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                           >
-                            {tableName}
+                            No Table Assigned Yet
                           </button>
-                        ))
+                          <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
+                          {allTableNames.map(tableName => (
+                            <button
+                              key={tableName}
+                              type="button"
+                              onClick={() => {
+                                setFilterTableNumber(tableName);
+                                setFilterUnassigned(false);
+                                setFilterSortOption("all");
+                                setShowTableSubmenu(false);
+                                setShowFilterMenu(false);
+                              }}
+                              className={`w-full text-left px-6 py-1.5 text-sm transition-colors truncate ${filterTableNumber === tableName ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                            >
+                              {tableName}
+                            </button>
+                          ))}
+                        </>
                       )}
                     </div>
                   )}
                   <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                   <button
                     type="button"
-                    onClick={() => { setFilterSortOption("all"); setFilterTableNumber(null); setShowFilterMenu(false); }}
+                    onClick={() => { setFilterSortOption("all"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "all" && !filterTableNumber ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
-                    Show All
+                    Clear Filter
                   </button>
                 </div>
                 </div>
@@ -1598,8 +1627,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                       setEditGuestData({ ...editGuestData, tableNumber: e.target.value });
                     }}
                     placeholder="Table name or number"
-                    disabled={!!editGuestData.isSpecial}
-                    className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${editGuestData.isSpecial ? "cursor-not-allowed opacity-50" : ""} ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
+                    className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"}`}
                     style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
                   />
                 </div>
