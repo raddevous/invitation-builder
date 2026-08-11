@@ -219,12 +219,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             >
               <div className="shrink-0 text-gray-400 order-2">
                 {expandedSection === 'account' ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 9l6 6 6-6" />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 15l-6-6-6 6" />
                   </svg>
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 6l6 6-6 6" />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M6 9l6 6 6-6" />
                   </svg>
                 )}
               </div>
@@ -560,12 +560,12 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           >
             <div className="shrink-0 text-gray-400 order-2">
               {expandedSection === 'notifications' ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 9l6 6 6-6" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 15l-6-6-6 6" />
                 </svg>
               ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 6l6 6-6 6" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 9l6 6 6-6" />
                 </svg>
               )}
             </div>
