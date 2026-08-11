@@ -16,6 +16,9 @@ import SectionsTab from "./tabs/SectionsTab";
 import LiveEditView from "./live-edit/LiveEditView";
 import DesignTab from "./tabs/DesignTab";
 import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
+import { Sparkles } from "@/components/animate-ui/icons/sparkles";
+import { EyeIcon, type EyeIconHandle } from "@/components/lucid-animated/eye";
+import { GalleryVerticalEndIcon, type GalleryVerticalEndIconHandle } from "@/components/lucid-animated/gallery-vertical-end";
 
 type TabId = "sections" | "live" | "design";
 
@@ -40,6 +43,25 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
   const [activeTab, setActiveTab] = useState<TabId>(
     typeof window !== 'undefined' && window.innerWidth >= 1024 ? "sections" : "live"
   );
+  // Animation key for design (sparkles) icon — increments on each tap to force remount + replay
+  const [designAnimKey, setDesignAnimKey] = useState(0);
+  // Ref for Live (eye) icon — lucid-animated uses ref-based animation control
+  const eyeIconRef = useRef<EyeIconHandle>(null);
+  // Ref for Sections (gallery) icon
+  const sectionsIconRef = useRef<GalleryVerticalEndIconHandle>(null);
+
+  // Trigger initial animation on mount for lucid-animated icons (animate-ui does this via `animate` prop)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      eyeIconRef.current?.startAnimation();
+      sectionsIconRef.current?.startAnimation();
+      setTimeout(() => {
+        eyeIconRef.current?.stopAnimation();
+        sectionsIconRef.current?.stopAnimation();
+      }, 800);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showSaveStatus, setShowSaveStatus] = useState(false);
   const [hasEverSaved, setHasEverSaved] = useState(false);
@@ -913,7 +935,12 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
             {desktopTabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
+                onClick={() => {
+                  handleTabChange(tab.id);
+                  if (tab.id === "design") setDesignAnimKey(k => k + 1);
+                  if (tab.id === "live") eyeIconRef.current?.startAnimation();
+                  if (tab.id === "sections") sectionsIconRef.current?.startAnimation();
+                }}
                 className={`flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors ${
                   activeTab === tab.id 
                     ? "bg-[#6998EE]/10 text-[#6998EE]" 
@@ -921,17 +948,35 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
                 }`}
                 style={{ color: activeTab === tab.id ? accentColor : undefined }}
               >
-                <div className="w-5 h-5" style={{
-                  backgroundColor: activeTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
-                  WebkitMaskImage: `url(${tab.icon})`,
-                  WebkitMaskSize: "contain",
-                  WebkitMaskPosition: "center",
-                  WebkitMaskRepeat: "no-repeat",
-                  maskImage: `url(${tab.icon})`,
-                  maskSize: "contain",
-                  maskPosition: "center",
-                  maskRepeat: "no-repeat"
-                }} />
+                {tab.id === "design" ? (
+                  <Sparkles key={designAnimKey} animate animateOnHover completeOnStop size={20} />
+                ) : tab.id === "live" ? (
+                  <EyeIcon
+                    ref={eyeIconRef}
+                    size={20}
+                    onMouseEnter={() => eyeIconRef.current?.startAnimation()}
+                    onMouseLeave={() => eyeIconRef.current?.stopAnimation()}
+                  />
+                ) : tab.id === "sections" ? (
+                  <GalleryVerticalEndIcon
+                    ref={sectionsIconRef}
+                    size={20}
+                    onMouseEnter={() => sectionsIconRef.current?.startAnimation()}
+                    onMouseLeave={() => sectionsIconRef.current?.stopAnimation()}
+                  />
+                ) : (
+                  <div className="w-5 h-5" style={{
+                    backgroundColor: activeTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
+                    WebkitMaskImage: `url(${tab.icon})`,
+                    WebkitMaskSize: "contain",
+                    WebkitMaskPosition: "center",
+                    WebkitMaskRepeat: "no-repeat",
+                    maskImage: `url(${tab.icon})`,
+                    maskSize: "contain",
+                    maskPosition: "center",
+                    maskRepeat: "no-repeat"
+                  }} />
+                )}
                 <span className="text-[10px] font-sans">{tab.label}</span>
               </button>
             ))}

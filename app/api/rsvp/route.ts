@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { wpSubmitRsvp, wpGetRsvps, wpGetPushTokens } from "@/lib/wp/client";
+import { wpSubmitRsvp, wpGetRsvps, wpGetPushTokens, wpCancelRsvp } from "@/lib/wp/client";
 import { sendPushNotification } from "@/lib/firebase/admin";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +94,36 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ responses: body?.responses ?? [] });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "id is required" },
+        { status: 400 }
+      );
+    }
+
+    const { ok } = await wpCancelRsvp(id);
+
+    if (!ok) {
+      return NextResponse.json(
+        { error: "Failed to cancel RSVP" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

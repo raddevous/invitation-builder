@@ -16,6 +16,7 @@
  *    PATCH  /invitation/{slug}     Update invitation data (requires token)
  *    POST   /rsvp                  Submit RSVP (public)
  *    GET    /rsvp                  List RSVPs by invitation_id (public)
+ *    DELETE /rsvp                  Cancel/delete an RSVP by id (public)
  *    GET    /push-token            List tokens for an invitation (server-side use)
  *    POST   /push-token            Register push token (requires token)
  *    DELETE /push-token            Remove push token (requires token)
@@ -128,6 +129,11 @@ class IDB_Rest_Api
             array(
                 'methods'             => 'GET',
                 'callback'            => array(__CLASS__, 'app_get_rsvps'),
+                'permission_callback' => '__return_true',
+            ),
+            array(
+                'methods'             => 'DELETE',
+                'callback'            => array(__CLASS__, 'app_cancel_rsvp'),
                 'permission_callback' => '__return_true',
             ),
         ));
@@ -653,6 +659,25 @@ class IDB_Rest_Api
 
         $rows = IDB_Database::get_rsvp_responses($invitation_id);
         return rest_ensure_response(array('responses' => $rows));
+    }
+
+    // ---------------------------------------------------------------
+    // App: DELETE /rsvp — cancel/delete an RSVP by id (public)
+    // ---------------------------------------------------------------
+    public static function app_cancel_rsvp($request)
+    {
+        $body = $request->get_json_params();
+        $id = isset($body['id']) ? $body['id'] : '';
+        if (empty($id)) {
+            return new WP_REST_Response(array('error' => 'id is required'), 400);
+        }
+
+        $deleted = IDB_Database::delete_rsvp_response($id);
+        if (!$deleted) {
+            return new WP_REST_Response(array('error' => 'Failed to delete RSVP'), 500);
+        }
+
+        return rest_ensure_response(array('success' => true));
     }
 
     // ---------------------------------------------------------------

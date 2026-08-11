@@ -13,13 +13,15 @@ interface GuestEditorProps {
   accentColor?: string;
   onClose: () => void;
   onSave?: (updatedData: InvitationData) => Promise<void>;
+  initialRsvpResponses?: RSVPResponse[];
 }
 
 type InviteeTitle = "M" | "Mr." | "Ms." | "Mrs.";
 
 type GuestFilter = "all" | "pending" | "confirmed" | "declined";
 
-type RSVPResponse = {
+export type RSVPResponse = {
+  id: string;
   guest_name: string;
   attendance: string;
   guest_count: number;
@@ -27,7 +29,7 @@ type RSVPResponse = {
   submitted_at: string;
 };
 
-export default function GuestEditor({ data, invitationId, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave }: GuestEditorProps) {
+export default function GuestEditor({ data, invitationId, onChange, isDarkMode = false, accentColor = "#6998EE", onClose, onSave, initialRsvpResponses }: GuestEditorProps) {
   const [inviteeSort, setInviteeSort] = useState<"alphabetical" | "date-added">("date-added");
   const [inviteePage, setInviteePage] = useState(0);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
@@ -53,10 +55,11 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const [manualRsvpAttendance, setManualRsvpAttendance] = useState<"attending" | "not-attending" | null>(null);
   const [manualRsvpMessage, setManualRsvpMessage] = useState("");
   const [manualRsvpSubmitting, setManualRsvpSubmitting] = useState(false);
+  const [manualRsvpCancelling, setManualRsvpCancelling] = useState(false);
   const inviteeScrollRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const [guestFilter, setGuestFilter] = useState<GuestFilter>("all");
-  const [rsvpResponses, setRsvpResponses] = useState<RSVPResponse[]>([]);
+  const [rsvpResponses, setRsvpResponses] = useState<RSVPResponse[]>(initialRsvpResponses || []);
   const [messageDialogGuest, setMessageDialogGuest] = useState<{ name: string; message: string; submittedAt: string } | null>(null);
   const [readMessages, setReadMessages] = useState<Set<string>>(() => {
     try {
@@ -67,9 +70,10 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
     }
   });
 
-  // Fetch RSVP responses
+  // Fetch RSVP responses (skip if already provided by parent via initialRsvpResponses)
   useEffect(() => {
     if (!invitationId) return;
+    if (initialRsvpResponses && initialRsvpResponses.length > 0) return;
     const fetchResponses = async () => {
       try {
         const res = await fetch(apiUrl(`/api/rsvp?invitationId=${encodeURIComponent(invitationId)}`), {
@@ -83,7 +87,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
       }
     };
     fetchResponses();
-  }, [invitationId]);
+  }, [invitationId, initialRsvpResponses]);
 
   // Detect changes between current and original guest data
   useEffect(() => {
@@ -585,7 +589,12 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
             </button>
             
             {showFilterMenu && (
-              <div className={`absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg z-50 ${isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/40"
+                  onClick={() => setShowFilterMenu(false)}
+                />
+                <div className={`absolute right-0 top-full mt-2 w-56 rounded-lg shadow-lg z-50 ${isDarkMode ? "bg-gray-800 border border-gray-700" : "bg-white border border-gray-200"}`} style={{ fontFamily: "Inter, sans-serif" }}>
                 <div className="py-1">
                   {/* Exclude from Count */}
                   <div className={`px-4 py-2 text-[11px] font-semibold uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
@@ -669,7 +678,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                     Show All
                   </button>
                 </div>
-              </div>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -1151,7 +1161,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
           >
             <div className="flex items-center justify-between mb-6">
               <h3 className={`text-lg font-semibold ${isDarkMode ? "text-gray-200" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-                {showManualRsvp ? `Manual RSVP: ${editGuestData.title === "M" ? editGuestData.name : `${editGuestData.title} ${editGuestData.name}`}` : "Edit Guest"}
+                {showManualRsvp ? "Manual RSVP" : "Edit Guest"}
               </h3>
               {/* Manual RSVP icon (hidden for special guests: couple/parents) */}
               {!editGuestData.isSpecial && (
@@ -1169,7 +1179,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   src="/assets/ico-rsvp.png"
                   alt="RSVP"
                   draggable={false}
-                  className="w-5 h-5 select-none"
+                  className="w-7 h-7 select-none"
                   style={{ pointerEvents: 'none' }}
                 />
               </button>
@@ -1178,6 +1188,71 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
 
             {/* Manual RSVP Panel (replaces edit fields when toggled) */}
             {showManualRsvp ? (
+              (() => {
+                const guestDisplayName = editGuestData.title === "M"
+                  ? editGuestData.name
+                  : `${editGuestData.title} ${editGuestData.name}`;
+                const existingRsvp = getGuestRsvp(guestDisplayName);
+
+                if (existingRsvp) {
+                  // Already submitted — show status + Cancel RSVP
+                  const isAttending = existingRsvp.attendance === "attending";
+                  return (
+                    <div className="space-y-4">
+                      <div className="px-4 py-3 rounded-lg text-sm" style={{ fontFamily: "Inter, sans-serif", backgroundColor: "transparent" }}>
+                        <span className={isDarkMode ? "text-gray-200" : "text-gray-700"}>
+                          <span className="font-medium">{editGuestData.name}</span>{" "}
+                          <span style={{ color: isAttending ? "#10b981" : "#ef4444" }}>
+                            is {isAttending ? "attending" : "not attending"}
+                          </span>
+                        </span>
+                        {existingRsvp.message && existingRsvp.message.trim() !== "" && (
+                          <div className={`mt-2 pt-2 border-t text-xs ${isDarkMode ? "border-gray-600 text-gray-400" : "border-gray-200 text-gray-500"}`}>
+                            "{existingRsvp.message}"
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={manualRsvpCancelling}
+                        onClick={async () => {
+                          if (!invitationId) return;
+                          setManualRsvpCancelling(true);
+                          try {
+                            const res = await fetch(apiUrl("/api/rsvp"), {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ id: existingRsvp.id }),
+                            });
+                            if (res.ok) {
+                              // Remove from local state so the form reappears in real-time
+                              setRsvpResponses(prev => prev.filter(r => r.id !== existingRsvp.id));
+                              setManualRsvpAttendance(null);
+                              setManualRsvpMessage("");
+                            } else {
+                              alert("Failed to cancel RSVP. Please try again.");
+                            }
+                          } catch {
+                            alert("Failed to cancel RSVP. Please try again.");
+                          } finally {
+                            setManualRsvpCancelling(false);
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: "#ef4444",
+                          color: "#ffffff",
+                          fontFamily: "Inter, sans-serif",
+                        }}
+                      >
+                        {manualRsvpCancelling ? "Cancelling..." : "Cancel RSVP"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Not yet submitted — show the form
+                return (
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <button
@@ -1259,6 +1334,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   {manualRsvpSubmitting ? "Submitting..." : "Submit RSVP"}
                 </button>
               </div>
+                );
+              })()
             ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-2">

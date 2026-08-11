@@ -14,12 +14,18 @@ import WeddingProgramEditor from "./WeddingProgramEditor";
 import StoryTimelineEditor from "./StoryTimelineEditor";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { buildInviteUrl } from "@/lib/utils";
+import { apiUrl } from "@/lib/utils/api";
 import { getEntourageGuestNames, getSpecialGuestNames } from "@/lib/utils/entourageGuests";
+import type { RSVPResponse } from "./GuestEditor";
 import ProgressCircle from "@/components/editor/shared/ProgressCircle";
 import ProgressBar from "@/components/editor/shared/ProgressBar";
 import HalfCircleGauge from "@/components/editor/shared/HalfCircleGauge";
 import { getWeddingDetailsProgress, getWeddingDetailsWeight, getWeddingDetailsProgressData, getMediaOverallProgress, getMediaWeight, getMediaProgressData, getEntourageProgress, getEntourageWeight, getEntourageProgressData, getStoryTimelineProgress, getStoryTimelineWeight, getStoryTimelineProgressData, getWeddingProgramProgress, getWeddingProgramWeight, getWeddingProgramProgressData, getWeightedProgress } from "@/lib/utils/progressCalculator";
 import SaveConfirmationDialog from "@/components/shared/SaveConfirmationDialog";
+import { LayoutDashboard } from "@/components/animate-ui/icons/layout-dashboard";
+import { ClipboardList } from "@/components/animate-ui/icons/clipboard-list";
+import { Settings } from "@/components/animate-ui/icons/settings";
+import { EarthIcon, type EarthIconHandle } from "@/components/lucid-animated/earth";
 
 const hexToRgba = (hex: string, alpha: number): string => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -137,6 +143,45 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isMobile, setIsMobile] = useState(false);
   const [activeNavTab, setActiveNavTab] = useState<ToolsNavTab>("dashboard");
+  // Pre-fetch RSVP responses so GuestEditor shows correct counts immediately on open
+  const [rsvpResponses, setRsvpResponses] = useState<RSVPResponse[]>([]);
+  // Animation keys for nav icons — increment on each tap to force remount + replay
+  const [dashAnimKey, setDashAnimKey] = useState(0);
+  const [listAnimKey, setListAnimKey] = useState(0);
+  const [settingsAnimKey, setSettingsAnimKey] = useState(0);
+  // Ref for Earth (website) icon — lucid-animated uses ref-based animation control
+  const earthIconRef = useRef<EarthIconHandle>(null);
+
+  // Trigger initial animation on mount for lucid-animated icons (animate-ui does this via `animate` prop)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      earthIconRef.current?.startAnimation();
+      setTimeout(() => earthIconRef.current?.stopAnimation(), 800);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Fetch RSVP responses on mount / when invitationId changes.
+  // This runs in the background while the user is on the dashboard, so by the
+  // time they open the Guest Editor the data is already available.
+  useEffect(() => {
+    if (!invitationId) return;
+    let cancelled = false;
+    const fetchResponses = async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/rsvp?invitationId=${encodeURIComponent(invitationId)}`), {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const { responses } = await res.json();
+        if (!cancelled) setRsvpResponses(responses || []);
+      } catch {
+        // silent — GuestEditor will retry on open
+      }
+    };
+    fetchResponses();
+    return () => { cancelled = true; };
+  }, [invitationId]);
 
   // Guard onChange when expired — user can still interact with controls
   // but changes won't propagate or save
@@ -826,6 +871,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         accentColor={accentColor}
         onClose={() => setShowGuestEditor(false)}
         onSave={onSave}
+        initialRsvpResponses={rsvpResponses}
       />
     );
   }
@@ -1555,27 +1601,45 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
           {TOOLS_NAV_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveNavTab(tab.id)}
+              onClick={() => {
+                setActiveNavTab(tab.id);
+                if (tab.id === "dashboard") setDashAnimKey(k => k + 1);
+                if (tab.id === "list") setListAnimKey(k => k + 1);
+                if (tab.id === "settings") setSettingsAnimKey(k => k + 1);
+                if (tab.id === "website") earthIconRef.current?.startAnimation();
+              }}
               className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs transition-colors ${
                 activeNavTab === tab.id ? "text-[#6998EE]" : (isDarkMode ? "text-gray-400" : "text-gray-400")
               }`}
               style={{ color: activeNavTab === tab.id ? accentColor : undefined }}
             >
-              <div className="w-5 h-5" style={{
-                backgroundColor: activeNavTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
-                WebkitMaskImage: `url(${tab.icon})`,
-                WebkitMaskSize: "contain",
-                WebkitMaskPosition: "center",
-                WebkitMaskRepeat: "no-repeat",
-                maskImage: `url(${tab.icon})`,
-                maskSize: "contain",
-                maskPosition: "center",
-                maskRepeat: "no-repeat"
-              }} />
-              <span className="text-[10px] font-sans">{tab.label}</span>
-              {activeNavTab === tab.id && (
-                <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: accentColor }} />
+              {tab.id === "dashboard" ? (
+                <LayoutDashboard key={dashAnimKey} animate animateOnHover completeOnStop size={20} />
+              ) : tab.id === "list" ? (
+                <ClipboardList key={listAnimKey} animate animateOnHover completeOnStop size={20} />
+              ) : tab.id === "settings" ? (
+                <Settings key={settingsAnimKey} animate animateOnHover completeOnStop size={20} />
+              ) : tab.id === "website" ? (
+                <EarthIcon
+                  ref={earthIconRef}
+                  size={20}
+                  onMouseEnter={() => earthIconRef.current?.startAnimation()}
+                  onMouseLeave={() => earthIconRef.current?.stopAnimation()}
+                />
+              ) : (
+                <div className="w-5 h-5" style={{
+                  backgroundColor: activeNavTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
+                  WebkitMaskImage: `url(${tab.icon})`,
+                  WebkitMaskSize: "contain",
+                  WebkitMaskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  maskImage: `url(${tab.icon})`,
+                  maskSize: "contain",
+                  maskPosition: "center",
+                  maskRepeat: "no-repeat"
+                }} />
               )}
+              <span className="text-[10px] font-sans">{tab.label}</span>
             </button>
           ))}
         </div>

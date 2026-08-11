@@ -151,6 +151,16 @@ export async function wpGetRsvps(invitationId: string) {
 }
 
 /**
+ * DELETE /rsvp — cancel/delete an RSVP response by id.
+ */
+export async function wpCancelRsvp(id: string) {
+  return wpFetch<{ success: boolean; error?: string }>(`/rsvp`, {
+    method: "DELETE",
+    body: JSON.stringify({ id }),
+  });
+}
+
+/**
  * POST /push-token — register a push token for an invitation.
  */
 export async function wpRegisterPushToken(

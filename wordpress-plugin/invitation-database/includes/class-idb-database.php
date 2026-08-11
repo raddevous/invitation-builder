@@ -437,6 +437,18 @@ class IDB_Database
         );
     }
 
+    /**
+     * Delete a single RSVP response by id.
+     * @param string $id  The RSVP row id (UUID).
+     * @return bool True on success, false on failure.
+     */
+    public static function delete_rsvp_response($id)
+    {
+        global $wpdb;
+        $table = self::table_name('rsvp_responses');
+        return $wpdb->delete($table, array('id' => $id), array('%s')) !== false;
+    }
+
     public static function get_push_tokens($invitation_id)
     {
         global $wpdb;
