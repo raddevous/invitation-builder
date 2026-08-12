@@ -35,7 +35,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [filterIncludeEntourage, setFilterIncludeEntourage] = useState(true);
   const [filterIncludeNormal, setFilterIncludeNormal] = useState(true);
-  const [filterSortOption, setFilterSortOption] = useState<"date" | "name" | "ushers" | "usherettes" | "entourage-only" | "normal-only" | "all">("all");
+  const [filterSortOption, setFilterSortOption] = useState<"date" | "name" | "table" | "ushers" | "usherettes" | "entourage-only" | "normal-only" | "all">("date");
   const [filterTableNumber, setFilterTableNumber] = useState<string | null>(null);
   const [filterUnassigned, setFilterUnassigned] = useState(false);
   const [showTableSubmenu, setShowTableSubmenu] = useState(false);
@@ -446,6 +446,22 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
         const nameB = b.name.split('\n')[0].toLowerCase();
         return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
       });
+    } else if (filterSortOption === "table") {
+      // Sort by assigned table number (numeric-aware). Guests with no table
+      // assigned are grouped at the end.
+      allItems.sort((a, b) => {
+        const tableA = a.readOnly
+          ? pendingEntourageGuestDetails[(a as any).guestName]?.tableNumber?.trim()
+          : pendingGuestDetails[a.originalIndex]?.tableNumber?.trim();
+        const tableB = b.readOnly
+          ? pendingEntourageGuestDetails[(b as any).guestName]?.tableNumber?.trim()
+          : pendingGuestDetails[b.originalIndex]?.tableNumber?.trim();
+        // Unassigned guests go to the end
+        if (!tableA && !tableB) return 0;
+        if (!tableA) return 1;
+        if (!tableB) return -1;
+        return tableA.localeCompare(tableB, undefined, { numeric: true, sensitivity: 'base' });
+      });
     } else if (filterSortOption === "ushers") {
       let filtered = allItems.filter(item => (item as any).entourageTitle === "Ushers");
       filtered.sort((a, b) => {
@@ -673,6 +689,13 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                     >
                       Name
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFilterSortOption("table"); setShowSortMenu(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "table" ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                    >
+                      Table Assigned
+                    </button>
                   </div>
                 </div>
               </>
@@ -784,7 +807,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                             onClick={() => {
                               setFilterTableNumber(null);
                               setFilterUnassigned(true);
-                              setFilterSortOption("all");
+                              setFilterSortOption("date");
                               setShowTableSubmenu(false);
                               setShowFilterMenu(false);
                             }}
@@ -800,7 +823,7 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                               onClick={() => {
                                 setFilterTableNumber(tableName);
                                 setFilterUnassigned(false);
-                                setFilterSortOption("all");
+                                setFilterSortOption("date");
                                 setShowTableSubmenu(false);
                                 setShowFilterMenu(false);
                               }}
@@ -816,8 +839,8 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}></div>
                   <button
                     type="button"
-                    onClick={() => { setFilterSortOption("all"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "all" && !filterTableNumber ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
+                    onClick={() => { setFilterSortOption("date"); setFilterTableNumber(null); setFilterUnassigned(false); setShowFilterMenu(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${filterSortOption === "date" && !filterTableNumber ? (isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900") : (isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100")}`}
                   >
                     Clear Filter
                   </button>
@@ -1550,6 +1573,32 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                   style={{ backgroundColor: isDarkMode ? "#1C2531" : "#F3F4F6", fontFamily: "Inter, sans-serif", fontSize: "12px" }}
                 />
               </div>
+              {/* Duplicate name warning (normal guests only — entourage names are read-only) */}
+              {!editGuestData.isEntourage && (() => {
+                const lowerName = editGuestData.name.toLowerCase().trim();
+                if (!lowerName) return null;
+                // Exclude the guest's own original index from the check
+                const normalMatch = pendingInvitees.some((inv, idx) =>
+                  idx !== editGuestData.originalIndex && inv.name.toLowerCase().trim() === lowerName
+                );
+                const entourageMatch = entourageGuests.some(g => g.name.toLowerCase().trim() === lowerName);
+                const specialLabel = getSpecialNameLabel(editGuestData.name);
+                if (specialLabel) {
+                  return (
+                    <p className="text-red-500 text-xs ml-28" style={{ fontFamily: "Inter, sans-serif" }}>
+                      This name is reserved for {specialLabel}
+                    </p>
+                  );
+                }
+                if (normalMatch || entourageMatch) {
+                  return (
+                    <p className="text-red-500 text-xs ml-28" style={{ fontFamily: "Inter, sans-serif" }}>
+                      This guest is already on the list
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               {editGuestData.isEntourage && (editGuestData.entourageTitle === "Ushers" || editGuestData.entourageTitle === "Usherettes") && (
                 <div className="relative">
                   <textarea
@@ -1642,18 +1691,27 @@ export default function GuestEditor({ data, invitationId, onChange, isDarkMode =
                     <img src="/assets/ico-delete.png" alt="Delete" width="20" height="20" />
                   </button>
                 )}
-                {editDialogHasChanges && !guestNumberError ? (
+                {editDialogHasChanges && !guestNumberError && !(() => {
+                  if (editGuestData.isEntourage) return false;
+                  const lowerName = editGuestData.name.toLowerCase().trim();
+                  if (!lowerName) return false;
+                  return pendingInvitees.some((inv, idx) =>
+                      idx !== editGuestData.originalIndex && inv.name.toLowerCase().trim() === lowerName
+                    ) ||
+                    entourageGuests.some(g => g.name.toLowerCase().trim() === lowerName) ||
+                    isSpecialName(editGuestData.name);
+                })() ? (
                   <button
                     onClick={() => {
                       if (editGuestData.isEntourage) {
                         setPendingEntourageHonorifics({ ...pendingEntourageHonorifics, [editGuestData.name]: editGuestData.title });
-                        setPendingEntourageGuestDetails({ 
-                          ...pendingEntourageGuestDetails, 
-                          [editGuestData.name]: { 
-                            plusOne: editGuestData.plusOne || "", 
+                        setPendingEntourageGuestDetails({
+                          ...pendingEntourageGuestDetails,
+                          [editGuestData.name]: {
+                            plusOne: editGuestData.plusOne || "",
                             tableNumber: editGuestData.tableNumber || "",
                             instruction: editGuestData.instruction || undefined
-                          } 
+                          }
                         });
                       } else {
                         const updated = [...pendingInvitees];

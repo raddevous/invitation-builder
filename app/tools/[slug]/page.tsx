@@ -41,6 +41,9 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [slugValid, setSlugValid] = useState<boolean | null>(null);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  // True while fetching fresh invitation data from the server on launch.
+  // Shows a loading spinner so the user knows we're preparing their workspace.
+  const [loadingInvitation, setLoadingInvitation] = useState(false);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     isDarkMode: false,
@@ -190,7 +193,54 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     let cancelled = false;
 
     async function autoLogin() {
-      // Try native storage first (fast path)
+      // Online: fetch fresh data from the server first so the user always
+      // sees the latest invitation (e.g. edits made on another device or in
+      // a previous session). Falls back to stored/cached data when offline,
+      // on network error, or if the server fetch takes too long (6s timeout).
+      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+
+      if (online) {
+        if (!cancelled) setLoadingInvitation(true);
+        try {
+          // Race the fetch against a 6s timeout so a slow/unreachable server
+          // doesn't leave the user staring at a spinner forever.
+          const fetchPromise = fetch(apiUrl("/api/auth/verify"), { credentials: "include" });
+          const timeoutPromise = new Promise<Response | null>((resolve) =>
+            setTimeout(() => resolve(null), 6000)
+          );
+          const res = await Promise.race([fetchPromise, timeoutPromise]);
+
+          if (res && res.ok) {
+            const data = await res.json();
+            if (data.authenticated && data.invitation && data.invitation.slug === slug) {
+              const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
+              const inv = { ...data.invitation, data: invitationData };
+              await setStoredItem("invitation", JSON.stringify(inv));
+              await setLastUsedSlug(slug);
+              await cacheInvitation(slug, inv);
+              if (isDarkMode !== undefined || accentColor !== undefined) {
+                localStorage.setItem("appSettings", JSON.stringify({
+                  isDarkMode: systemMode === "dark",
+                  accentColor: accentColor ?? "#6998EE",
+                }));
+              }
+              if (!cancelled) {
+                setLoadingInvitation(false);
+                loadInvitation(inv);
+              }
+              if (!cancelled) setAutoLoginAttempted(true);
+              return;
+            }
+          }
+          // res is null (timeout) or not ok / not authenticated — fall through
+          // to stored/cached data below.
+        } catch {
+          // Network error — fall through to stored/cached data below.
+        }
+        if (!cancelled) setLoadingInvitation(false);
+      }
+
+      // Fallback: load from native storage, then offline cache.
       const stored = await getStoredItem('invitation');
       if (stored) {
         try {
@@ -207,39 +257,9 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
         }
       }
 
-      // Fallback: verify auth cookie and fetch from server
-      try {
-        const res = await fetch(apiUrl("/api/auth/verify"), { credentials: "include" });
-        if (!res.ok) {
-          // Try cache when auth verify fails (offline)
-          const cached = await getCachedInvitation(slug);
-          if (cached && !cancelled) {
-            loadInvitation(cached);
-          }
-          if (!cancelled) setAutoLoginAttempted(true);
-          return;
-        }
-        const data = await res.json();
-        if (data.authenticated && data.invitation && data.invitation.slug === slug) {
-          const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
-          const inv = { ...data.invitation, data: invitationData };
-          await setStoredItem("invitation", JSON.stringify(inv));
-          await setLastUsedSlug(slug);
-          await cacheInvitation(slug, inv);
-          if (isDarkMode !== undefined || accentColor !== undefined) {
-            localStorage.setItem("appSettings", JSON.stringify({
-              isDarkMode: systemMode === "dark",
-              accentColor: accentColor ?? "#6998EE",
-            }));
-          }
-          if (!cancelled) loadInvitation(inv);
-        }
-      } catch {
-        // Offline — try cached invitation
-        const cached = await getCachedInvitation(slug);
-        if (cached && !cancelled) {
-          loadInvitation(cached);
-        }
+      const cached = await getCachedInvitation(slug);
+      if (cached && !cancelled) {
+        loadInvitation(cached);
       }
       if (!cancelled) setAutoLoginAttempted(true);
     }
@@ -446,6 +466,29 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
             style={{ color: "#6998EE", fontFamily: "Inter, sans-serif" }}
           >
             Checking invitation…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading while fetching fresh invitation data from the server
+  if (loadingInvitation) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: "#fff8f3" }}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin"
+            style={{ borderColor: "#6998EE", borderTopColor: "transparent" }}
+          />
+          <p
+            className="text-sm italic"
+            style={{ color: "#6998EE", fontFamily: "Cormorant Garamond, serif" }}
+          >
+            Gather your latest saved information…
           </p>
         </div>
       </div>
