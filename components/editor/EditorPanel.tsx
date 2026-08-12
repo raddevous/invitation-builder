@@ -1093,27 +1093,47 @@ export default function EditorPanel({ invitation: initial, onBack, showScreenDim
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
+                onClick={() => {
+                  handleTabChange(tab.id);
+                  if (tab.id === "design") setDesignAnimKey(k => k + 1);
+                  if (tab.id === "live") eyeIconRef.current?.startAnimation();
+                  if (tab.id === "sections") sectionsIconRef.current?.startAnimation();
+                }}
                 className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs transition-colors ${
                   activeTab === tab.id ? "text-[#6998EE]" : (isDarkMode ? "text-gray-400" : "text-gray-400")
                 }`}
                 style={{ color: activeTab === tab.id ? accentColor : undefined }}
               >
-                <div className="w-5 h-5" style={{
-                  backgroundColor: activeTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
-                  WebkitMaskImage: `url(${tab.icon})`,
-                  WebkitMaskSize: "contain",
-                  WebkitMaskPosition: "center",
-                  WebkitMaskRepeat: "no-repeat",
-                  maskImage: `url(${tab.icon})`,
-                  maskSize: "contain",
-                  maskPosition: "center",
-                  maskRepeat: "no-repeat"
-                }} />
-                <span className="text-[10px] font-sans">{tab.label}</span>
-                {activeTab === tab.id && (
-                  <div className="w-1 h-1 rounded-full mt-0.5" style={{ backgroundColor: accentColor }} />
+                {tab.id === "design" ? (
+                  <Sparkles key={designAnimKey} animate animateOnHover completeOnStop size={20} />
+                ) : tab.id === "live" ? (
+                  <EyeIcon
+                    ref={eyeIconRef}
+                    size={20}
+                    onMouseEnter={() => eyeIconRef.current?.startAnimation()}
+                    onMouseLeave={() => eyeIconRef.current?.stopAnimation()}
+                  />
+                ) : tab.id === "sections" ? (
+                  <GalleryVerticalEndIcon
+                    ref={sectionsIconRef}
+                    size={20}
+                    onMouseEnter={() => sectionsIconRef.current?.startAnimation()}
+                    onMouseLeave={() => sectionsIconRef.current?.stopAnimation()}
+                  />
+                ) : (
+                  <div className="w-5 h-5" style={{
+                    backgroundColor: activeTab === tab.id ? accentColor : (isDarkMode ? "#9ca3af" : "#9ca3af"),
+                    WebkitMaskImage: `url(${tab.icon})`,
+                    WebkitMaskSize: "contain",
+                    WebkitMaskPosition: "center",
+                    WebkitMaskRepeat: "no-repeat",
+                    maskImage: `url(${tab.icon})`,
+                    maskSize: "contain",
+                    maskPosition: "center",
+                    maskRepeat: "no-repeat"
+                  }} />
                 )}
+                <span className="text-[10px] font-sans">{tab.label}</span>
               </button>
             ))}
           </div>
