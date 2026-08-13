@@ -1,8 +1,15 @@
-fix: easel editor not opening — move check before showQrCodes
+Fix easel editor: tarp aspect ratio, element sizing, PDF export, snapping
 
-The showEaselEditor check was after showQrCodes, so the QrCodesPage
-kept rendering. Now showEaselEditor is checked first, and onOpenEasel
-also clears showQrCodes to avoid conflict.
+- Fix tarp to maintain 2:3 aspect ratio matching print output
+- Use height: auto for all elements so translate(-50%, -50%) centers content
+- Use max-content for celebrant-name, date, location to avoid extra width
+- Fix date elegant/modern structures: remove flex-1 causing huge gaps
+- Switch PDF export from html2canvas to window.print() with clone approach
+- Convert cqh/cqw to %/vw in print clone for correct rendering
+- Add anchor points at element edges for alignment
+- Add snapping of anchor points to center grid lines
+- Fix background transformOrigin to match objectPosition
+- Fix React hooks order violation in EaselEditor
 
 Generated with [Devin](https://devin.ai)
 

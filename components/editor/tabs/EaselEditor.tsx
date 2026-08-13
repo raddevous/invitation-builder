@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { InvitationData, EaselElement, EaselData } from "@/lib/types/invitation";
 import { buildInviteUrl } from "@/lib/utils";
 import QRCode from "qrcode";
+import html2canvas from "html2canvas";
 import HybridFontControl from "@/components/shared/HybridFontControl";
 import { usePredefinedOptions } from "@/lib/hooks/usePredefinedOptions";
 
@@ -700,17 +701,11 @@ export default function EaselEditor({
   const selected = elements.find((el) => el.id === selectedId);
   const dateComponents = parseDateComponents(data.date);
 
-  // Export to PDF — tarp only at 2ft x 3ft
-  // Uses window.print() — clones tarp to body with all cqh/cqw converted to px
-  const handleExportPDF = async () => {
-    setExporting(true);
-
+  // Build a clone of the tarp with cqh/cqw converted to %/vw
+  // Used by both print (PDF) and JPEG export
+  const buildTarpClone = () => {
     const tarp = tarpRef.current;
-    if (!tarp) {
-      alert("Canvas not ready. Please try again.");
-      setExporting(false);
-      return;
-    }
+    if (!tarp) return null;
 
     // Hide selection ring
     const selectedEls = tarp.querySelectorAll(".ring-2");
@@ -724,17 +719,14 @@ export default function EaselEditor({
 
     // Clone the tarp
     const tarpClone = tarp.cloneNode(true) as HTMLElement;
-    tarpClone.id = "easel-tarp-print";
+    tarpClone.id = "easel-tarp-clone";
 
-    // Remove ring classes from clone
+    // Remove ring classes and anchor points from clone
     tarpClone.querySelectorAll(".ring-2").forEach((el) => {
       el.classList.remove("ring-2", "ring-blue-500");
     });
 
     // Walk every element and convert cqh/cqw to % and vw
-    // In the clone, tarp fills the page, so:
-    //   - % of tarp = % of page (for dimensions)
-    //   - vw = % of page width = % of tarp width (for font sizes)
     const allEls = [tarpClone, ...Array.from(tarpClone.querySelectorAll("*"))] as HTMLElement[];
     const originalEls = [tarp, ...Array.from(tarp.querySelectorAll("*"))] as HTMLElement[];
 
@@ -746,10 +738,9 @@ export default function EaselEditor({
       const computed = window.getComputedStyle(origEl);
       const inlineStyle = origEl.getAttribute("style") || "";
 
-      // Convert cqw-based font sizes to vw (since tarp fills page width)
+      // Convert cqw-based font sizes to vw
       if (inlineStyle.includes("cqw") || inlineStyle.includes("clamp")) {
         const origFontSizePx = parseFloat(computed.fontSize);
-        // vw = px / tarpWidth * 100 — in clone, 1vw = 1% of page = 1% of tarp width
         const fontVw = (origFontSizePx / tarpW) * 100;
         cloneEl.style.fontSize = `${fontVw}vw`;
       }
@@ -762,6 +753,22 @@ export default function EaselEditor({
         cloneEl.style.height = `${(origHPx / tarpH) * 100}%`;
       }
     }
+
+    return { tarpClone, tarpW, tarpH, selectedEls };
+  };
+
+  // Export to PDF — tarp only at 2ft x 3ft
+  // Uses window.print() — clones tarp to body with all cqh/cqw converted to %/vw
+  const handleExportPDF = async () => {
+    setExporting(true);
+
+    const result = buildTarpClone();
+    if (!result) {
+      alert("Canvas not ready. Please try again.");
+      setExporting(false);
+      return;
+    }
+    const { tarpClone, selectedEls } = result;
 
     // Set the tarp clone to fill the entire page
     tarpClone.style.width = "100%";
@@ -807,8 +814,8 @@ export default function EaselEditor({
           visibility: visible !important;
           z-index: 99999 !important;
         }
-        #easel-tarp-print,
-        #easel-tarp-print * {
+        #easel-tarp-clone,
+        #easel-tarp-clone * {
           visibility: visible !important;
         }
       }
@@ -838,6 +845,79 @@ export default function EaselEditor({
         cleanup();
       }
     }, 5000);
+  };
+
+  // Export to JPEG — uses html2canvas on the clone (which has cqh/cqw already converted)
+  const handleExportJPEG = async () => {
+    setExporting(true);
+
+    const result = buildTarpClone();
+    if (!result) {
+      alert("Canvas not ready. Please try again.");
+      setExporting(false);
+      return;
+    }
+    const { tarpClone, tarpW, tarpH, selectedEls } = result;
+
+    // Target size in pixels (24in x 36in at 200dpi for high-quality print)
+    const targetW = PRINT_WIDTH_IN * 200;  // 4800px
+    const targetH = PRINT_HEIGHT_IN * 200; // 7200px
+
+    // Set the clone to the exact target size
+    tarpClone.style.width = `${targetW}px`;
+    tarpClone.style.height = `${targetH}px`;
+    tarpClone.style.position = "absolute";
+    tarpClone.style.top = "0";
+    tarpClone.style.left = "0";
+    tarpClone.style.transform = "none";
+    tarpClone.style.transformOrigin = "top left";
+    tarpClone.style.overflow = "hidden";
+    tarpClone.style.backgroundColor = easelData.backgroundColor || "#ffffff";
+
+    // Create off-screen container (visible but off-screen so html2canvas can render it)
+    const exportContainer = document.createElement("div");
+    exportContainer.id = "easel-jpeg-container";
+    exportContainer.style.cssText = `position: fixed; top: -99999px; left: -99999px; width: ${targetW}px; height: ${targetH}px; overflow: hidden; z-index: -1;`;
+    exportContainer.appendChild(tarpClone);
+    document.body.appendChild(exportContainer);
+
+    // Wait for fonts and clone to settle
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+
+    try {
+      const canvas = await html2canvas(tarpClone, {
+        backgroundColor: easelData.backgroundColor || "#ffffff",
+        scale: 1, // already at target size
+        useCORS: true,
+        logging: false,
+        width: targetW,
+        height: targetH,
+        windowWidth: targetW,
+        windowHeight: targetH,
+      });
+
+      // Convert to JPEG and download
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const link = document.createElement("a");
+      link.href = imgData;
+      link.download = `easel-find-your-seat-${slug}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("JPEG export failed:", err);
+      alert("Failed to export JPEG. Please try again.");
+    } finally {
+      // Cleanup
+      document.getElementById("easel-jpeg-container")?.remove();
+      selectedEls.forEach((el) => {
+        (el as HTMLElement).style.boxShadow = "";
+      });
+      setExporting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1117,7 +1197,14 @@ export default function EaselEditor({
                   disabled={exporting}
                   className={`px-4 py-2 rounded-lg text-sm text-left disabled:opacity-50 ${isDarkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-100 text-gray-900"}`}
                 >
-                  {exporting ? "Exporting..." : "Download PDF"}
+                  {exporting ? "Preparing..." : "Print-ready"}
+                </button>
+                <button
+                  onClick={() => { handleExportJPEG(); setShowAddMenu(false); }}
+                  disabled={exporting}
+                  className={`px-4 py-2 rounded-lg text-sm text-left disabled:opacity-50 ${isDarkMode ? "hover:bg-gray-700 text-gray-200" : "hover:bg-gray-100 text-gray-900"}`}
+                >
+                  {exporting ? "Downloading..." : "Download as JPG"}
                 </button>
                 <div className={`my-1 border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} />
                 <button
