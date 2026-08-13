@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { openSignup } from "@/lib/utils/signup";
 import { apiUrl } from "@/lib/utils/api";
 import { setStoredItem } from "@/lib/utils/storage";
-import { setLastUsedSlug } from "@/lib/utils/offline-cache";
+import { setLastUsedSlug, clearOldCachedInvitations } from "@/lib/utils/offline-cache";
 
 const hexToRgba = (hex: string, alpha: number): string => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -51,6 +51,7 @@ export default function LoginDialog({ isOpen, onClose, isDarkMode = false, accen
       const { isDarkMode: invDarkMode, accentColor: invAccentColor, ...invitationData } = data.invitation.data;
       const invitationToStore = { ...data.invitation, data: invitationData };
       console.log("[LoginDialog] storing invitation, slug:", data.invitation.slug);
+      await clearOldCachedInvitations(data.invitation.slug);
       await setStoredItem("invitation", JSON.stringify(invitationToStore));
       await setStoredItem("appSettings", JSON.stringify({
         isDarkMode: isDarkMode ?? invDarkMode,

@@ -7,7 +7,7 @@ import { getStoredItem, setStoredItem, removeStoredItem } from "@/lib/utils/stor
 import HomePreviewStage from "@/components/home/HomePreviewStage";
 import { openSignup } from "@/lib/utils/signup";
 import { apiUrl } from "@/lib/utils/api";
-import { getCachedInvitation, getLastUsedSlug, setLastUsedSlug, cacheInvitation, isOnline } from "@/lib/utils/offline-cache";
+import { getCachedInvitation, getLastUsedSlug, setLastUsedSlug, cacheInvitation, clearOldCachedInvitations, isOnline } from "@/lib/utils/offline-cache";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 
 export default function ToolsLandingPage() {
@@ -41,9 +41,14 @@ export default function ToolsLandingPage() {
           if (data.authenticated && data.invitation?.slug) {
             const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
             const inv = { ...data.invitation, data: invitationData };
+            await clearOldCachedInvitations(data.invitation.slug);
             await setStoredItem("invitation", JSON.stringify(inv));
             await setLastUsedSlug(data.invitation.slug);
-            await cacheInvitation(data.invitation.slug, inv);
+            try {
+              await cacheInvitation(data.invitation.slug, inv);
+            } catch (e) {
+              console.warn("[autoLogin] cacheInvitation failed, continuing:", e);
+            }
             if (isDarkMode !== undefined || accentColor !== undefined) {
               localStorage.setItem("appSettings", JSON.stringify({
                 isDarkMode: mode === "dark",
@@ -77,9 +82,14 @@ export default function ToolsLandingPage() {
   const handleLogin = async (inv: Invitation) => {
     const { isDarkMode, accentColor, ...invitationData } = inv.data;
     const invitationToStore = { ...inv, data: invitationData };
+    await clearOldCachedInvitations(inv.slug);
     await setStoredItem('invitation', JSON.stringify(invitationToStore));
     await setLastUsedSlug(inv.slug);
-    await cacheInvitation(inv.slug, inv);
+    try {
+      await cacheInvitation(inv.slug, inv);
+    } catch (e) {
+      console.warn("[handleLogin] cacheInvitation failed, continuing:", e);
+    }
     localStorage.setItem('appSettings', JSON.stringify({
       isDarkMode: mode === "dark",
       accentColor: accentColor ?? "#6998EE",

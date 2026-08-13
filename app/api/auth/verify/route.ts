@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         id: invitation.id,
         slug: invitation.slug,
         clientName: invitation.clientName,
+        accountType: invitation.accountType,
         templateId: invitation.templateId,
         eventType: invitation.eventType,
         email: invitation.email,

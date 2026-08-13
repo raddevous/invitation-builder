@@ -1087,7 +1087,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                               }}
                               className="aspect-square rounded-2xl border-2 border-transparent overflow-hidden transition-all active:scale-95 hover:border-gray-300"
                             >
-                              <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                              <img src={url || undefined} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
                             </button>
                           ))}
                           {([...pendingUploadedPhotos, ...pendingPhotos]).filter(Boolean).length === 0 && (
@@ -1314,7 +1314,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           }}
                         >
                           <img
-                            src={imgUrl}
+                            src={imgUrl || undefined}
                             alt={`Gallery ${idx + 1}`}
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -1484,7 +1484,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                               }
                             }}
                           >
-                            <img src={imgUrl} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
+                            <img src={imgUrl || undefined} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
                             {photosDeleteIdx === idx + 1000 && (
                               <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
                                 <button
@@ -1695,7 +1695,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                             }}
                           >
                             <img
-                              src={imgUrl}
+                              src={imgUrl || undefined}
                               alt={`Photo ${idx + 1}`}
                               className="w-full h-full object-cover"
                               onError={(e) => {
@@ -2100,7 +2100,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                           }}
                         >
                           <img
-                            src={imgUrl}
+                            src={imgUrl || undefined}
                             alt={`Venue ${idx + 1}`}
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -2334,7 +2334,7 @@ export default function MediaEditor({ data, onChange, isDarkMode = false, accent
                             }}
                           >
                             <img
-                              src={imgUrl}
+                              src={imgUrl || undefined}
                               alt={`Reception venue ${idx + 1}`}
                               className="w-full h-full object-cover"
                               onError={(e) => {

@@ -843,6 +843,7 @@ export interface Invitation {
   updatedAt?: string;
   email?: string;
   expiresAt?: string;
+  accountType?: string;
 }
 
 export interface RsvpResponse {

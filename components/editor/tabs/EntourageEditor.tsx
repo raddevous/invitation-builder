@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { InvitationData } from "@/lib/types/invitation";
 
 interface EntourageEditorProps {
@@ -8,6 +8,55 @@ interface EntourageEditorProps {
   accentColor?: string;
   onClose: () => void;
   onSave?: (updatedData: InvitationData) => Promise<void>;
+}
+
+// Small inline warning shown below a name input when a duplicate is detected
+function DuplicateWarning({ isDarkMode }: { isDarkMode: boolean }) {
+  return (
+    <p className="text-red-500 text-xs mt-1" style={{ fontFamily: "Inter, sans-serif" }}>
+      This name is already used elsewhere
+    </p>
+  );
+}
+
+// Collects all name entries from the entourage data as { path, name } pairs.
+// Used for duplicate detection — the `path` identifies which field a name
+// belongs to so we can exclude it when checking that field for duplicates.
+function collectEntourageNames(ent: any): Array<{ path: string; name: string }> {
+  if (!ent) return [];
+  const entries: Array<{ path: string; name: string }> = [];
+  const push = (path: string, name?: string) => {
+    if (name && name.trim()) entries.push({ path, name: name.trim().toLowerCase() });
+  };
+  const pushArray = (path: string, names?: string[]) => {
+    (names || []).forEach((n, i) => push(`${path}[${i}]`, n));
+  };
+
+  push("couple.groomName", ent.couple?.groomName);
+  push("couple.brideName", ent.couple?.brideName);
+  push("groomParents.fatherName", ent.groomParents?.fatherName);
+  push("groomParents.motherName", ent.groomParents?.motherName);
+  push("brideParents.fatherName", ent.brideParents?.fatherName);
+  push("brideParents.motherName", ent.brideParents?.motherName);
+  push("marriageTalkSpeaker.name", ent.marriageTalkSpeaker?.name);
+  push("officiatingMinister.name", ent.officiatingMinister?.name);
+  pushArray("witnesses.names", ent.witnesses?.names);
+  push("bestMan.name", ent.bestMan?.name);
+  push("maidOfHonor.name", ent.maidOfHonor?.name);
+  pushArray("directorOfCeremony.names", ent.directorOfCeremony?.names);
+  pushArray("directorOfFeast.names", ent.directorOfFeast?.names);
+  pushArray("ushers.names", ent.ushers?.names);
+  pushArray("usherettes.names", ent.usherettes?.names);
+  pushArray("groomsmen.names", ent.groomsmen?.names);
+  pushArray("bridesmaids.names", ent.bridesmaids?.names);
+  pushArray("jrGroomsmen.names", ent.jrGroomsmen?.names);
+  pushArray("jrBridesmaid.names", ent.jrBridesmaid?.names);
+  pushArray("flowerGirls.names", ent.flowerGirls?.names);
+  push("bibleBearer.name", ent.bibleBearer?.name);
+  push("ringBearer.name", ent.ringBearer?.name);
+  push("chairman.name", ent.chairman?.name);
+
+  return entries;
 }
 
 // Helper to convert hex to rgba
@@ -41,6 +90,36 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
     const currentEntourage = { ...pendingEntourageChanges, visibleSections: localVisibleSections };
     setHasUnsavedChanges(JSON.stringify(currentEntourage) !== initialEntourageSnapshot.current);
   }, [pendingEntourageChanges, localVisibleSections]);
+
+  // Duplicate detection: builds a set of all names in the entourage + guest list,
+  // then a function to check if a specific field's name is a duplicate.
+  const allEntourageNames = useMemo(() => collectEntourageNames(pendingEntourageChanges), [pendingEntourageChanges]);
+  const guestNames = useMemo(() => {
+    return (data.rsvpInvitees || [])
+      .map(inv => typeof inv === 'string' ? inv : inv.name)
+      .filter(n => n && n.trim())
+      .map(n => n.trim().toLowerCase());
+  }, [data.rsvpInvitees]);
+
+  // Check if a name at a given path is a duplicate (appears elsewhere in
+  // entourage or in the guest list). The path is excluded so a field doesn't
+  // match itself.
+  const isDuplicateName = (path: string, name: string): boolean => {
+    if (!name || !name.trim()) return false;
+    const lower = name.trim().toLowerCase();
+    // Check other entourage fields
+    const entourageMatch = allEntourageNames.some(e => e.path !== path && e.name === lower);
+    if (entourageMatch) return true;
+    // Check guest list
+    return guestNames.includes(lower);
+  };
+
+  // True if any name in the current entourage is a duplicate
+  const hasDuplicates = useMemo(() => {
+    return allEntourageNames.some(e => isDuplicateName(e.path, e.name));
+  }, [allEntourageNames, guestNames]);
+
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
 
   // Helper function to update nested entourage data (local only)
   const updateEntourageField = (path: string, value: any) => {
@@ -147,11 +226,31 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
   };
 
   // Handle close - auto-apply pending changes, no save prompt
+  // If duplicates exist, show a dialog and do NOT apply entourage changes
   const handleClose = () => {
+    if (hasDuplicates) {
+      setShowDuplicateDialog(true);
+      return;
+    }
     if (hasUnsavedChanges) {
       saveEntourage();
     }
     onClose();
+  };
+
+  // User confirmed: discard entourage changes (keep duplicates out of save)
+  const handleDiscardDuplicatesAndClose = () => {
+    setShowDuplicateDialog(false);
+    // Revert pending changes back to the original snapshot so duplicates
+    // are not included in the unsaved/pending state
+    setPendingEntourageChanges(JSON.parse(initialEntourageSnapshot.current));
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
+  // User chose to go back and fix the duplicates
+  const handleStayAndFix = () => {
+    setShowDuplicateDialog(false);
   };
 
   return (
@@ -246,6 +345,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("couple.groomName", pendingEntourageChanges?.couple?.groomName ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-600">{pendingEntourageChanges?.couple?.groomTitleCustom || "Groom"}</span>
                     {!pendingEntourageChanges?.couple?.groomTitleCustom && (
@@ -291,6 +391,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("couple.brideName", pendingEntourageChanges?.couple?.brideName ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-600">{pendingEntourageChanges?.couple?.brideTitleCustom || "Bride"}</span>
                     {!pendingEntourageChanges?.couple?.brideTitleCustom && (
@@ -397,6 +498,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName("groomParents.fatherName", pendingEntourageChanges?.groomParents?.fatherName ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-gray-600">{pendingEntourageChanges?.groomParents?.fatherTitleCustom || "Father"}</span>
                           {!pendingEntourageChanges?.groomParents?.fatherTitleCustom && (
@@ -442,6 +544,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName("groomParents.motherName", pendingEntourageChanges?.groomParents?.motherName ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-gray-600">{pendingEntourageChanges?.groomParents?.motherTitleCustom || "Mother"}</span>
                           {!pendingEntourageChanges?.groomParents?.motherTitleCustom && (
@@ -543,6 +646,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName("brideParents.fatherName", pendingEntourageChanges?.brideParents?.fatherName ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-gray-600">{pendingEntourageChanges?.brideParents?.fatherTitleCustom || "Father"}</span>
                           {!pendingEntourageChanges?.brideParents?.fatherTitleCustom && (
@@ -588,6 +692,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName("brideParents.motherName", pendingEntourageChanges?.brideParents?.motherName ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-gray-600">{pendingEntourageChanges?.brideParents?.motherTitleCustom || "Mother"}</span>
                           {!pendingEntourageChanges?.brideParents?.motherTitleCustom && (
@@ -694,6 +799,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("marriageTalkSpeaker.name", pendingEntourageChanges?.marriageTalkSpeaker?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                 </div>
               )}
             </div>
@@ -762,6 +868,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("officiatingMinister.name", pendingEntourageChanges?.officiatingMinister?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                 </div>
               )}
             </div>
@@ -841,6 +948,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName(`witnesses.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                         {i === 0 && names.length < 12 && (
                           <button
                             type="button"
@@ -937,14 +1045,17 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     </div>
                   </div>
                   {!showCheckboxes && localVisibleSections.bestMan && (
-                    <input
-                      type="text"
-                      value={pendingEntourageChanges?.bestMan?.name ?? ""}
-                      onChange={(e) => updateEntourageField("bestMan.name", e.target.value)}
-                      placeholder="Best Man name"
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                      style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                    />
+                    <>
+                      <input
+                        type="text"
+                        value={pendingEntourageChanges?.bestMan?.name ?? ""}
+                        onChange={(e) => updateEntourageField("bestMan.name", e.target.value)}
+                        placeholder="Best Man name"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                        style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                      />
+                      {isDuplicateName("bestMan.name", pendingEntourageChanges?.bestMan?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
+                    </>
                   )}
                 </div>
                 <div>
@@ -999,14 +1110,17 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     </div>
                   </div>
                   {!showCheckboxes && localVisibleSections.maidOfHonor && (
-                    <input
-                      type="text"
-                      value={pendingEntourageChanges?.maidOfHonor?.name ?? ""}
-                      onChange={(e) => updateEntourageField("maidOfHonor.name", e.target.value)}
-                      placeholder="Maid of honor name"
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                      style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
-                    />
+                    <>
+                      <input
+                        type="text"
+                        value={pendingEntourageChanges?.maidOfHonor?.name ?? ""}
+                        onChange={(e) => updateEntourageField("maidOfHonor.name", e.target.value)}
+                        placeholder="Maid of honor name"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                        style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
+                      />
+                      {isDuplicateName("maidOfHonor.name", pendingEntourageChanges?.maidOfHonor?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
+                    </>
                   )}
                 </div>
               </div>
@@ -1087,6 +1201,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName(`directorOfCeremony.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                         {i === 0 && names.length < 12 && (
                           <button
                             type="button"
@@ -1201,6 +1316,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName(`directorOfFeast.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                         {i === 0 && names.length < 12 && (
                           <button
                             type="button"
@@ -1315,6 +1431,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
+                            {isDuplicateName(`ushers.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                             {i === 0 && names.length < 24 && (
                               <button
                                 type="button"
@@ -1423,6 +1540,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
+                            {isDuplicateName(`usherettes.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                             {i === 0 && names.length < 24 && (
                               <button
                                 type="button"
@@ -1528,6 +1646,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("chairman.name", pendingEntourageChanges?.chairman?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                 </div>
               )}
             </div>
@@ -1607,6 +1726,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
+                            {isDuplicateName(`groomsmen.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                             {i === 0 && names.length < 12 && (
                               <button
                                 type="button"
@@ -1715,6 +1835,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
+                            {isDuplicateName(`bridesmaids.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                             {i === 0 && names.length < 12 && (
                               <button
                                 type="button"
@@ -1831,6 +1952,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
+                            {isDuplicateName(`jrGroomsmen.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                             {i === 0 && names.length < 12 && (
                               <button
                                 type="button"
@@ -1939,6 +2061,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                               className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                               style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                             />
+                            {isDuplicateName(`jrBridesmaid.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                             {i === 0 && names.length < 12 && (
                               <button
                                 type="button"
@@ -2053,6 +2176,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                           className={`w-full px-3 py-2 pr-10 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                           style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                         />
+                        {isDuplicateName(`flowerGirls.names[${i}]`, name) && <DuplicateWarning isDarkMode={isDarkMode} />}
                         {i === 0 && names.length < 10 && (
                           <button
                             type="button"
@@ -2156,6 +2280,7 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("bibleBearer.name", pendingEntourageChanges?.bibleBearer?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                 </div>
               )}
             </div>
@@ -2224,11 +2349,48 @@ export default function EntourageEditor({ data, onChange, isDarkMode = false, ac
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}
                   />
+                  {isDuplicateName("ringBearer.name", pendingEntourageChanges?.ringBearer?.name ?? "") && <DuplicateWarning isDarkMode={isDarkMode} />}
                 </div>
               )}
             </div>
           )}
         </div>
+
+      {/* Duplicate warning dialog */}
+      {showDuplicateDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className={`mx-4 max-w-sm rounded-2xl p-6 shadow-xl ${isDarkMode ? "bg-gray-800 text-gray-200" : "bg-white text-gray-800"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-red-100">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold">Duplicate names detected</h3>
+            </div>
+            <p className={`text-sm mb-5 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+              Some names in your entourage appear more than once or already exist in your guest list. These changes won&apos;t be saved until the duplicates are resolved.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleStayAndFix}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-gray-200" : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}
+              >
+                Go back & fix
+              </button>
+              <button
+                onClick={handleDiscardDuplicatesAndClose}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+                style={{ backgroundColor: accentColor }}
+              >
+                Discard & close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

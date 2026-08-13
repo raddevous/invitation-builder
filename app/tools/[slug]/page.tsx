@@ -99,10 +99,11 @@ export default function ToolsPage({ params }: { params: Promise<{ slug: string }
     return {
       email: invitation.email || "",
       name: invitation.clientName || "",
+      accountType: invitation.accountType || "client",
       createdAt: invitation.createdAt || "",
       expiresAt: invitation.expiresAt || "",
     };
-  }, [invitation?.email, invitation?.clientName, invitation?.createdAt, invitation?.expiresAt]);
+  }, [invitation?.email, invitation?.clientName, invitation?.accountType, invitation?.createdAt, invitation?.expiresAt]);
 
   // Check if editing access has expired
   const isExpired = useMemo(() => {

@@ -42,6 +42,7 @@ const hexToRgba = (hex: string, alpha: number): string => {
 interface AccountInfo {
   email: string;
   name: string;
+  accountType: string;
   createdAt: string;
   expiresAt: string;
 }
@@ -262,10 +263,10 @@ function QrCodesPage({
           </button>
           <div>
             <h2 className="text-lg font-semibold" style={{ fontFamily: "Inter, sans-serif", color: accentColor }}>
-              QR Codes
+              Downloadables
             </h2>
             <p className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
-              Generate and download QR codes for your invitation
+              Download and share print-ready files for your occasion
             </p>
           </div>
         </div>
@@ -1845,13 +1846,15 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
               isDarkMode={isDarkMode}
               accentColor={accentColor}
             />
-            <ToolTile
-              icon="/assets/ico-table.png"
-              label="Table Map"
-              onClick={handleTableMapClick}
-              isDarkMode={isDarkMode}
-              accentColor={accentColor}
-            />
+            {accountInfo?.accountType === "dev" && (
+              <ToolTile
+                icon="/assets/ico-table.png"
+                label="Table Map"
+                onClick={handleTableMapClick}
+                isDarkMode={isDarkMode}
+                accentColor={accentColor}
+              />
+            )}
             <ToolTile
               icon="/assets/ico-event.png"
               label="Event Program"
@@ -1867,8 +1870,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
               accentColor={accentColor}
             />
             <ToolTile
-              icon="/assets/ico-inf.png"
-              label="QR Codes"
+              icon="/assets/ico-download.svg"
+              label="Downloadables"
               onClick={handleQrCodesClick}
               isDarkMode={isDarkMode}
               accentColor={accentColor}

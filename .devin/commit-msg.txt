@@ -1,0 +1,15 @@
+feat: accountType integration, dev-only Table Map, login quota fix, empty src fix
+
+- Add accountType to WP REST API responses (invitation, access-code, signup)
+- Pass accountType through Next.js API routes and types
+- Display Account Type in SettingsEditor
+- Hide Screen Dimensions for non-dev accounts
+- Gate Table Map tile to dev accounts only in ToolsTab
+- Fix login failure for large invitations by clearing old cached
+  invitations and making cacheInvitation non-blocking (quota fix)
+- Fix empty src warning in MediaEditor img tags
+- Update download section subtitle copy
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>

@@ -16,6 +16,23 @@ export async function cacheInvitation(slug: string, invitation: Invitation): Pro
   await setStoredItem(`${CACHE_PREFIX}${slug}`, JSON.stringify(invitation));
 }
 
+/**
+ * Remove all cached invitations except the one for the given slug.
+ * Frees up localStorage space when switching accounts.
+ */
+export async function clearOldCachedInvitations(keepSlug: string): Promise<void> {
+  if (typeof localStorage === "undefined") return;
+  const keepKey = `${CACHE_PREFIX}${keepSlug}`;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(CACHE_PREFIX) && key !== keepKey) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+}
+
 export async function getCachedInvitation(slug: string): Promise<Invitation | null> {
   const raw = await getStoredItem(`${CACHE_PREFIX}${slug}`);
   if (!raw) return null;

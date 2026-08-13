@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Invitation } from "@/lib/types/invitation";
 import { setStoredItem } from "@/lib/utils/storage";
+import { clearOldCachedInvitations } from "@/lib/utils/offline-cache";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 import { apiUrl } from "@/lib/utils/api";
 
@@ -40,6 +41,7 @@ export default function EditorLogin({ onLogin, onTryDemo }: EditorLoginProps) {
 
       // Persist to native storage so login survives app restarts
       const { isDarkMode, accentColor, ...invitationData } = data.invitation.data;
+      await clearOldCachedInvitations(data.invitation.slug);
       await setStoredItem("invitation", JSON.stringify({ ...data.invitation, data: invitationData }));
       if (isDarkMode !== undefined || accentColor !== undefined) {
         localStorage.setItem("appSettings", JSON.stringify({

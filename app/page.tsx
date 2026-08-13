@@ -6,7 +6,7 @@ import type { Invitation } from "@/lib/types/invitation";
 import { getStoredItem, setStoredItem, removeStoredItem } from "@/lib/utils/storage";
 import { openSignup } from "@/lib/utils/signup";
 import { apiUrl } from "@/lib/utils/api";
-import { getCachedInvitation, getLastUsedSlug, setLastUsedSlug, cacheInvitation, isOnline } from "@/lib/utils/offline-cache";
+import { getCachedInvitation, getLastUsedSlug, setLastUsedSlug, cacheInvitation, clearOldCachedInvitations, isOnline } from "@/lib/utils/offline-cache";
 import HomePreviewStage from "@/components/home/HomePreviewStage";
 import { useSystemTheme } from "@/lib/hooks/useSystemTheme";
 
@@ -87,9 +87,16 @@ export default function Home() {
     const { isDarkMode, accentColor, ...invitationData } = inv.data;
     const invitationToStore = { ...inv, data: invitationData };
     console.log("[handleLogin] storing invitation, slug:", inv.slug);
+    // Clear old cached invitations to free up localStorage space
+    await clearOldCachedInvitations(inv.slug);
     await setStoredItem("invitation", JSON.stringify(invitationToStore));
     await setLastUsedSlug(inv.slug);
-    await cacheInvitation(inv.slug, inv);
+    // cacheInvitation is for offline support — don't let quota errors block login
+    try {
+      await cacheInvitation(inv.slug, inv);
+    } catch (e) {
+      console.warn("[handleLogin] cacheInvitation failed (likely quota), continuing:", e);
+    }
     console.log("[handleLogin] stored, lastUsedSlug set");
     localStorage.setItem("appSettings", JSON.stringify({
       isDarkMode: mode === "dark",

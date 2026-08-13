@@ -31,6 +31,7 @@ export interface WpInvitation {
   email?: string;
   createdAt?: string;
   expiresAt?: string;
+  accountType?: string;
 }
 
 async function wpFetch<T>(

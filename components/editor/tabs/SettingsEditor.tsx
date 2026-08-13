@@ -17,6 +17,7 @@ const hexToRgba = (hex: string, alpha: number): string => {
 interface AccountInfo {
   email: string;
   name: string;
+  accountType: string;
   createdAt: string;
   expiresAt: string;
 }
@@ -187,6 +188,10 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
                   <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.name || "—"}</span>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Account Type</span>
+                  <span className={`text-sm capitalize ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.accountType === "dev" ? "Dev" : "Client"}</span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className={`text-xs uppercase tracking-wide ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Created</span>
                   <span className={`text-sm ${isDarkMode ? "text-gray-200" : "text-gray-900"}`}>{accountInfo?.createdAt ? new Date(accountInfo.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "—"}</span>
                 </div>
@@ -328,7 +333,8 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
           )}
         </div>
 
-        {/* Screen Dimensions Toggle */}
+        {/* Screen Dimensions Toggle — Dev only */}
+        {accountInfo?.accountType === "dev" && (
         <div
           className={`border rounded-xl overflow-hidden transition-all duration-300`}
           onMouseEnter={() => setHoveredSection('screendim')}
@@ -362,6 +368,7 @@ export default function SettingsEditor({ data, onChange, isDarkMode = true, acce
             </button>
           </div>
         </div>
+        )}
 
         {/* Hide Instructions Toggle */}
         <div

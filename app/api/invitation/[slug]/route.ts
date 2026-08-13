@@ -21,6 +21,7 @@ const getInvitationBySlug = unstable_cache(
       templateId: invitation.templateId,
       eventType: invitation.eventType,
       clientName: invitation.clientName,
+      accountType: invitation.accountType,
       email: invitation.email,
       createdAt: invitation.createdAt,
       expiresAt: invitation.expiresAt,
