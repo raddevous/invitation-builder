@@ -12,6 +12,7 @@ import BudgetEditor from "./BudgetEditor";
 import TableMapEditor from "./TableMapEditor";
 import WeddingProgramEditor from "./WeddingProgramEditor";
 import StoryTimelineEditor from "./StoryTimelineEditor";
+import EaselEditor from "./EaselEditor";
 import { getFontFamily } from "@/lib/utils/fonts";
 import { buildInviteUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/utils/api";
@@ -113,14 +114,16 @@ function QrCodesPage({
   isDemoMode,
   page,
   onPageChange,
+  onOpenEasel,
   onBack,
 }: {
   isDarkMode: boolean;
   accentColor: string;
   slug: string;
   isDemoMode: boolean;
-  page: "list" | "invitation" | "find-seat";
-  onPageChange: (page: "list" | "invitation" | "find-seat") => void;
+  page: "list" | "invitation" | "find-seat" | "easel";
+  onPageChange: (page: "list" | "invitation" | "find-seat" | "easel") => void;
+  onOpenEasel: () => void;
   onBack: () => void;
 }) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -248,6 +251,7 @@ function QrCodesPage({
     const qrItems = [
       { id: "invitation" as const, label: "Invitation QR Code", desc: "Links to your invitation home page", icon: "M3 9h18M3 15h18M9 3v18M15 3v18" },
       { id: "find-seat" as const, label: "Find Your Seat QR Code", desc: "Links directly to the RSVP section", icon: "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" },
+      { id: "easel" as const, label: "Find Your Seat Easel", desc: "Design & print your reception easel display", icon: "M3 3h18v18H3z M9 21v-6h6v6" },
     ];
 
     return (
@@ -274,7 +278,7 @@ function QrCodesPage({
           {qrItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onPageChange(item.id)}
+              onClick={() => item.id === "easel" ? onOpenEasel() : onPageChange(item.id)}
               className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all text-left ${isDarkMode ? "bg-gray-700/50 hover:bg-gray-700" : "bg-gray-50 hover:bg-gray-100"}`}
               style={{ border: `1px solid ${hexToRgba(accentColor, 0.3)}` }}
             >
@@ -385,6 +389,7 @@ const FIELD_TO_SECTION: Record<string, string> = {
   weddingProgram: "Wedding Program",
   storyTimeline: "Story Timeline",
   venueLayout: "Table Map",
+  easelData: "Easel",
   budgetData: "Budget",
   checklistData: "Checklist",
   musicEnabled: "Settings", musicTrack: "Settings", musicVolume: "Settings", rsvpEnabled: "Settings", rsvpDeadline: "Settings", rsvpAllowPlusOne: "Settings", rsvpAskPlusOneName: "Settings", rsvpAllowKids: "Settings", rsvpAskMealPreference: "Settings", rsvpMealOptions: "Settings", rsvpCustomQuestions: "Settings", rsvpCollectPhone: "Settings", rsvpCollectAddress: "Settings", rsvpShowGuestCount: "Settings", rsvpButtonText: "Settings", rsvpSubmitMessage: "Settings", rsvpClosedMessage: "Settings",
@@ -412,7 +417,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   const [showStoryTimelineEditor, setShowStoryTimelineEditor] = useState(false);
   const [showEventDetails, setShowEventDetails] = useState(false);
   const [showQrCodes, setShowQrCodes] = useState(false);
-  const [qrCodePage, setQrCodePage] = useState<"list" | "invitation" | "find-seat">("list");
+  const [qrCodePage, setQrCodePage] = useState<"list" | "invitation" | "find-seat" | "easel">("list");
+  const [showEaselEditor, setShowEaselEditor] = useState(false);
   const [showAllReminders, setShowAllReminders] = useState(false);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -730,6 +736,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
   useBackHandler(showChecklistEditor, () => setShowChecklistEditor(false));
   useBackHandler(showBudgetEditor, () => setShowBudgetEditor(false));
   useBackHandler(showTableMapEditor, () => setShowTableMapEditor(false));
+  useBackHandler(showEaselEditor, () => setShowEaselEditor(false));
   useBackHandler(showWeddingProgramEditor, () => setShowWeddingProgramEditor(false));
   useBackHandler(showStoryTimelineEditor, () => setShowStoryTimelineEditor(false));
   useBackHandler(showEventDetails, () => setShowEventDetails(false));
@@ -804,6 +811,8 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     if (userSections.has("Story Timeline") && JSON.stringify(data.storyTimeline) !== JSON.stringify(snapshot.storyTimeline)) sections.push("Story Timeline");
     // Table Map
     if (userSections.has("Table Map") && JSON.stringify(data.venueLayout) !== JSON.stringify(snapshot.venueLayout)) sections.push("Table Map");
+    // Easel
+    if (userSections.has("Easel") && JSON.stringify(data.easelData) !== JSON.stringify(snapshot.easelData)) sections.push("Easel");
     // Budget
     if (userSections.has("Budget") && JSON.stringify(data.budgetData) !== JSON.stringify(snapshot.budgetData)) sections.push("Budget");
     // Checklist
@@ -1109,6 +1118,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDemoMode={isDemoMode}
         page={qrCodePage}
         onPageChange={setQrCodePage}
+        onOpenEasel={() => { setShowEaselEditor(true); }}
         onBack={() => { setShowQrCodes(false); setQrCodePage("list"); }}
       />
     );
@@ -1334,6 +1344,21 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowTableMapEditor(false)}
+      />
+    );
+  }
+
+  if (showEaselEditor) {
+    return (
+      <EaselEditor
+        data={data}
+        onChange={guardedOnChange}
+        onImmediateSave={onSave}
+        isDarkMode={isDarkMode}
+        accentColor={accentColor}
+        slug={slug}
+        isDemoMode={isDemoMode}
+        onClose={() => { setShowEaselEditor(false); setShowQrCodes(true); setQrCodePage("list"); }}
       />
     );
   }

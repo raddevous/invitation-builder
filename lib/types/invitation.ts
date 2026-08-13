@@ -85,6 +85,36 @@ export interface ChecklistContainer {
   isExpanded?: boolean;
 }
 
+export interface EaselElement {
+  id: string;
+  type: "text" | "qr" | "image";
+  // Position as percentage of tarp container (0-100)
+  x: number;
+  y: number;
+  // Size as percentage of tarp container (0-100)
+  width?: number;
+  height?: number;
+  rotation?: number;
+  zIndex?: number;
+  // Text-specific
+  text?: string;
+  fontFamily?: string;
+  fontSize?: number; // in pt, relative to print size
+  color?: string;
+  textAlign?: "left" | "center" | "right";
+  fontWeight?: string;
+  // QR-specific
+  qrUrl?: string;
+  // Image-specific
+  imageUrl?: string;
+}
+
+export interface EaselData {
+  elements: EaselElement[];
+  // Tarp background color (default white)
+  backgroundColor?: string;
+}
+
 export interface InvitationData {
   nameType: "couple" | "event";
   coupleName: string;
@@ -829,6 +859,7 @@ export interface InvitationData {
   };
   budgetData?: BudgetContainer[];
   checklistData?: ChecklistContainer[];
+  easelData?: EaselData;
 }
 
 export interface Invitation {
