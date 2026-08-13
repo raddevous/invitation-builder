@@ -1,14 +1,8 @@
-feat: Find Your Seat Easel editor in Downloadables
+fix: easel editor not opening — move check before showQrCodes
 
-- New EaselEditor component with easel background + centered white tarp
-- Free-form drag elements: text, RSVP QR code, image upload
-- Properties panel for editing text font/size/color/alignment, QR URL,
-  image replacement, position, size, and layer order
-- PDF export at 2ft x 3ft portrait (tarp only, no easel background)
-- Persisted to invitation data via easelData field
-- Added to Downloadables list alongside existing QR code items
-- Available to all accounts including demo
-- Added jspdf dependency for PDF generation
+The showEaselEditor check was after showQrCodes, so the QrCodesPage
+kept rendering. Now showEaselEditor is checked first, and onOpenEasel
+also clears showQrCodes to avoid conflict.
 
 Generated with [Devin](https://devin.ai)
 

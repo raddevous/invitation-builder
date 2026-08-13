@@ -1109,6 +1109,21 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
     setQrCodePage("list");
   };
 
+  if (showEaselEditor) {
+    return (
+      <EaselEditor
+        data={data}
+        onChange={guardedOnChange}
+        onImmediateSave={onSave}
+        isDarkMode={isDarkMode}
+        accentColor={accentColor}
+        slug={slug}
+        isDemoMode={isDemoMode}
+        onClose={() => { setShowEaselEditor(false); setShowQrCodes(true); setQrCodePage("list"); }}
+      />
+    );
+  }
+
   if (showQrCodes) {
     return (
       <QrCodesPage
@@ -1118,7 +1133,7 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDemoMode={isDemoMode}
         page={qrCodePage}
         onPageChange={setQrCodePage}
-        onOpenEasel={() => { setShowEaselEditor(true); }}
+        onOpenEasel={() => { setShowQrCodes(false); setShowEaselEditor(true); }}
         onBack={() => { setShowQrCodes(false); setQrCodePage("list"); }}
       />
     );
@@ -1344,21 +1359,6 @@ export default function ToolsTab({ data, slug, invitationId, onChange, isDarkMod
         isDarkMode={isDarkMode}
         accentColor={accentColor}
         onClose={() => setShowTableMapEditor(false)}
-      />
-    );
-  }
-
-  if (showEaselEditor) {
-    return (
-      <EaselEditor
-        data={data}
-        onChange={guardedOnChange}
-        onImmediateSave={onSave}
-        isDarkMode={isDarkMode}
-        accentColor={accentColor}
-        slug={slug}
-        isDemoMode={isDemoMode}
-        onClose={() => { setShowEaselEditor(false); setShowQrCodes(true); setQrCodePage("list"); }}
       />
     );
   }

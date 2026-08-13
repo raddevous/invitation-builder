@@ -87,7 +87,7 @@ export interface ChecklistContainer {
 
 export interface EaselElement {
   id: string;
-  type: "text" | "qr" | "image";
+  type: "text" | "qr" | "image" | "celebrant-name" | "date" | "location" | "background";
   // Position as percentage of tarp container (0-100)
   x: number;
   y: number;
@@ -107,6 +107,17 @@ export interface EaselElement {
   qrUrl?: string;
   // Image-specific
   imageUrl?: string;
+  // Background-specific
+  opacity?: number; // 0-100
+  // Date-specific
+  dateStructure?: "default" | "alternative" | "icon" | "elegant" | "modern" | "huge";
+  // Scale for text-like elements (percentage, default 100)
+  scale?: number;
+  // Celebrant name-specific (ampersand styling)
+  ampersandTypography?: string;
+  ampersandPosition?: "default" | "first-line" | "middle-line" | "second-line";
+  ampersandOpacity?: number; // -20 to 100
+  reverseNames?: boolean;
 }
 
 export interface EaselData {

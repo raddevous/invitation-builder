@@ -784,4 +784,6 @@ input[type="range"]:disabled::-moz-range-thumb {
     align-items: center !important;
     justify-content: center !important;
   }
+
+  /* Easel tarp print styles are injected dynamically by EaselEditor handleExportPDF */
 }
