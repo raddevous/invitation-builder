@@ -198,7 +198,15 @@ export const demoInvitationData: InvitationData = {
   "rsvpGuestNameStyle": 0,
   "rsvpHeaderFontSize": 100,
   "rsvpHeaderFontSizeMobile": 100,
-  "dressCodeCategories": [],
+  "dressCodeCategories": [
+    {
+      label: "Bride & Groom",
+      imageSet: "set0",
+      colors: {},
+      accentVariant: "",
+      accentColor: ""
+    }
+  ],
   "eventDetailsDivider": "none",
   "eventDetailsHeading": "Event Details",
   "eventDetailsMessage": "We would be delighted to have you join us",
@@ -227,6 +235,7 @@ export const demoInvitationData: InvitationData = {
   "dresscodeBodyFontSize": 100,
   "dresscodeBodyFontSizeMobile": 100,
   "dresscodeHeadingColor": "#5c4a3a",
+  "dresscodeShowGrid": true,
   "dresscodeUseMainColor": true,
   "entourageHeadingColor": "#5c4a3a",
   "entourageTopTextColor": "#8a6252",

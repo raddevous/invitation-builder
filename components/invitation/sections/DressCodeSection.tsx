@@ -35,8 +35,22 @@ interface DressCodeImageSet {
 }
 
 const DRESS_CODE_IMAGE_SETS: Record<string, DressCodeImageSet> = {
+  set0: {
+    name: "Suit & Gown",
+    images: [
+      { id: "set0-o", filename: "dcode0-o.png", clickable: true },
+      { id: "set0-w", filename: "dcode0-w.png", clickable: false },
+      { id: "set0-m", filename: "dcode0-m.png", clickable: false },
+      { id: "set0-d", filename: "dcode0-d.png", clickable: false },
+    ],
+    tintableImages: ["set0-m", "set0-w"],
+    accentImages: [
+      { variant: "a1", label: "Neck Tie", image: { id: "set0-a1", filename: "dcode0-a1.png", clickable: false } },
+      { variant: "a2", label: "Bow Tie", image: { id: "set0-a2", filename: "dcode0-a2.png", clickable: false } },
+    ],
+  },
   visitors: {
-    name: "Traditional Formal",
+    name: "Traditional Formal (Pair of 2)",
     images: [
       { id: "vis-o", filename: "dcode-o.png", clickable: true },
       { id: "vis-w2", filename: "dcode-w2.png", clickable: false },
@@ -58,7 +72,7 @@ const DRESS_CODE_IMAGE_SETS: Record<string, DressCodeImageSet> = {
     tintableImages: ["set2-m", "set2-w"],
   },
   set3: {
-    name: "Business Suit & Dress A",
+    name: "Suit & Dress A",
     images: [
       { id: "set3-o", filename: "dcode3-o.png", clickable: true },
       { id: "set3-w", filename: "dcode3-w.png", clickable: false },
@@ -68,7 +82,7 @@ const DRESS_CODE_IMAGE_SETS: Record<string, DressCodeImageSet> = {
     tintableImages: ["set3-m", "set3-w"],
   },
   set4: {
-    name: "Business Suit & Dress B",
+    name: "Suit & Dress B",
     images: [
       { id: "set4-o", filename: "dcode4-o.png", clickable: true },
       { id: "set4-w", filename: "dcode4-w.png", clickable: false },
@@ -107,13 +121,12 @@ const DRESS_CODE_IMAGE_SETS: Record<string, DressCodeImageSet> = {
     ],
     tintableImages: ["set7-m", "set7-w"],
     accentImages: [
-      { variant: "none", label: "No Tie", image: { id: "set7-none", filename: "", clickable: false } },
       { variant: "a1", label: "Neck Tie", image: { id: "set7-a1", filename: "dcode7-a1.png", clickable: false } },
       { variant: "a2", label: "Bow Tie", image: { id: "set7-a2", filename: "dcode7-a2.png", clickable: false } },
     ],
   },
   set8: {
-    name: "Shirt Dress and Barong & Dress",
+    name: "Shirt Dress & Barong (Pair of 2)",
     images: [
       { id: "set8-o", filename: "dcode8-o.png", clickable: true },
       { id: "set8-w2", filename: "dcode8-w2.png", clickable: false },
@@ -124,13 +137,12 @@ const DRESS_CODE_IMAGE_SETS: Record<string, DressCodeImageSet> = {
     ],
     tintableImages: ["set8-m1", "set8-w1", "set8-m2", "set8-w2"],
     accentImages: [
-      { variant: "none", label: "No Tie", image: { id: "set8-none", filename: "", clickable: false } },
       { variant: "a1", label: "Neck Tie", image: { id: "set8-a1", filename: "dcode8-a1.png", clickable: false } },
       { variant: "a2", label: "Bow Tie", image: { id: "set8-a2", filename: "dcode8-a2.png", clickable: false } },
     ],
   },
   set9: {
-    name: "Shirt Dress (Pair of 2)",
+    name: "Shirt & Dress (Pair of 2)",
     images: [
       { id: "set9-o", filename: "dcode9-o.png", clickable: true },
       { id: "set9-w2", filename: "dcode9-w2.png", clickable: false },
@@ -141,27 +153,97 @@ const DRESS_CODE_IMAGE_SETS: Record<string, DressCodeImageSet> = {
     ],
     tintableImages: ["set9-m1", "set9-w1", "set9-m2", "set9-w2"],
     accentImages: [
-      { variant: "none", label: "No Tie", image: { id: "set9-none", filename: "", clickable: false } },
       { variant: "a1", label: "Neck Tie", image: { id: "set9-a1", filename: "dcode9-a1.png", clickable: false } },
       { variant: "a2", label: "Bow Tie", image: { id: "set9-a2", filename: "dcode9-a2.png", clickable: false } },
       { variant: "a3", label: "Bow Tie & Neck Tie", image: { id: "set9-a3", filename: "dcode9-a3.png", clickable: false } },
     ],
   },
+  set10: {
+    name: "Suit & Long Dress A",
+    images: [
+      { id: "set10-o", filename: "dcode10-o.png", clickable: true },
+      { id: "set10-w", filename: "dcode10-w.png", clickable: false },
+      { id: "set10-m", filename: "dcode10-m.png", clickable: false },
+      { id: "set10-d", filename: "dcode10-d.png", clickable: false },
+    ],
+    tintableImages: ["set10-m", "set10-w"],
+    accentImages: [
+      { variant: "a1", label: "Neck Tie", image: { id: "set10-a1", filename: "dcode10-a1.png", clickable: false } },
+      { variant: "a2", label: "Bow Tie", image: { id: "set10-a2", filename: "dcode10-a2.png", clickable: false } },
+    ],
+  },
+  set11: {
+    name: "Suit & Long Dress B",
+    images: [
+      { id: "set11-o", filename: "dcode11-o.png", clickable: true },
+      { id: "set11-w", filename: "dcode11-w.png", clickable: false },
+      { id: "set11-m", filename: "dcode11-m.png", clickable: false },
+      { id: "set11-d", filename: "dcode11-d.png", clickable: false },
+    ],
+    tintableImages: ["set11-m", "set11-w"],
+    accentImages: [
+      { variant: "a1", label: "Neck Tie", image: { id: "set11-a1", filename: "dcode11-a1.png", clickable: false } },
+      { variant: "a2", label: "Bow Tie", image: { id: "set11-a2", filename: "dcode11-a2.png", clickable: false } },
+    ],
+  },
+  set12: {
+    name: "Suit & Long Dress (Pair of 2)",
+    images: [
+      { id: "set12-o", filename: "dcode12-o.png", clickable: true },
+      { id: "set12-w2", filename: "dcode12-w2.png", clickable: false },
+      { id: "set12-w1", filename: "dcode12-w1.png", clickable: false },
+      { id: "set12-m2", filename: "dcode12-m2.png", clickable: false },
+      { id: "set12-m1", filename: "dcode12-m1.png", clickable: false },
+      { id: "set12-d", filename: "dcode12-d.png", clickable: false },
+    ],
+    tintableImages: ["set12-m1", "set12-w1", "set12-m2", "set12-w2"],
+    accentImages: [
+      { variant: "a1", label: "Neck Tie", image: { id: "set12-a1", filename: "dcode12-a1.png", clickable: false } },
+      { variant: "a2", label: "Bow Tie", image: { id: "set12-a2", filename: "dcode12-a2.png", clickable: false } },
+      { variant: "a3", label: "Bow Tie & Neck Tie", image: { id: "set12-a3", filename: "dcode12-a3.png", clickable: false } },
+    ],
+  },
 };
+
+// Ordered dress code sets by category for dropdown
+const DRESS_CODE_SETS_ORDERED: Array<{ key: string; isDivider?: boolean }> = [
+  { key: "set0" },
+  { key: "divider1", isDivider: true },
+  { key: "set6" },
+  { key: "divider2", isDivider: true },
+  { key: "set7" },
+  { key: "divider3", isDivider: true },
+  { key: "set3" },
+  { key: "set4" },
+  { key: "set10" },
+  { key: "set11" },
+  { key: "set2" },
+  { key: "set5" },
+  { key: "divider4", isDivider: true },
+  { key: "set8" },
+  { key: "set9" },
+  { key: "set12" },
+  { key: "visitors" },
+];
 
 export default function DressCodeSection({ data, desktopMode = false, panelPosition = "left", onChange, editMode = false }: DressCodeSectionProps) {
   if (!data.sections.dresscode) return null;
 
   const { isDarkMode, accentColor } = useTheme();
-  const categories = data.dressCodeCategories || [];
+  let categories = data.dressCodeCategories || [];
 
-  if (categories.length === 0) return null;
+  // Ensure Bride & Groom is always the first category
+  if (categories.length === 0) {
+    categories = [{ label: "Bride & Groom", imageSet: "set0", colors: {}, accentVariant: "", accentColor: "" }];
+  } else if (categories[0].label !== "Bride & Groom") {
+    categories = [{ label: "Bride & Groom", imageSet: "set0", colors: {}, accentVariant: "", accentColor: "" }, ...categories];
+  }
 
   const [selectedImage, setSelectedImage] = useState<{ categoryIndex: number; imageId: string } | null>(null);
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [isClosing, setIsClosing] = useState(false);
-  const [selectedImageSet, setSelectedImageSet] = useState<string>("visitors");
-  const [selectedAccentVariant, setSelectedAccentVariant] = useState<string>("a1");
+  const [selectedImageSet, setSelectedImageSet] = useState<string>("set0");
+  const [selectedAccentVariant, setSelectedAccentVariant] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
   const [showTypographyPanel, setShowTypographyPanel] = useState(false);
@@ -180,6 +262,13 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
   const [gridVisible, setGridVisible] = useState(false);
   const gridSectionRef = useRef<HTMLDivElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    // Auto-show slideshow if dresscodeShowGrid is false and there are categories
+    if (!(data.dresscodeShowGrid ?? true) && categories.length > 0 && !showSlideshow) {
+      setShowSlideshow(true);
+    }
+  }, [data.dresscodeShowGrid, categories.length, showSlideshow]);
 
   useEffect(() => {
     if (showSlideshow) return;
@@ -366,8 +455,8 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
   const handleImageSetChange = (newImageSet: string) => {
     setSelectedImageSet(newImageSet);
     const newImageSetData = DRESS_CODE_IMAGE_SETS[newImageSet];
-    // Reset accent variant to a1 when switching to a set with accent images, or clear it
-    const defaultAccent = newImageSetData.accentImages ? newImageSetData.accentImages[0].variant : "a1";
+    // Default to a1 (Neck Tie) when switching to a set with accent images, otherwise clear
+    const defaultAccent = newImageSetData.accentImages ? "a1" : "";
     setSelectedAccentVariant(defaultAccent);
     if (selectedImage && onChange) {
       const categoryIndex = selectedImage.categoryIndex;
@@ -417,9 +506,9 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
 
   const handleImageClick = (categoryIndex: number, imageId: string) => {
     const category = categories[categoryIndex];
-    const imgSetKey = (category as any).imageSet || "visitors";
+    const imgSetKey = (category as any).imageSet || "set0";
     setSelectedImageSet(imgSetKey);
-    const accentVariant = (category as any).accentVariant || "none";
+    const accentVariant = (category as any).accentVariant || "";
     setSelectedAccentVariant(accentVariant);
     setSelectedImage({ categoryIndex, imageId });
     
@@ -599,8 +688,8 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         colors: colorsObject,
       };
       
-      // Save accent variant and accent color if the set has accent images
-      if (imageSet.accentImages) {
+      // Save accent variant and accent color if the set has accent images and a variant is selected
+      if (imageSet.accentImages && selectedAccentVariant) {
         update.accentVariant = selectedAccentVariant;
         const accentPrefix = selectedImageSet; // e.g. "set7" or "set8"
         const accentImgId = `${accentPrefix}-${selectedAccentVariant}`;
@@ -848,27 +937,45 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         </span>
       </div>
 
-      {/* Dress Code Grid View (default) */}
-      {!showSlideshow && (
+      {/* Dress Code Grid View (shown when showSlideshow is false and dresscodeShowGrid is true) */}
+      {!showSlideshow && (mergedData.dresscodeShowGrid ?? true) && (
         <div ref={gridSectionRef}>
         <div ref={gridScrollRef} className="dc-grid-scroll mt-8 w-full overflow-x-auto" style={{ touchAction: 'pan-x', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none', textAlign: 'center' }}>
           <div className="inline-block w-max" style={{ margin: '0 auto' }}>
             <div className="flex flex-row items-end">
             {(() => {
-              const GRID_LABELS_LEFT = ["Guests", "Immediate Family", "Usher and Usherettes", "Entourage"];
-              const GRID_LABELS_RIGHT = ["Entourage", "Usher and Usherettes", "Immediate Family", "Guests"];
+              const GRID_LABELS_LEFT = ["Bride & Groom", "Guests", "Immediate Family", "Usher and Usherettes", "Entourage"];
+              const GRID_LABELS_RIGHT = ["Bride & Groom", "Entourage", "Usher and Usherettes", "Immediate Family", "Guests"];
+
+              // Filter grid labels to only show categories that exist
+              const existingCategories = categories.map((cat, idx) => {
+                if (idx === 0) return "Bride & Groom";
+                return cat.label === "Custom Category" ? (cat as any).customLabel : cat.label;
+              });
+
+              const filterGridLabels = (labels: string[]): string[] => {
+                return labels.filter(label => existingCategories.includes(label));
+              };
+
+              const GRID_LABELS_LEFT_FILTERED = filterGridLabels(GRID_LABELS_LEFT);
+              const GRID_LABELS_RIGHT_FILTERED = filterGridLabels(GRID_LABELS_RIGHT);
 
               const findCategoryIndex = (label: string): number => {
-                return categories.findIndex(cat =>
-                  cat.label === label ||
-                  (cat.label === "Custom Category" && (cat as any).customLabel === label)
-                );
+                if (label === "Bride & Groom") return 0;
+                // Search in categories array (starting from index 1 since 0 is Bride & Groom)
+                for (let i = 1; i < categories.length; i++) {
+                  const cat = categories[i];
+                  if (cat.label === label || (cat.label === "Custom Category" && (cat as any).customLabel === label)) {
+                    return i;
+                  }
+                }
+                return -1;
               };
 
               const getOutlineFilename = (catIndex: number): string | null => {
                 const category = categories[catIndex];
                 if (!category) return null;
-                const imageSetKey = (category as any).imageSet || "visitors";
+                const imageSetKey = (category as any).imageSet || "set0";
                 const imageSet = DRESS_CODE_IMAGE_SETS[imageSetKey];
                 if (!imageSet) return null;
                 const outlineImage = imageSet.images.find(img => img.clickable);
@@ -877,13 +984,13 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
 
               const renderGridCell = (label: string, flipped: boolean, keySuffix: string, animationDelay: number) => {
                 const catIndex = findCategoryIndex(label);
-                if (catIndex === -1) return <div key={`${label}-${keySuffix}`} className="flex-shrink-0 w-[60px] md:w-[100px]" />;
+                if (catIndex === -1 || catIndex >= categories.length) return <div key={`${label}-${keySuffix}`} className="flex-shrink-0 w-[60px] md:w-[100px]" />;
                 const category = categories[catIndex];
-                const imageSetKey = (category as any).imageSet || "visitors";
+                const imageSetKey = (category as any).imageSet || "set0";
                 const imageSet = DRESS_CODE_IMAGE_SETS[imageSetKey];
                 if (!imageSet) return <div key={`${label}-${keySuffix}`} className="flex-shrink-0 w-[60px] md:w-[100px]" />;
                 const categoryColors = (category as any).colors;
-                const accentVariant = (category as any).accentVariant || "none";
+                const accentVariant = (category as any).accentVariant || "";
                 const accentColor = (category as any).accentColor || "";
                 const accentData = imageSet.accentImages?.find(a => a.variant === accentVariant);
 
@@ -900,11 +1007,13 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                       opacity: gridVisible ? undefined : 0,
                     }}
                     onClick={() => {
-                      setCurrentPage(catIndex);
-                      setShowSlideshow(true);
-                      const outlineImage = imageSet.images.find(img => img.clickable);
-                      if (editMode && outlineImage) {
-                        handleImageClick(catIndex, outlineImage.id);
+                      if (categories.length > 0) {
+                        setCurrentPage(catIndex);
+                        setShowSlideshow(true);
+                        const outlineImage = imageSet.images.find(img => img.clickable);
+                        if (editMode && outlineImage) {
+                          handleImageClick(catIndex, outlineImage.id);
+                        }
                       }
                     }}
                   >
@@ -986,7 +1095,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
 
               return (
                 <>
-                  {GRID_LABELS_LEFT.map((label, i) => renderGridCell(label, true, "left", 0.8 - i * 0.2))}
+                  {GRID_LABELS_LEFT_FILTERED.map((label, i) => renderGridCell(label, true, "left", 0.6 - i * 0.1))}
                   {/* Bride & Groom center */}
                   <div className="flex-shrink-0" style={{ animationName: gridVisible ? 'dc-grid-slide-fade' : 'none', animationDuration: '0.5s', animationTimingFunction: 'ease-out', animationFillMode: 'both', animationDelay: '0s', opacity: gridVisible ? undefined : 0 }}
                     onClick={() => {
@@ -995,7 +1104,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                         setShowSlideshow(true);
                         if (editMode) {
                           const firstCat = categories[0];
-                          const imageSetKey = (firstCat as any).imageSet || "visitors";
+                          const imageSetKey = (firstCat as any).imageSet || "set0";
                           const imageSet = DRESS_CODE_IMAGE_SETS[imageSetKey];
                           const outlineImage = imageSet?.images.find(img => img.clickable);
                           if (outlineImage) {
@@ -1006,81 +1115,155 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                     }}
                   >
                     <div className="relative h-[80px] md:h-[180px]">
-                      {/* Outline (dcode-oA) */}
-                      <div className="relative h-full" style={{ zIndex: 1 }}>
-                        <img
-                          src="/assets/dcodem/dcode-oA.png"
-                          alt="Outline"
-                          className="h-full w-auto object-contain"
-                          draggable={false}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                      </div>
-                      {/* Dress (dcode-dA) */}
-                      <div className="absolute inset-0" style={{ zIndex: 2 }}>
-                        <img
-                          src="/assets/dcodem/dcode-dA.png"
-                          alt="Dress"
-                          className="h-full w-auto object-contain"
-                          draggable={false}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                      </div>
-                      {/* Groom (dcode-mA) */}
-                      <div className="absolute inset-0" style={{ zIndex: 3 }}>
-                        <img
-                          src="/assets/dcodem/dcode-mA.png"
-                          alt="Groom"
-                          className="h-full w-auto object-contain"
-                          draggable={false}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                        {(mergedData as any).groomColor && (
-                          <div
-                            className="absolute inset-0 pointer-events-none"
-                            style={{
-                              backgroundColor: (mergedData as any).groomColor,
-                              WebkitMaskImage: 'url(/assets/dcodem/dcode-mA.png)',
-                              WebkitMaskSize: 'contain',
-                              WebkitMaskRepeat: 'no-repeat',
-                              WebkitMaskPosition: 'center',
-                              maskImage: 'url(/assets/dcodem/dcode-mA.png)',
-                              maskSize: 'contain',
-                              maskRepeat: 'no-repeat',
-                              maskPosition: 'center',
-                            }}
-                          />
-                        )}
-                      </div>
-                      {/* Bride (dcode-wA) */}
-                      <div className="absolute inset-0" style={{ zIndex: 4 }}>
-                        <img
-                          src="/assets/dcodem/dcode-wA.png"
-                          alt="Bride"
-                          className="h-full w-auto object-contain"
-                          draggable={false}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                        {((mergedData as any).brideColor || '#FFFFFF') && (
-                          <div
-                            className="absolute inset-0 pointer-events-none"
-                            style={{
-                              backgroundColor: (mergedData as any).brideColor || '#FFFFFF',
-                              WebkitMaskImage: 'url(/assets/dcodem/dcode-wA.png)',
-                              WebkitMaskSize: 'contain',
-                              WebkitMaskRepeat: 'no-repeat',
-                              WebkitMaskPosition: 'center',
-                              maskImage: 'url(/assets/dcodem/dcode-wA.png)',
-                              maskSize: 'contain',
-                              maskRepeat: 'no-repeat',
-                              maskPosition: 'center',
-                            }}
-                          />
-                        )}
-                      </div>
+                      {(() => {
+                        const firstCat = categories[0];
+                        if (!firstCat) return null;
+                        const imageSetKey = (firstCat as any).imageSet || "set0";
+                        const imageSet = DRESS_CODE_IMAGE_SETS[imageSetKey];
+                        const categoryColors = (firstCat as any).colors || {};
+                        const accentVariant = (firstCat as any).accentVariant || "";
+                        const accentColor = (firstCat as any).accentColor || "";
+
+                        return (
+                          <>
+                            {/* Outline */}
+                            <div className="relative h-full" style={{ zIndex: 1 }}>
+                              <img
+                                src={`/assets/dcodem/${imageSet.images.find(img => img.clickable)?.filename || "dcode0-o.png"}`}
+                                alt="Outline"
+                                className="h-full w-auto object-contain"
+                                draggable={false}
+                                onContextMenu={(e) => e.preventDefault()}
+                              />
+                            </div>
+                            {/* Dress */}
+                            <div className="absolute inset-0" style={{ zIndex: 2 }}>
+                              <img
+                                src={`/assets/dcodem/${imageSet.images.find(img => img.id.includes("-d"))?.filename || "dcode0-d.png"}`}
+                                alt="Dress"
+                                className="h-full w-auto object-contain"
+                                draggable={false}
+                                onContextMenu={(e) => e.preventDefault()}
+                              />
+                              {typeof categoryColors === 'object' && !Array.isArray(categoryColors) && categoryColors[imageSet.images.find(img => img.id.includes("-d"))?.id || ""] && (
+                                <div
+                                  className="absolute inset-0 pointer-events-none"
+                                  style={{
+                                    backgroundColor: categoryColors[imageSet.images.find(img => img.id.includes("-d"))?.id || ""],
+                                    WebkitMaskImage: `url(/assets/dcodem/${imageSet.images.find(img => img.id.includes("-d"))?.filename || "dcode0-d.png"})`,
+                                    WebkitMaskSize: 'contain',
+                                    WebkitMaskRepeat: 'no-repeat',
+                                    WebkitMaskPosition: 'center',
+                                    maskImage: `url(/assets/dcodem/${imageSet.images.find(img => img.id.includes("-d"))?.filename || "dcode0-d.png"})`,
+                                    maskSize: 'contain',
+                                    maskRepeat: 'no-repeat',
+                                    maskPosition: 'center',
+                                  }}
+                                />
+                              )}
+                            </div>
+                            {/* Male(s) */}
+                            {imageSet.images.filter(img => img.id.includes("-m")).reverse().map((image, idx) => {
+                              const colorKey = image.id;
+                              const savedColor = typeof categoryColors === 'object' && !Array.isArray(categoryColors) ? categoryColors[colorKey] : "";
+                              return (
+                                <div key={image.id} className="absolute inset-0" style={{ zIndex: 3 + idx }}>
+                                  <img
+                                    src={`/assets/dcodem/${image.filename}`}
+                                    alt={image.id}
+                                    className="h-full w-auto object-contain"
+                                    draggable={false}
+                                    onContextMenu={(e) => e.preventDefault()}
+                                  />
+                                  {savedColor && (
+                                    <div
+                                      className="absolute inset-0 pointer-events-none"
+                                      style={{
+                                        backgroundColor: savedColor,
+                                        WebkitMaskImage: `url(/assets/dcodem/${image.filename})`,
+                                        WebkitMaskSize: 'contain',
+                                        WebkitMaskRepeat: 'no-repeat',
+                                        WebkitMaskPosition: 'center',
+                                        maskImage: `url(/assets/dcodem/${image.filename})`,
+                                        maskSize: 'contain',
+                                        maskRepeat: 'no-repeat',
+                                        maskPosition: 'center',
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {/* Female(s) */}
+                            {imageSet.images.filter(img => img.id.includes("-w")).reverse().map((image, idx) => {
+                              const colorKey = image.id;
+                              const savedColor = typeof categoryColors === 'object' && !Array.isArray(categoryColors) ? categoryColors[colorKey] : "";
+                              return (
+                                <div key={image.id} className="absolute inset-0" style={{ zIndex: 6 + idx }}>
+                                  <img
+                                    src={`/assets/dcodem/${image.filename}`}
+                                    alt={image.id}
+                                    className="h-full w-auto object-contain"
+                                    draggable={false}
+                                    onContextMenu={(e) => e.preventDefault()}
+                                  />
+                                  {savedColor && (
+                                    <div
+                                      className="absolute inset-0 pointer-events-none"
+                                      style={{
+                                        backgroundColor: savedColor,
+                                        WebkitMaskImage: `url(/assets/dcodem/${image.filename})`,
+                                        WebkitMaskSize: 'contain',
+                                        WebkitMaskRepeat: 'no-repeat',
+                                        WebkitMaskPosition: 'center',
+                                        maskImage: `url(/assets/dcodem/${image.filename})`,
+                                        maskSize: 'contain',
+                                        maskRepeat: 'no-repeat',
+                                        maskPosition: 'center',
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {/* Accent/Tie */}
+                            {imageSet.accentImages && accentVariant && (() => {
+                              const accentData = imageSet.accentImages.find(a => a.variant === accentVariant);
+                              if (!accentData || !accentData.image.filename) return null;
+                              return (
+                                <div className="absolute inset-0" style={{ zIndex: 10 }}>
+                                  <img
+                                    src={`/assets/dcodem/${accentData.image.filename}`}
+                                    alt="Accent"
+                                    className="h-full w-auto object-contain"
+                                    draggable={false}
+                                    onContextMenu={(e) => e.preventDefault()}
+                                  />
+                                  {accentColor && (
+                                    <div
+                                      className="absolute inset-0 pointer-events-none"
+                                      style={{
+                                        backgroundColor: accentColor,
+                                        WebkitMaskImage: `url(/assets/dcodem/${accentData.image.filename})`,
+                                        WebkitMaskSize: 'contain',
+                                        WebkitMaskRepeat: 'no-repeat',
+                                        WebkitMaskPosition: 'center',
+                                        maskImage: `url(/assets/dcodem/${accentData.image.filename})`,
+                                        maskSize: 'contain',
+                                        maskRepeat: 'no-repeat',
+                                        maskPosition: 'center',
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
-                  {GRID_LABELS_RIGHT.map((label, i) => renderGridCell(label, false, "right", 0.1 + i * 0.2))}
+                  {GRID_LABELS_RIGHT_FILTERED.map((label, i) => renderGridCell(label, false, "right", 0.1 + i * 0.1))}
                 </>
               );
             })()}
@@ -1090,14 +1273,27 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         </div>
       )}
 
-      {/* Categories as carousel (shown when slideshow is active) */}
-      {showSlideshow && (
+      {/* Categories as carousel (shown when slideshow is active OR dresscodeShowGrid is false) */}
+      {(showSlideshow || !(mergedData.dresscodeShowGrid ?? true)) && (
       <div className="max-w-2xl mx-auto">
         <div>
           {currentCategories.map((category, pageIndex) => {
             const categoryIndex = startIndex + pageIndex;
+            const categoryLabel = categoryIndex === 0 ? "Bride & Groom" : (category as any).label || (category as any).customLabel || "";
             return (
               <div key={categoryIndex} className="pb-0 md:pb-8">
+                {/* Category label */}
+                <div className="text-center mb-4">
+                  <p
+                    className="text-sm font-medium"
+                    style={{
+                      color: mergedData.dresscodeUseMainColor !== false ? data.neutralColor1 : (mergedData.dresscodeHeadingColor || data.neutralColor1),
+                      fontFamily: `${mergedData.bodyFont}, serif`,
+                    }}
+                  >
+                    {categoryLabel}
+                  </p>
+                </div>
                 {/* Image container with side arrows and bottom pagination */}
                 <div className="flex flex-col items-center mt-8 relative">
                   {/* Previous button - overlay */}
@@ -1112,7 +1308,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                   )}
 
                   {/* Image stack for category with image set */}
-                  {((category as any).imageSet || "visitors") && (
+                  {((category as any).imageSet || "set0") && (
                       <div
                       key={`${categoryIndex}-${slideDirection}`}
                       className={`relative overflow-hidden w-full max-w-[650px] aspect-[29/23] max-h-[400px] mx-auto ${slideDirection === "left" ? "animate-image-slide-glow-left" : slideDirection === "right" ? "animate-image-slide-glow-right" : ""}`}
@@ -1128,10 +1324,10 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                         }
                       } : undefined}
                     >
-                        {DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "visitors"].images.map((image, imageIndex) => {
+                        {DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "set0"].images.map((image, imageIndex) => {
                           const colorKey = `${categoryIndex}-${image.id}`;
                           const selectedColor = selectedColors[colorKey];
-                          const imageSet = DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "visitors"];
+                          const imageSet = DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "set0"];
                           const isTintable = imageSet.tintableImages.includes(image.id);
                           
                           // Get saved color from category data when panel is not open
@@ -1148,7 +1344,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                               key={image.id}
                               className={`absolute inset-0 ${editMode ? "cursor-pointer" : ""}`}
                               style={{
-                                zIndex: DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "visitors"].images.length - imageIndex,
+                                zIndex: DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "set0"].images.length - imageIndex,
                               }}
                               onClick={() => editMode && image.clickable && handleImageClick(categoryIndex, image.id)}
                             >
@@ -1182,10 +1378,10 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                         })}
                         {/* Accent image (for sets with accentImages, e.g. set7) */}
                         {(() => {
-                          const imageSet = DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "visitors"];
+                          const imageSet = DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "set0"];
                           if (!imageSet.accentImages) return null;
                           const isPanelOpen = selectedImage && selectedImage.categoryIndex === categoryIndex;
-                          const accentVariant = isPanelOpen ? selectedAccentVariant : ((category as any).accentVariant || "none");
+                          const accentVariant = isPanelOpen ? selectedAccentVariant : ((category as any).accentVariant || "");
                           const accentData = imageSet.accentImages.find(a => a.variant === accentVariant);
                           if (!accentData || !accentData.image.filename) return null;
                           const accentImage = accentData.image;
@@ -1281,7 +1477,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                 )}
 
                 {/* Color circle container below image stack */}
-                {((category as any).imageSet || "visitors") && (category as any).colors && typeof (category as any).colors === 'object' && !Array.isArray((category as any).colors) && (
+                {((category as any).imageSet || "set0") && (category as any).colors && typeof (category as any).colors === 'object' && !Array.isArray((category as any).colors) && (
                   <div
                     className="flex justify-center gap-3 mt-2 md:mt-6 mb-16"
                     style={{
@@ -1289,7 +1485,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                       transition: "transform 0.7s cubic-bezier(0.4, 0, 0.2, 1)",
                     }}
                   >
-                    {DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "visitors"].tintableImages.map(image => {
+                    {DRESS_CODE_IMAGE_SETS[(category as any).imageSet || "set0"].tintableImages.map(image => {
                       const categoryColors = (category as any).colors;
                       const color = categoryColors[image];
                       if (!color) return null;
@@ -1314,7 +1510,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         className="text-center text-[10px] mt-0 opacity-60"
         style={{ fontFamily: `${mergedData.bodyFont}, serif`, color: mergedData.dresscodeUseMainColor !== false ? data.neutralColor1 : (mergedData.dresscodeHeadingColor || data.neutralColor1) }}
       >
-        {desktopMode ? "Click anywhere to see your dress code" : "Tap anywhere to see your dress code"}
+        {(!showSlideshow && (mergedData.dresscodeShowGrid ?? true)) ? (desktopMode ? "Click anywhere to see your dress code" : "Tap anywhere to see your dress code") : ""}
       </p>
       {!showSlideshow && <div style={{ height: 50 }} />}
     </div>
@@ -1362,10 +1558,11 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                   <button
                     type="button"
                     onClick={() => {
-                      const keys = Object.keys(DRESS_CODE_IMAGE_SETS).sort((a, b) => DRESS_CODE_IMAGE_SETS[a].name.localeCompare(DRESS_CODE_IMAGE_SETS[b].name));
-                      const currentIndex = keys.indexOf(selectedImageSet);
-                      const prevIndex = currentIndex > 0 ? currentIndex - 1 : keys.length - 1;
-                      handleImageSetChange(keys[prevIndex]);
+                      const currentIndex = DRESS_CODE_SETS_ORDERED.findIndex(item => !item.isDivider && item.key === selectedImageSet);
+                      const nonDividerKeys = DRESS_CODE_SETS_ORDERED.filter(item => !item.isDivider).map(item => item.key);
+                      const prevIndex = currentIndex > 0 ? currentIndex - 1 : nonDividerKeys.length - 1;
+                      handleImageSetChange(nonDividerKeys[prevIndex]);
+                      setShowTypographyPanel(false);
                     }}
                     className={`p-2 rounded-lg transition-all duration-200 border ${isDarkMode ? "hover:bg-gray-800 text-gray-400 hover:text-white border-gray-700" : "hover:bg-gray-100 text-gray-600 border-gray-200"}`}
                     onMouseEnter={(e) => { e.currentTarget.style.color = accentColor; e.currentTarget.style.borderColor = accentColor; }}
@@ -1376,33 +1573,72 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                     </svg>
                   </button>
 
-                  {/* Dropdown */}
-                  <select
-                    value={selectedImageSet}
-                    onChange={(e) => handleImageSetChange(e.target.value)}
-                    className={`flex-1 px-3 py-2.5 border rounded-lg text-sm appearance-none cursor-pointer text-center transition-all duration-200 ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
-                    style={{
-                      ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }),
-                      fontFamily: "Inter, sans-serif",
-                      backgroundImage: 'none',
-                      paddingRight: '12px',
-                    }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = accentColor; e.currentTarget.style.boxShadow = `0 0 0 1px ${accentColor}`; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }}
-                  >
-                    {Object.keys(DRESS_CODE_IMAGE_SETS).sort((a, b) => DRESS_CODE_IMAGE_SETS[a].name.localeCompare(DRESS_CODE_IMAGE_SETS[b].name)).map(key => (
-                      <option key={key} value={key}>{DRESS_CODE_IMAGE_SETS[key].name}</option>
-                    ))}
-                  </select>
+                  {/* Custom Dropdown */}
+                  <div className="relative flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowTypographyPanel(!showTypographyPanel)}
+                      className={`w-full px-3 py-2.5 border rounded-lg text-sm text-center transition-all duration-200 ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200"}`}
+                      style={{
+                        ...(isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }),
+                        fontFamily: "Inter, sans-serif",
+                      }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = accentColor; e.currentTarget.style.boxShadow = `0 0 0 1px ${accentColor}`; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }}
+                    >
+                      {DRESS_CODE_IMAGE_SETS[selectedImageSet]?.name}
+                    </button>
+
+                    {/* Dropdown List */}
+                    {showTypographyPanel && (
+                      <div
+                        className={`absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto ${
+                          isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
+                        }`}
+                        style={{ border: "1px solid " + hexToRgba(accentColor, 0.3) }}
+                      >
+                        {DRESS_CODE_SETS_ORDERED.map((item, index) => {
+                          if (item.isDivider) {
+                            return (
+                              <div
+                                key={`divider-${index}`}
+                                className={`border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`}
+                                style={{ margin: "4px 0" }}
+                              />
+                            );
+                          }
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              onClick={() => {
+                                handleImageSetChange(item.key);
+                                setShowTypographyPanel(false);
+                              }}
+                              className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                                selectedImageSet === item.key
+                                  ? isDarkMode ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-900"
+                                  : isDarkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-100"
+                              }`}
+                              style={{ fontFamily: "Inter, sans-serif" }}
+                            >
+                              {DRESS_CODE_IMAGE_SETS[item.key]?.name || item.key}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Next Arrow */}
                   <button
                     type="button"
                     onClick={() => {
-                      const keys = Object.keys(DRESS_CODE_IMAGE_SETS).sort((a, b) => DRESS_CODE_IMAGE_SETS[a].name.localeCompare(DRESS_CODE_IMAGE_SETS[b].name));
-                      const currentIndex = keys.indexOf(selectedImageSet);
-                      const nextIndex = currentIndex < keys.length - 1 ? currentIndex + 1 : 0;
-                      handleImageSetChange(keys[nextIndex]);
+                      const currentIndex = DRESS_CODE_SETS_ORDERED.findIndex(item => !item.isDivider && item.key === selectedImageSet);
+                      const nonDividerKeys = DRESS_CODE_SETS_ORDERED.filter(item => !item.isDivider).map(item => item.key);
+                      const nextIndex = currentIndex < nonDividerKeys.length - 1 ? currentIndex + 1 : 0;
+                      handleImageSetChange(nonDividerKeys[nextIndex]);
+                      setShowTypographyPanel(false);
                     }}
                     className={`p-2 rounded-lg transition-all duration-200 border ${isDarkMode ? "hover:bg-gray-800 text-gray-400 hover:text-white border-gray-700" : "hover:bg-gray-100 text-gray-600 border-gray-200"}`}
                     onMouseEnter={(e) => { e.currentTarget.style.color = accentColor; e.currentTarget.style.borderColor = accentColor; }}
@@ -1416,7 +1652,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
               </div>
 
               {/* Accent selector (only for sets with accentImages, e.g. set7) */}
-              {DRESS_CODE_IMAGE_SETS[selectedImageSet].accentImages && (
+              {DRESS_CODE_IMAGE_SETS[selectedImageSet].accentImages && selectedAccentVariant && (
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`} style={{ fontFamily: "Inter, sans-serif" }}>TIE</label>
                   <div className="flex items-center gap-2">
@@ -1425,19 +1661,20 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                       type="button"
                       onClick={() => {
                         const accents = DRESS_CODE_IMAGE_SETS[selectedImageSet].accentImages!;
-                        const currentIndex = accents.findIndex(a => a.variant === selectedAccentVariant);
-                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : accents.length - 1;
-                        const newVariant = accents[prevIndex].variant;
+                        const allOptions = ["", ...accents.map(a => a.variant)];
+                        const currentIndex = allOptions.indexOf(selectedAccentVariant || "");
+                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : allOptions.length - 1;
+                        const newVariant = allOptions[prevIndex];
                         setSelectedAccentVariant(newVariant);
                         if (selectedImage) {
                           const accentPrefix = selectedImageSet;
-                          const accentImgId = `${accentPrefix}-${newVariant}`;
-                          const colorKey = `${selectedImage.categoryIndex}-${accentImgId}`;
-                          const oldAccentImgId = `${accentPrefix}-${selectedAccentVariant}`;
-                          const oldColorKey = `${selectedImage.categoryIndex}-${oldAccentImgId}`;
+                          const accentImgId = newVariant ? `${accentPrefix}-${newVariant}` : null;
+                          const colorKey = accentImgId ? `${selectedImage.categoryIndex}-${accentImgId}` : null;
+                          const oldAccentImgId = selectedAccentVariant ? `${accentPrefix}-${selectedAccentVariant}` : null;
+                          const oldColorKey = oldAccentImgId ? `${selectedImage.categoryIndex}-${oldAccentImgId}` : null;
                           setSelectedColors(prev => {
                             const updated = { ...prev };
-                            if (updated[oldColorKey]) {
+                            if (oldColorKey && updated[oldColorKey] && colorKey) {
                               updated[colorKey] = updated[oldColorKey];
                             }
                             return updated;
@@ -1461,13 +1698,13 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                         setSelectedAccentVariant(newVariant);
                         if (selectedImage) {
                           const accentPrefix = selectedImageSet;
-                          const accentImgId = `${accentPrefix}-${newVariant}`;
-                          const colorKey = `${selectedImage.categoryIndex}-${accentImgId}`;
-                          const oldAccentImgId = `${accentPrefix}-${selectedAccentVariant}`;
-                          const oldColorKey = `${selectedImage.categoryIndex}-${oldAccentImgId}`;
+                          const accentImgId = newVariant ? `${accentPrefix}-${newVariant}` : null;
+                          const colorKey = accentImgId ? `${selectedImage.categoryIndex}-${accentImgId}` : null;
+                          const oldAccentImgId = selectedAccentVariant ? `${accentPrefix}-${selectedAccentVariant}` : null;
+                          const oldColorKey = oldAccentImgId ? `${selectedImage.categoryIndex}-${oldAccentImgId}` : null;
                           setSelectedColors(prev => {
                             const updated = { ...prev };
-                            if (updated[oldColorKey]) {
+                            if (oldColorKey && updated[oldColorKey] && colorKey) {
                               updated[colorKey] = updated[oldColorKey];
                             }
                             return updated;
@@ -1484,6 +1721,7 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                       onFocus={(e) => { e.currentTarget.style.borderColor = accentColor; e.currentTarget.style.boxShadow = `0 0 0 1px ${accentColor}`; }}
                       onBlur={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.boxShadow = ''; }}
                     >
+                      <option value="">No Tie</option>
                       {DRESS_CODE_IMAGE_SETS[selectedImageSet].accentImages!.map(acc => (
                         <option key={acc.variant} value={acc.variant}>{acc.label}</option>
                       ))}
@@ -1494,19 +1732,20 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                       type="button"
                       onClick={() => {
                         const accents = DRESS_CODE_IMAGE_SETS[selectedImageSet].accentImages!;
-                        const currentIndex = accents.findIndex(a => a.variant === selectedAccentVariant);
-                        const nextIndex = currentIndex < accents.length - 1 ? currentIndex + 1 : 0;
-                        const newVariant = accents[nextIndex].variant;
+                        const allOptions = ["", ...accents.map(a => a.variant)];
+                        const currentIndex = allOptions.indexOf(selectedAccentVariant || "");
+                        const nextIndex = currentIndex < allOptions.length - 1 ? currentIndex + 1 : 0;
+                        const newVariant = allOptions[nextIndex];
                         setSelectedAccentVariant(newVariant);
                         if (selectedImage) {
                           const accentPrefix = selectedImageSet;
-                          const accentImgId = `${accentPrefix}-${newVariant}`;
-                          const colorKey = `${selectedImage.categoryIndex}-${accentImgId}`;
-                          const oldAccentImgId = `${accentPrefix}-${selectedAccentVariant}`;
-                          const oldColorKey = `${selectedImage.categoryIndex}-${oldAccentImgId}`;
+                          const accentImgId = newVariant ? `${accentPrefix}-${newVariant}` : null;
+                          const colorKey = accentImgId ? `${selectedImage.categoryIndex}-${accentImgId}` : null;
+                          const oldAccentImgId = selectedAccentVariant ? `${accentPrefix}-${selectedAccentVariant}` : null;
+                          const oldColorKey = oldAccentImgId ? `${selectedImage.categoryIndex}-${oldAccentImgId}` : null;
                           setSelectedColors(prev => {
                             const updated = { ...prev };
-                            if (updated[oldColorKey]) {
+                            if (oldColorKey && updated[oldColorKey] && colorKey) {
                               updated[colorKey] = updated[oldColorKey];
                             }
                             return updated;

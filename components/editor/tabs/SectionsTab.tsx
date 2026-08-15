@@ -786,8 +786,23 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                 {/* Dress Code Categories */}
                 <div className="space-y-3">
                   <label className="block text-xs tracking-wide uppercase text-gray-500">Dress Code Categories</label>
-                  {(data.dressCodeCategories || []).map((category, index) => (
-                    <div key={index} className={`p-3 rounded-lg border space-y-3 ${isDarkMode ? "border-gray-700" : "bg-white border-gray-200"}`}
+
+                  {/* Bride & Groom - Fixed first slot */}
+                  {(data.dressCodeCategories || []).length > 0 && (
+                    <div className={`p-3 rounded-lg border space-y-3 ${isDarkMode ? "border-gray-700" : "bg-white border-gray-200"}`}
+                    style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
+                      <div className="flex items-center gap-2">
+                        <span className={`flex-1 px-3 py-2 border rounded-lg text-sm font-medium ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-200 bg-white"}`}
+                        style={isDarkMode ? { backgroundColor: "#1C2531" } : { backgroundColor: "#F3F4F6" }}>
+                          Bride & Groom
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deletable categories */}
+                  {(data.dressCodeCategories || []).slice(1).map((category, index) => (
+                    <div key={index + 1} className={`p-3 rounded-lg border space-y-3 ${isDarkMode ? "border-gray-700" : "bg-white border-gray-200"}`}
                     style={isDarkMode ? { backgroundColor: "#19212C" } : { backgroundColor: "#ECEDF0" }}>
                       <div className="flex items-center gap-2">
                         <select
@@ -796,9 +811,9 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                             const newCategories = [...(data.dressCodeCategories || [])];
                             const selected = e.target.value;
                             if (selected === "Custom Category") {
-                              newCategories[index] = { ...category, label: "Custom Category", customLabel: "" };
+                              newCategories[index + 1] = { ...category, label: "Custom Category", customLabel: "" };
                             } else {
-                              newCategories[index] = { ...category, label: selected, customLabel: undefined };
+                              newCategories[index + 1] = { ...category, label: selected, customLabel: undefined };
                             }
                             onChange("dressCodeCategories", newCategories as unknown as string);
                           }}
@@ -811,21 +826,19 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                           <option value="Guests">Guests</option>
                           <option value="Custom Category">Custom Category</option>
                         </select>
-                        {index > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newCategories = (data.dressCodeCategories || []).filter((_, i) => i !== index);
-                              onChange("dressCodeCategories", newCategories as unknown as string);
-                            }}
-                            className="text-gray-400 hover:text-red-500 transition-colors"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newCategories = (data.dressCodeCategories || []).filter((_, i) => i !== index + 1);
+                            onChange("dressCodeCategories", newCategories as unknown as string);
+                          }}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
                       </div>
                       {category.label === "Custom Category" && (
                         <input
@@ -833,7 +846,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                           value={(category as any).customLabel || ""}
                           onChange={(e) => {
                             const newCategories = [...(data.dressCodeCategories || [])];
-                            newCategories[index] = { ...category, customLabel: e.target.value };
+                            newCategories[index + 1] = { ...category, customLabel: e.target.value };
                             onChange("dressCodeCategories", newCategories as unknown as string);
                           }}
                           placeholder="Name this category"
@@ -844,12 +857,12 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                     </div>
                   ))}
 
-                  {(data.dressCodeCategories || []).length < 5 && (
+                  {(data.dressCodeCategories || []).length < 6 && (
                     <button
                       type="button"
                       onClick={() => {
                         const newCategories = [...(data.dressCodeCategories || [])];
-                        newCategories.push({ label: "Entourage", imageUrl: "", colors: [] });
+                        newCategories.push({ label: "Entourage", imageUrl: "", colors: [], accentVariant: "", imageSet: "set0" });
                         onChange("dressCodeCategories", newCategories as unknown as string);
                       }}
                       className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
@@ -859,25 +872,15 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                   )}
                 </div>
 
-                {/* Groom & Bride Colors */}
-                <div className="space-y-3 pt-2">
-                  <ColorControl
-                    label="Groom"
-                    value={(data as any).groomColor || "#1A2B55"}
-                    onChange={(value) => onChange("groomColor", value)}
-                    isDarkMode={isDarkMode}
-                    accentColor={data.accentColor || "#6998EE"}
-                    predefinedColors={predefinedSectionColors.map(opt => opt.value)}
-                  />
-                  <ColorControl
-                    label="Bride"
-                    value={(data as any).brideColor || "#FFFFFF"}
-                    onChange={(value) => onChange("brideColor", value)}
-                    isDarkMode={isDarkMode}
-                    accentColor={data.accentColor || "#6998EE"}
-                    predefinedColors={predefinedSectionColors.map(opt => opt.value)}
-                  />
-                </div>
+                <div className={`border-t ${isDarkMode ? "border-gray-700" : "border-gray-200"}`} />
+
+                <Toggle
+                  label="Show All Dress as Preview"
+                  checked={data.dresscodeShowGrid ?? true}
+                  onToggle={() => onChange("dresscodeShowGrid", !(data.dresscodeShowGrid ?? true))}
+                  isDarkMode={isDarkMode}
+                  accentColor={accentColor}
+                />
               </div>
             )}
 

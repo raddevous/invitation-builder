@@ -379,7 +379,7 @@ export default function EaselEditor({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [zoom, setZoom] = useState(100); // temporary edit zoom (100-150)
+  const [zoom, setZoom] = useState(100); // temporary edit zoom (100-200)
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [imagePickerMode, setImagePickerMode] = useState<"images" | "background">("images");
   const [showGrid, setShowGrid] = useState(false); // temporary grid overlay, no save
@@ -687,7 +687,7 @@ export default function EaselEditor({
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const scale = dist / pinchRef.current.initialDist;
-      const newZoom = Math.max(100, Math.min(150, Math.round(pinchRef.current.initialZoom * scale)));
+      const newZoom = Math.max(100, Math.min(200, Math.round(pinchRef.current.initialZoom * scale)));
       setZoom(newZoom);
     }
   };
@@ -1270,14 +1270,14 @@ export default function EaselEditor({
                   <input
                     type="range"
                     min={100}
-                    max={150}
+                    max={200}
                     step={1}
                     value={zoom}
                     onChange={(e) => setZoom(Number(e.target.value))}
                     className="w-full"
                     style={{
                       accentColor: accentColor,
-                      background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(zoom - 100) / 50 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} ${(zoom - 100) / 50 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} 100%)`,
+                      background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${(zoom - 100) / 100 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} ${(zoom - 100) / 100 * 100}%, ${isDarkMode ? '#4B5563' : '#E5E7EB'} 100%)`,
                       borderRadius: '4px',
                       height: '8px'
                     }}

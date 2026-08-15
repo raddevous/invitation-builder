@@ -421,6 +421,7 @@ export interface InvitationData {
   dresscodeDividerCustomImageUrl3?: string;
   dresscodeDividerColorBlend?: boolean;
   dresscodeBody?: string;
+  dresscodeShowGrid?: boolean;
   dresscodeHeadingColor?: string;
   dresscodeBodyColor?: string;
   dresscodeUseMainColor?: boolean;
@@ -681,8 +682,6 @@ export interface InvitationData {
     accentColor?: string;
     customLabel?: string;
   }>;
-  groomColor?: string;
-  brideColor?: string;
   timelineEvents?: Array<{ title: string; description: string }>;
   storyTimeline?: Array<{ id: string; title: string; date: string; description: string; photoUrl: string }>;
   weddingProgram?: Array<{ id: string; name: string; eventDetails: string; place: string; time: string; imageVariant: number; iconSrc?: string }>;
