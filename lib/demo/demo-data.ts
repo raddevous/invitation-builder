@@ -201,7 +201,7 @@ export const demoInvitationData: InvitationData = {
   "dressCodeCategories": [
     {
       label: "Bride & Groom",
-      imageSet: "set0",
+      imageSet: "set0b",
       colors: {},
       accentVariant: "",
       accentColor: ""

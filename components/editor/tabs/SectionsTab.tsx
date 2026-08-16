@@ -862,7 +862,7 @@ export default function SectionsTab({ data, onChange, isDarkMode = false, accent
                       type="button"
                       onClick={() => {
                         const newCategories = [...(data.dressCodeCategories || [])];
-                        newCategories.push({ label: "Entourage", imageUrl: "", colors: [], accentVariant: "", imageSet: "set0" });
+                        newCategories.push({ label: "Entourage", imageUrl: "", colors: [], accentVariant: "", imageSet: "set7" });
                         onChange("dressCodeCategories", newCategories as unknown as string);
                       }}
                       className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
