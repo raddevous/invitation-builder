@@ -464,8 +464,9 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
   };
 
   const handleImageSetChange = (newImageSet: string) => {
-    setSelectedImageSet(newImageSet);
     const newImageSetData = DRESS_CODE_IMAGE_SETS[newImageSet];
+    if (!newImageSetData) return; // Handle invalid or divider selections
+    setSelectedImageSet(newImageSet);
     // Default to a1 (Neck Tie) when switching to a set with accent images, otherwise clear
     const defaultAccent = newImageSetData.accentImages ? "a1" : "";
     setSelectedAccentVariant(defaultAccent);
