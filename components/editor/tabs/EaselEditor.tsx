@@ -1060,7 +1060,7 @@ export default function EaselEditor({
                       </>
                     )}
                     {el.type === "celebrant-name" ? (
-                      <div data-font-size={el.fontSize || 36} data-scale={el.scale || 100} style={{ width: "max-content", height: "auto", fontSize: `clamp(8px, ${(el.fontSize || 36) * ((el.scale || 100) / 100) / 8}cqw, ${(el.fontSize || 36) * ((el.scale || 100) / 100) * 2}px)`, lineHeight: 1.2, textAlign: "center" }}>
+                      <div data-font-size={el.fontSize || 36} data-scale={el.scale || 100} style={{ width: "max-content", height: "auto", fontSize: `clamp(4px, ${(el.fontSize || 36) * ((el.scale || 100) / 100) / 8}cqw, ${(el.fontSize || 36) * ((el.scale || 100) / 100) * 2}px)`, lineHeight: 1.2, textAlign: "center" }}>
                         <CelebrantNameRenderer
                           nameType={data.nameType}
                           hisName={data.hisName}
@@ -1077,7 +1077,7 @@ export default function EaselEditor({
                         />
                       </div>
                     ) : el.type === "date" && dateComponents ? (
-                      <div data-font-size={el.fontSize || 20} data-scale={el.scale || 100} style={{ width: "max-content", height: "auto", fontSize: `clamp(8px, ${(el.fontSize || 20) * ((el.scale || 100) / 100) / 8}cqw, ${(el.fontSize || 20) * ((el.scale || 100) / 100) * 2}px)`, lineHeight: 1.3, textAlign: "center" }}>
+                      <div data-font-size={el.fontSize || 20} data-scale={el.scale || 100} style={{ width: "max-content", height: "auto", fontSize: `clamp(4px, ${(el.fontSize || 20) * ((el.scale || 100) / 100) / 8}cqw, ${(el.fontSize || 20) * ((el.scale || 100) / 100) * 2}px)`, lineHeight: 1.3, textAlign: "center" }}>
                         <DateStructureRenderer
                           dateStr={data.date}
                           structure={el.dateStructure || "default"}
@@ -1092,7 +1092,7 @@ export default function EaselEditor({
                         data-scale={el.scale || 100}
                         style={{
                           fontFamily: el.fontFamily || "Inter",
-                          fontSize: `clamp(8px, ${(el.fontSize || 24) * ((el.scale || 100) / 100) / 8}cqw, ${(el.fontSize || 24) * ((el.scale || 100) / 100) * 2}px)`,
+                          fontSize: `clamp(4px, ${(el.fontSize || 24) * ((el.scale || 100) / 100) / 8}cqw, ${(el.fontSize || 24) * ((el.scale || 100) / 100) * 2}px)`,
                           color: el.color || "#333333",
                           textAlign: el.textAlign || "center",
                           fontWeight: el.fontWeight || "normal",
