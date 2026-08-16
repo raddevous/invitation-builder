@@ -120,10 +120,15 @@ export interface EaselElement {
   reverseNames?: boolean;
 }
 
-export interface EaselData {
+export interface EaselCanvas {
   elements: EaselElement[];
   // Tarp background color (default white)
   backgroundColor?: string;
+}
+
+export interface EaselData {
+  canvases: EaselCanvas[];
+  currentCanvasIndex?: number;
 }
 
 export interface InvitationData {

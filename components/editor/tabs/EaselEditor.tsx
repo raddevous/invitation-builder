@@ -317,47 +317,60 @@ function getImageDimensions(url: string): Promise<{ width: number; height: numbe
 function defaultEaselData(slug: string): EaselData {
   const rsvpUrl = typeof window !== "undefined" ? `${buildInviteUrl(slug)}/#rsvp` : `/invite/${slug}/#rsvp`;
   return {
-    backgroundColor: "#ffffff",
-    elements: [
+    canvases: [
       {
-        id: genId(),
-        type: "text",
-        text: "Find Your Seat",
-        x: 50,
-        y: 10,
-        width: 80,
-        fontFamily: "Playfair Display",
-        fontSize: 48,
-        color: "#1B3B5F",
-        textAlign: "center",
-        fontWeight: "bold",
-        zIndex: 1,
+        backgroundColor: "#ffffff",
+        elements: [
+          {
+            id: genId(),
+            type: "text",
+            text: "Find Your Seat",
+            x: 50,
+            y: 10,
+            width: 80,
+            fontFamily: "Playfair Display",
+            fontSize: 48,
+            color: "#1B3B5F",
+            textAlign: "center",
+            fontWeight: "bold",
+            zIndex: 1,
+          },
+          {
+            id: genId(),
+            type: "qr",
+            qrUrl: rsvpUrl,
+            x: 50,
+            y: 45,
+            width: 25,
+            height: 25,
+            zIndex: 2,
+          },
+          {
+            id: genId(),
+            type: "text",
+            text: "Scan to find your seat",
+            x: 50,
+            y: 75,
+            width: 80,
+            fontFamily: "Inter",
+            fontSize: 18,
+            color: "#666666",
+            textAlign: "center",
+            fontWeight: "normal",
+            zIndex: 3,
+          },
+        ],
       },
       {
-        id: genId(),
-        type: "qr",
-        qrUrl: rsvpUrl,
-        x: 50,
-        y: 45,
-        width: 25,
-        height: 25,
-        zIndex: 2,
+        backgroundColor: "#ffffff",
+        elements: [],
       },
       {
-        id: genId(),
-        type: "text",
-        text: "Scan to find your seat",
-        x: 50,
-        y: 75,
-        width: 80,
-        fontFamily: "Inter",
-        fontSize: 18,
-        color: "#666666",
-        textAlign: "center",
-        fontWeight: "normal",
-        zIndex: 3,
+        backgroundColor: "#ffffff",
+        elements: [],
       },
     ],
+    currentCanvasIndex: 0,
   };
 }
 
@@ -373,7 +386,11 @@ export default function EaselEditor({
 }: EaselEditorProps) {
   const defaultEasel = useMemo(() => defaultEaselData(slug), [slug]);
   const easelData: EaselData = data.easelData || defaultEasel;
-  const elements = easelData.elements || [];
+  const canvases = easelData.canvases || [];
+  const currentCanvasIndex = easelData.currentCanvasIndex ?? 0;
+  const currentCanvas = canvases[currentCanvasIndex] || canvases[0] || { elements: [], backgroundColor: "#ffffff" };
+  const elements = currentCanvas.elements || [];
+  const currentBackgroundColor = currentCanvas.backgroundColor || "#ffffff";
   const { options: predefinedHeadingFonts } = usePredefinedOptions("heading_fonts");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -421,9 +438,14 @@ export default function EaselEditor({
 
   const updateElements = useCallback(
     (newElements: EaselElement[]) => {
-      onChange("easelData", { ...easelData, elements: newElements });
+      const updatedCanvases = [...canvases];
+      updatedCanvases[currentCanvasIndex] = {
+        ...updatedCanvases[currentCanvasIndex],
+        elements: newElements,
+      };
+      onChange("easelData", { ...easelData, canvases: updatedCanvases });
     },
-    [easelData, onChange]
+    [easelData, onChange, canvases, currentCanvasIndex]
   );
 
   const updateElement = useCallback(
@@ -431,6 +453,25 @@ export default function EaselEditor({
       updateElements(elements.map((el) => (el.id === id ? { ...el, ...patch } : el)));
     },
     [elements, updateElements]
+  );
+
+  const updateCanvasBackgroundColor = useCallback(
+    (color: string) => {
+      const updatedCanvases = [...canvases];
+      updatedCanvases[currentCanvasIndex] = {
+        ...updatedCanvases[currentCanvasIndex],
+        backgroundColor: color,
+      };
+      onChange("easelData", { ...easelData, canvases: updatedCanvases });
+    },
+    [easelData, onChange, canvases, currentCanvasIndex]
+  );
+
+  const setCurrentCanvas = useCallback(
+    (index: number) => {
+      onChange("easelData", { ...easelData, currentCanvasIndex: index });
+    },
+    [easelData, onChange]
   );
 
   // Generate default text for special element types based on invitation data
@@ -874,7 +915,7 @@ export default function EaselEditor({
     tarpClone.style.transform = "none";
     tarpClone.style.transformOrigin = "top left";
     tarpClone.style.overflow = "hidden";
-    tarpClone.style.backgroundColor = easelData.backgroundColor || "#ffffff";
+    tarpClone.style.backgroundColor = currentBackgroundColor || "#ffffff";
 
     // Create off-screen container (visible but off-screen so html2canvas can render it)
     const exportContainer = document.createElement("div");
@@ -891,7 +932,7 @@ export default function EaselEditor({
 
     try {
       const canvas = await html2canvas(tarpClone, {
-        backgroundColor: easelData.backgroundColor || "#ffffff",
+        backgroundColor: currentBackgroundColor || "#ffffff",
         scale: 1, // already at target size
         useCORS: true,
         logging: false,
@@ -995,7 +1036,7 @@ export default function EaselEditor({
                 transform: "translate(-50%, -50%)",
                 width: `${TARP_WIDTH_PCT}cqh`,
                 height: `${TARP_HEIGHT_PCT}cqh`,
-                backgroundColor: easelData.backgroundColor || "#ffffff",
+                backgroundColor: currentBackgroundColor || "#ffffff",
                 cursor: "default",
               }}
               onClick={(e) => e.stopPropagation()}
@@ -1285,6 +1326,26 @@ export default function EaselEditor({
                     }}
                   />
                 </div>
+                {/* Canvas navigation */}
+                <div className="px-2 py-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Canvas</span>
+                    <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{currentCanvasIndex + 1}/{canvases.length}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    {canvases.map((_, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentCanvas(index)}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          index === currentCanvasIndex
+                            ? isDarkMode ? "bg-white" : "bg-gray-800"
+                            : isDarkMode ? "bg-gray-600" : "bg-gray-300"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
               <button
@@ -1373,6 +1434,27 @@ export default function EaselEditor({
               style={{ fontFamily: "Inter, sans-serif" }}
               onClick={(e) => e.stopPropagation()}
             >
+
+            {/* Canvas Background Color */}
+            <div className="space-y-2">
+              <label className={`block text-xs tracking-wide uppercase text-left ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+                Canvas Background
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={currentBackgroundColor || "#ffffff"}
+                  onChange={(e) => updateCanvasBackgroundColor(e.target.value)}
+                  className="w-10 h-8 rounded cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={currentBackgroundColor || "#ffffff"}
+                  onChange={(e) => updateCanvasBackgroundColor(e.target.value)}
+                  className={`flex-1 px-2 py-1 rounded text-sm ${isDarkMode ? "bg-gray-700 text-gray-200" : "bg-gray-50 text-gray-900"}`}
+                />
+              </div>
+            </div>
 
             {/* Size */}
             <div className="space-y-3">
