@@ -31,6 +31,8 @@ const EASEL_BG = "/assets/easl/bg.jpg";
 // Available easel decorative images
 const EASEL_IMAGES = [
   { name: "Image 1", url: "/assets/easl/img/img01.png" },
+  { name: "Image 2", url: "/assets/easl/img/img02.png" },
+  { name: "Image 3", url: "/assets/easl/img/img03.png" },
 ];
 
 // Date structures (same as hero section)
