@@ -1326,27 +1326,29 @@ export default function EaselEditor({
                     }}
                   />
                 </div>
-                {/* Canvas navigation */}
-                <div className="px-2 py-1 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Canvas</span>
-                    <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{currentCanvasIndex + 1}/{canvases.length}</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    {canvases.map((_, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setCurrentCanvas(index)}
-                        className={`w-2 h-2 rounded-full transition-colors ${
-                          index === currentCanvasIndex
-                            ? isDarkMode ? "bg-white" : "bg-gray-800"
-                            : isDarkMode ? "bg-gray-600" : "bg-gray-300"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
               </div>
+            )}
+          </div>
+
+          {/* Canvas navigation - always visible */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-4 py-2 rounded-full shadow-lg" style={{ backgroundColor: isDarkMode ? "rgba(31, 41, 55, 0.9)" : "rgba(255, 255, 255, 0.9)", backdropFilter: "blur(8px)" }}>
+            <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: "Inter, sans-serif" }}>
+              {currentCanvasIndex + 1}/{canvases.length}
+            </span>
+            <div className="flex items-center gap-2">
+              {canvases.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentCanvas(index)}
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    index === currentCanvasIndex
+                      ? isDarkMode ? "bg-white" : "bg-gray-800"
+                      : isDarkMode ? "bg-gray-600" : "bg-gray-300"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
             ) : (
               <button
                 onClick={(e) => {
