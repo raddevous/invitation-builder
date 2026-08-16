@@ -1557,8 +1557,8 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                   <button
                     type="button"
                     onClick={() => {
-                      const currentIndex = DRESS_CODE_SETS_ORDERED.findIndex(item => !item.isDivider && item.key === selectedImageSet);
                       const nonDividerKeys = DRESS_CODE_SETS_ORDERED.filter(item => !item.isDivider).map(item => item.key);
+                      const currentIndex = nonDividerKeys.indexOf(selectedImageSet);
                       const prevIndex = currentIndex > 0 ? currentIndex - 1 : nonDividerKeys.length - 1;
                       handleImageSetChange(nonDividerKeys[prevIndex]);
                       setShowTypographyPanel(false);
@@ -1633,8 +1633,8 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
                   <button
                     type="button"
                     onClick={() => {
-                      const currentIndex = DRESS_CODE_SETS_ORDERED.findIndex(item => !item.isDivider && item.key === selectedImageSet);
                       const nonDividerKeys = DRESS_CODE_SETS_ORDERED.filter(item => !item.isDivider).map(item => item.key);
+                      const currentIndex = nonDividerKeys.indexOf(selectedImageSet);
                       const nextIndex = currentIndex < nonDividerKeys.length - 1 ? currentIndex + 1 : 0;
                       handleImageSetChange(nonDividerKeys[nextIndex]);
                       setShowTypographyPanel(false);
