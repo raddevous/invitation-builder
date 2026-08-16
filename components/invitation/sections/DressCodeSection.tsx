@@ -1290,21 +1290,8 @@ export default function DressCodeSection({ data, desktopMode = false, panelPosit
         <div>
           {currentCategories.map((category, pageIndex) => {
             const categoryIndex = startIndex + pageIndex;
-            const categoryLabel = categoryIndex === 0 ? "Bride & Groom" : (category as any).label || (category as any).customLabel || "";
             return (
               <div key={categoryIndex} className="pb-0 md:pb-8">
-                {/* Category label */}
-                <div className="text-center mb-4">
-                  <p
-                    className="text-sm font-medium"
-                    style={{
-                      color: mergedData.dresscodeUseMainColor !== false ? data.neutralColor1 : (mergedData.dresscodeHeadingColor || data.neutralColor1),
-                      fontFamily: `${mergedData.bodyFont}, serif`,
-                    }}
-                  >
-                    {categoryLabel}
-                  </p>
-                </div>
                 {/* Image container with side arrows and bottom pagination */}
                 <div className="flex flex-col items-center mt-8 relative">
                   {/* Previous button - overlay */}
